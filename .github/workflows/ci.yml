@@ -12,10 +12,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  # The Electron smoke suite launches the bundled electron binary; no browsers.
-  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-
 jobs:
   check:
     name: Typecheck · lint · licenses · unit
@@ -59,6 +55,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
       - run: npm run build
       - name: Install xvfb (Linux)
         if: matrix.os == 'ubuntu-latest'

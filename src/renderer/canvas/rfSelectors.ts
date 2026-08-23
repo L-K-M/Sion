@@ -14,6 +14,30 @@ export interface ThalyxEdgeData extends Record<string, unknown> {
   edge: ThalyxEdge;
 }
 
+// Identity-stable `data` wrappers: unchanged model objects keep the same
+// wrapper across selector recomputes, so RF skips re-rendering untouched
+// nodes when the memo rebuilds (e.g. after a selection change).
+const nodeDataCache = new WeakMap<ThalyxNode, ThalyxNodeData>();
+const edgeDataCache = new WeakMap<ThalyxEdge, ThalyxEdgeData>();
+
+function nodeData(n: ThalyxNode): ThalyxNodeData {
+  let d = nodeDataCache.get(n);
+  if (!d) {
+    d = { node: n };
+    nodeDataCache.set(n, d);
+  }
+  return d;
+}
+
+function edgeData(e: ThalyxEdge): ThalyxEdgeData {
+  let d = edgeDataCache.get(e);
+  if (!d) {
+    d = { edge: e };
+    edgeDataCache.set(e, d);
+  }
+  return d;
+}
+
 export function toReactFlowNodes(
   doc: ThalyxDoc,
   selection: SessionState['selection'],
@@ -28,7 +52,7 @@ export function toReactFlowNodes(
     style: { width: n.width, height: n.height },
     ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
     ...(n.parentId !== undefined ? { extent: 'parent' as const } : {}),
-    data: { node: n },
+    data: nodeData(n),
     selected: selected.has(n.id),
     hidden: n.hidden === true,
     draggable: n.locked !== true,
@@ -52,6 +76,6 @@ export function toReactFlowEdges(
     type: 'straight',
     selected: selected.has(e.id),
     hidden: e.hidden === true,
-    data: { edge: e },
+    data: edgeData(e),
   }));
 }

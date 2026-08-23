@@ -64,7 +64,7 @@ export function useKeymap(): void {
         return;
       }
 
-      if (mod || e.altKey) return; // tool keys are bare letters
+      if (mod || e.altKey || e.shiftKey) return; // tool keys are bare letters (Shift+letter types capitals)
 
       const toolKeys: Record<string, () => void> = {
         KeyV: () => A.setTool('select' as Tool),

@@ -24,6 +24,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+        env:
+          # Skip the playwright package postinstall (downloads ALL browsers);
+          # the e2e job installs exactly what it needs via the explicit step.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
@@ -55,6 +59,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+        env:
+          # Skip the playwright package postinstall (downloads ALL browsers);
+          # the e2e job installs exactly what it needs via the explicit step.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Install Playwright browsers (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: npx playwright install chromium --with-deps
@@ -96,6 +104,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+        env:
+          # Skip the playwright package postinstall (downloads ALL browsers);
+          # the e2e job installs exactly what it needs via the explicit step.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Build & package (unsigned)
         run: npm run package
         env:

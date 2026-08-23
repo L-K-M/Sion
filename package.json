@@ -1,0 +1,59 @@
+{
+  "name": "thalyx",
+  "productName": "Thalyx",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A fast, friendly desktop diagramming tool with Mermaid as a first-class citizen.",
+  "license": "Unlicense",
+  "author": "Thalyx contributors",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/L-K-M/Thalyx"
+  },
+  "main": "out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run tests/unit",
+    "test:watch": "vitest tests/unit",
+    "e2e": "playwright test",
+    "package": "electron-vite build && electron-builder --publish never",
+    "check:licenses": "node scripts/check-licenses.mjs",
+    "gen:licenses": "node scripts/gen-third-party-licenses.mjs"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^24.9.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "eslint": "^10.9.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.4",
+    "jsdom": "^30.0.1",
+    "license-checker-rseidelsohn": "^5.0.1",
+    "prettier": "^3.9.6",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
+  }
+}

@@ -1,0 +1,28 @@
+appId: dev.thalyx.app
+productName: Thalyx
+copyright: Public domain (Unlicense). Bundled dependencies keep their own licenses — see THIRD_PARTY_LICENSES.md.
+
+directories:
+  buildResources: resources
+  output: release
+
+# electron-vite output; everything else the app needs is bundled by vite.
+files:
+  - out/**
+  - '!**/*.map'
+
+asar: true
+
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+
+linux:
+  category: Graphics
+  maintainer: Thalyx contributors <thalyx@users.noreply.github.com>
+  target:
+    - AppImage
+    - deb
+    - rpm

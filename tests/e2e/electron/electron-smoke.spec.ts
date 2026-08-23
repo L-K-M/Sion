@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 
-const repoRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..');
+const repoRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
 const mainEntry = resolve(repoRoot, 'out/main/index.js');
 
 async function launchApp(): Promise<ElectronApplication> {
@@ -36,7 +36,8 @@ test('launches and shows the Thalyx window', async () => {
   if (!p) throw new Error('app did not launch');
   const title = await p.title();
   expect(title).toBe('Thalyx');
-  await expect(p.getByRole('heading', { level: 1, name: 'Thalyx' })).toBeVisible();
+  await expect(p.locator('.thalyx-toolbar')).toBeVisible();
+  await expect(p.locator('.react-flow')).toBeVisible();
 });
 
 test('renderer is sandboxed: no node globals leaked', async () => {

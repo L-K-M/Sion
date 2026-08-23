@@ -1,32 +1,33 @@
-import { useEffect, useState } from 'react';
-import { platform } from './platform/api';
-import { DOC_SCHEMA_ID } from '../shared/model/version';
+import { ReactFlowProvider } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import './theme/theme.css';
+import './styles.css';
+import { Canvas } from './canvas/Canvas';
+import { Toolbar } from './panels/Toolbar';
+import { useKeymap } from './canvas/hooks/useKeymap';
+import { useEffectiveTheme } from './theme/useEffectiveTheme';
+import { useEffect } from 'react';
 
-export function App() {
-  const [version, setVersion] = useState<string>('…');
+function Shell() {
+  useKeymap();
+  const theme = useEffectiveTheme();
 
   useEffect(() => {
-    let alive = true;
-    void platform
-      .version()
-      .then((v) => {
-        if (alive) setVersion(v);
-      })
-      .catch(() => {
-        if (alive) setVersion('unavailable');
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    document.documentElement.dataset['theme'] = theme;
+  }, [theme]);
 
   return (
-    <main className="splash">
-      <h1>Thalyx</h1>
-      <p className="splash-sub">The canvas is coming. (Milestone M0 scaffold.)</p>
-      <p className="splash-meta">
-        app <code>{version}</code> · doc schema <code>{DOC_SCHEMA_ID}</code>
-      </p>
-    </main>
+    <div className="thalyx-root" data-theme={theme}>
+      <Toolbar />
+      <Canvas />
+    </div>
+  );
+}
+
+export function App() {
+  return (
+    <ReactFlowProvider>
+      <Shell />
+    </ReactFlowProvider>
   );
 }

@@ -12,10 +12,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  # The Electron smoke suite launches the bundled electron binary; no browsers.
-  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-
 jobs:
   check:
     name: Typecheck · lint · licenses · unit
@@ -28,6 +24,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+        env:
+          # Skip the playwright package postinstall (downloads ALL browsers);
+          # the e2e job installs exactly what it needs via the explicit step.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
@@ -59,6 +59,21 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+        env:
+          # Skip the playwright package postinstall (downloads ALL browsers);
+          # the e2e job installs exactly what it needs via the explicit step.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright browsers (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: npx playwright install chromium --with-deps
+      - name: Install Playwright browsers (macOS)
+        if: matrix.os != 'ubuntu-latest'
+        run: npx playwright install chromium
       - run: npm run build
       - name: Install xvfb (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -94,6 +109,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+        env:
+          # Skip the playwright package postinstall (downloads ALL browsers);
+          # the e2e job installs exactly what it needs via the explicit step.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Build & package (unsigned)
         run: npm run package
         env:

@@ -1,0 +1,68 @@
+/**
+ * Security baseline for the renderer (PLAN.md §14.1–2).
+ *
+ * Thalyx loads untrusted content into a full Chromium (`.thalyx` docs,
+ * `.mmd` files, pasted text), so the renderer is locked down hard:
+ * context isolation, sandbox, no node integration, no navigation, no
+ * popups. The CSP itself is injected into index.html per build mode by the
+ * Vite HTML transform in electron.vite.config.ts.
+ */
+import { app, shell } from 'electron';
+import { BrowserWindow } from 'electron';
+import type { WebContents } from 'electron';
+
+export function applyWebContentsSecurity(contents: WebContents): void {
+  // Block all navigation away from the app bundle. The initial load does not
+  // fire will-navigate; everything after it does.
+  contents.on('will-navigate', (event, url) => {
+    if (!isAllowedNavigation(url)) {
+      event.preventDefault();
+      console.warn(`[security] blocked navigation to ${url}`);
+    }
+  });
+
+  // Never allow window.open / target=_blank popups.
+  contents.setWindowOpenHandler(({ url }) => {
+    console.warn(`[security] blocked window.open to ${url}`);
+    return { action: 'deny' };
+  });
+
+  // Crash of the renderer: log and reload (document recovery handles state).
+  contents.on('render-process-gone', (_event, details) => {
+    console.error(`[security] render-process-gone: ${details.reason} (${details.exitCode})`);
+    const win = BrowserWindow.fromWebContents(contents);
+    if (win && !win.isDestroyed()) {
+      win.reload();
+    }
+  });
+}
+
+/** Only same-file loads of the packaged app may ever navigate. */
+export function isAllowedNavigation(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'file:') return false;
+    // Allow loading from within the app bundle only.
+    const appRoot = new URL(`file://${app.getAppPath()}/`);
+    return parsed.href === appRoot.href || parsed.href.startsWith(appRoot.href);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Open external links safely: explicit user action only, and main validates
+ * the scheme (PLAN.md §14.4). Allowed: https, http, mailto.
+ */
+export function openExternalSafely(url: string): void {
+  try {
+    const parsed = new URL(url);
+    if (['https:', 'http:', 'mailto:'].includes(parsed.protocol)) {
+      void shell.openExternal(parsed.href);
+    } else {
+      console.warn(`[security] refused to open link with scheme ${parsed.protocol}`);
+    }
+  } catch {
+    console.warn(`[security] refused to open malformed link ${JSON.stringify(url)}`);
+  }
+}

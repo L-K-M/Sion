@@ -193,6 +193,19 @@ describe('restoreDocument', () => {
     expect(restored.nodes.find((n) => n.id === 'b')?.parentId).toBe('g');
   });
 
+  it('z-order pass preserves unrelated interleavings (topological fidelity)', () => {
+    // valid doc: A, child-of-A, B — B must NOT jump before child under the
+    // topological pass (depth-grouping would reorder it)
+    const doc = restoreDocument({
+      nodes: [
+        { id: 'A', kind: 'container', x: 0, y: 0, width: 300, height: 200 },
+        { id: 'child', kind: 'shape', parentId: 'A', x: 1, y: 1 },
+        { id: 'B', kind: 'shape', x: 500, y: 500 },
+      ],
+    });
+    expect(doc.nodes.map((n) => n.id)).toEqual(['A', 'child', 'B']);
+  });
+
   it('caps runaway node/edge arrays (§14.6 bounds)', () => {
     const many = Array.from({ length: 25_000 }, (_, i) => ({
       id: `n${i}`,

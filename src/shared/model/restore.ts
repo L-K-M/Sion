@@ -7,7 +7,16 @@
  * merely-weird data. The only hard error is `version > 1` (DocTooNewError).
  */
 import { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH, newEdge, newId, newNode } from './create';
-import { parseDocSchema, COORD_MAX, COORD_MIN, LABEL_MAX, SIZE_MAX, SIZE_MIN } from './schema';
+import {
+  parseDocSchema,
+  COORD_MAX,
+  COORD_MIN,
+  EDGES_MAX,
+  LABEL_MAX,
+  NODES_MAX,
+  SIZE_MAX,
+  SIZE_MIN,
+} from './schema';
 import { ARROW_HEADS, MERMAID_DIRECTIONS, NODE_KINDS, SHAPE_KINDS } from './types';
 import type {
   MermaidDirection,
@@ -25,8 +34,6 @@ export class DocTooNewError extends Error {
     this.name = 'DocTooNewError';
   }
 }
-
-const MAX_PARENT_DEPTH = 100;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -232,24 +239,6 @@ function coerceMeta(raw: unknown): ThalyxDoc['meta'] {
 }
 
 /**
- * Depth of a node in the containment tree (top-level = 0). Guarded against
- * cycles: a cyclic chain yields Infinity-like sentinel (MAX_PARENT_DEPTH+1).
- */
-function parentDepth(nodes: Map<string, ThalyxNode>, id: string): number {
-  let depth = 0;
-  let cursor: string | undefined = id;
-  const seen = new Set<string>(); // terminates cycles — no depth cap needed
-  while (cursor !== undefined) {
-    const node = nodes.get(cursor);
-    if (!node || seen.has(cursor)) break;
-    seen.add(cursor);
-    cursor = node.parentId;
-    depth += 1;
-  }
-  return depth - 1 < 0 ? 0 : depth - 1;
-}
-
-/**
  * Normalize-on-load. Throws DocTooNewError iff raw declares version > 1;
  * never throws otherwise. Output satisfies the zod schema.
  */
@@ -271,7 +260,7 @@ export function restoreDocument(raw: unknown): ThalyxDoc {
   // --- nodes: coerce + dedupe ids (keep first) ---
   const seenIds = new Set<string>();
   const nodes: ThalyxNode[] = [];
-  for (const rn of rawNodes.slice(0, 20_000)) {
+  for (const rn of rawNodes.slice(0, NODES_MAX)) {
     const node = coerceNode(rn);
     if (!node || seenIds.has(node.id)) continue;
     seenIds.add(node.id);
@@ -287,26 +276,21 @@ export function restoreDocument(raw: unknown): ThalyxDoc {
       node.parentId = undefined;
       continue;
     }
-    // cycle check: walk up; if we reach this node again, detach it
+    // cycle check: walk up with a visited set; if we reach this node again,
+    // detach it (the set terminates arbitrary-length chains — no depth cap)
+    const chain = new Set<string>([node.id]);
     let cursor: string | undefined = node.parentId;
-    let steps = 0;
-    let cyclic = false;
-    while (cursor !== undefined && steps <= MAX_PARENT_DEPTH) {
-      if (cursor === node.id) {
-        cyclic = true;
-        break;
-      }
-      const c = byId.get(cursor);
-      cursor = c?.parentId;
-      steps += 1;
+    while (cursor !== undefined && !chain.has(cursor)) {
+      chain.add(cursor);
+      cursor = byId.get(cursor)?.parentId;
     }
-    if (cyclic) node.parentId = undefined;
+    if (cursor === node.id) node.parentId = undefined;
   }
 
   // --- edges: endpoints must resolve to existing, non-island nodes ---
   const edges: ThalyxEdge[] = [];
   const seenEdgeIds = new Set<string>();
-  for (const re of rawEdges.slice(0, 60_000)) {
+  for (const re of rawEdges.slice(0, EDGES_MAX)) {
     const edge = coerceEdge(re);
     if (!edge) continue;
     const source = byId.get(edge.source);
@@ -319,11 +303,31 @@ export function restoreDocument(raw: unknown): ThalyxDoc {
   }
 
   // --- z-order: containers strictly before children (invariant 3) ---
-  const depthOf = (n: ThalyxNode) => parentDepth(byId, n.id);
-  const ordered = nodes
-    .map((n, i) => ({ n, i, d: depthOf(n) }))
-    .sort((a, b) => a.d - b.d || a.i - b.i) // stable within depth
-    .map(({ n }) => n);
+  // Stable topological pass: emit each node as soon as its parent (if any)
+  // has been emitted; defer otherwise. Preserves the ORIGINAL relative order
+  // as much as possible (unlike depth-grouping, which hoists same-depth
+  // nodes past unrelated ones).
+  const ordered: ThalyxNode[] = [];
+  const emitted = new Set<string>();
+  let pending = nodes;
+  while (pending.length > 0) {
+    const deferred: ThalyxNode[] = [];
+    let progress = false;
+    for (const n of pending) {
+      if (n.parentId === undefined || emitted.has(n.parentId)) {
+        emitted.add(n.id);
+        ordered.push(n);
+        progress = true;
+      } else {
+        deferred.push(n);
+      }
+    }
+    if (!progress) {
+      ordered.push(...pending); // defensive: residual cycle keeps original order
+      break;
+    }
+    pending = deferred;
+  }
 
   const raw_ = isRecord(raw) ? raw : {};
   const doc: ThalyxDoc = {

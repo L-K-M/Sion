@@ -8,6 +8,45 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M1 — Document model, store, history (PLAN.md §17 M1)
+
+Added:
+
+- `src/shared/model/`: `types.ts` (§7.1 authoritative types), `schema.ts`
+  (zod v4 with §14.6 bounds: labels ≤ 4 kB, ≤ 20 k nodes, finite geometry,
+  size ≥ 8), `create.ts` (newDoc/newNode/newEdge factories with §10.4
+  defaults), `restore.ts` (normalize-on-load per §7.5: DocTooNewError for
+  version > 1, coercion, dangling/island edge dropping, parent/cycle repair,
+  z-order fix, clamps, final zod assertion), `queries.ts` (absolute-position
+  math, bounds, containment/descendants, edge selectors,
+  `positionUnderParent` for invariant §7.2.7).
+- `src/shared/files/thalyxFile.ts`: serializeDoc (2-space pretty + trailing
+  newline, known-fields rebuild) / parseDoc (JSON.parse → restore).
+- `src/shared/snap/snap.ts`: the `GuideLine` type only (session slice needs it
+  per §8.1; the computeSnap engine lands in M4).
+- `src/renderer/store/`: `history.ts` (snapshot undo/redo per §8.2 — commit /
+  beginGesture / endGesture / undo / redo, LIMIT 100, structural sharing via
+  reference identity), `store.ts` (zustand doc+session slices exactly per
+  §8.1), `actions.ts` (§8.3 catalog for M1 scope: node/edge CRUD, transient
+  move/resize inside gestures, delete/duplicate/paste with re-id + intra-edge
+  preservation, align, z-order (block moves with descendants),
+  group/dissolve containers with absolute-position-preserving re-parenting,
+  waypoints + D12 clear-on-endpoint-move, canvas/direction/grid, session
+  setters). Mermaid/layout actions arrive with M4–M8 per the milestone plan.
+- Tests (70): restore garbage/idempotence (`restore(restore(x)) == restore(x)`),
+  invariants 1–6, schema bounds, file round-trip/fixpoint, history semantics
+  incl. gesture coalescing + limit + snapshot identity, action-level invariant
+  enforcement (one history entry per intent), and the mutation-through-actions
+  convention test (`setStore` only in store.ts/actions.ts; shared never imports
+  renderer).
+
+Changed / deviations from PLAN.md (§19.6):
+
+- Dependency versions moved to current stable: `immer ^11.1.18` (plan said
+  ^10), `nanoid ^6.0.1` (plan said ^5; API `nanoid(12)` verified unchanged),
+  `zustand ^5.0.15`, `zod ^4.4.3` (as planned). THIRD_PARTY_LICENSES.md
+  regenerated (9 bundled runtime deps now).
+
 ### M0 — Scaffold & guardrails (PLAN.md §17 M0)
 
 Added:

@@ -1,0 +1,693 @@
+/**
+ * Actions catalog (PLAN.md §8.3). ALL doc mutations live here — every mutation
+ * is a named function over plain data, wrapped by `tracked` (one history
+ * entry) or `transient` (drag frames). One user intent = one history entry:
+ * multi-step actions (delete node + its edges; duplicate + re-id; group…)
+ * mutate once inside a single produce.
+ *
+ * Mermaid/layout actions (importMermaidAsNew, applyMermaidText, autoLayout,
+ * tidyUp, ensureMermaidIds) arrive with milestones M4–M8 per the plan.
+ */
+import { produce } from 'immer';
+import { newEdge, newId, newNode } from '../../shared/model/create';
+import {
+  absolutePosition,
+  boundsOfNodes,
+  depthOfNode,
+  descendantsOf,
+  edgesAmong,
+  getNode,
+  positionUnderParent,
+} from '../../shared/model/queries';
+import type { GuideLine } from '../../shared/snap/snap';
+import { LABEL_MAX } from '../../shared/model/schema';
+import type {
+  ArrowHead,
+  EdgeKind,
+  EdgeStyle,
+  NodeStyle,
+  ShapeKind,
+  ThalyxDoc,
+  ThalyxEdge,
+  ThalyxNode,
+  Tool,
+} from '../../shared/model/types';
+import { getStore, setStore } from './store';
+import type { SessionState } from './store';
+import * as H from './history';
+
+// ---------------------------------------------------------------------------
+// wrappers
+// ---------------------------------------------------------------------------
+
+type Producer = (doc: ThalyxDoc) => void;
+type SessionPatch = Partial<SessionState> | ((s: SessionState) => Partial<SessionState>);
+
+function applySessionPatch(s: SessionState, patch: SessionPatch | undefined): SessionState {
+  if (!patch) return s;
+  return { ...s, ...(typeof patch === 'function' ? patch(s) : patch) };
+}
+
+/** Tracked mutation: one history entry; marks the doc dirty. */
+function tracked(producer: Producer, sessionPatch?: SessionPatch): void {
+  const prev = getStore().doc;
+  const next = produce(prev, producer);
+  if (next === prev) return;
+  setStore((s) => ({
+    doc: next,
+    history: H.commit(s.history, prev),
+    session: applySessionPatch({ ...s.session, dirtySinceSave: true }, sessionPatch),
+  }));
+}
+
+/** Transient mutation (drag frames): no history entry. */
+function transient(producer: Producer): void {
+  setStore((s) => ({
+    doc: produce(s.doc, producer),
+    session: { ...s.session, dirtySinceSave: true },
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// history gestures + undo/redo
+// ---------------------------------------------------------------------------
+
+export function beginGesture(): void {
+  setStore((s) => ({ history: H.beginGesture(s.history, s.doc) }));
+}
+
+export function endGesture(): void {
+  setStore((s) => ({ history: H.endGesture(s.history, s.doc) }));
+}
+
+function pruneSelection(
+  session: SessionState,
+  doc: ThalyxDoc,
+): { nodeIds: string[]; edgeIds: string[] } {
+  return {
+    nodeIds: session.selection.nodeIds.filter((id) => doc.nodes.some((n) => n.id === id)),
+    edgeIds: session.selection.edgeIds.filter((id) => doc.edges.some((e) => e.id === id)),
+  };
+}
+
+export function undo(): void {
+  const { doc, history } = getStore();
+  const res = H.undo(history, doc);
+  if (!res) return;
+  setStore((s) => ({
+    doc: res.doc,
+    history: res.history,
+    session: { ...s.session, selection: pruneSelection(s.session, res.doc), editingLabel: null },
+  }));
+}
+
+export function redo(): void {
+  const { doc, history } = getStore();
+  const res = H.redo(history, doc);
+  if (!res) return;
+  setStore((s) => ({
+    doc: res.doc,
+    history: res.history,
+    session: { ...s.session, selection: pruneSelection(s.session, res.doc), editingLabel: null },
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// node actions
+// ---------------------------------------------------------------------------
+
+function clampLabel(label: string): string {
+  return label.slice(0, LABEL_MAX);
+}
+
+export function addNode(init: Parameters<typeof newNode>[0]): string {
+  const node = newNode(init);
+  tracked(
+    (d) => {
+      d.nodes.push(node);
+    },
+    { selection: { nodeIds: [node.id], edgeIds: [] } },
+  );
+  return node.id;
+}
+
+export function updateNodeLabel(id: string, label: string): void {
+  tracked((d) => {
+    const n = d.nodes.find((x) => x.id === id);
+    if (n) n.label = clampLabel(label);
+  });
+}
+
+export function updateNodesStyle(ids: string[], patch: Partial<NodeStyle>): void {
+  tracked((d) => {
+    for (const n of d.nodes) {
+      if (ids.includes(n.id)) Object.assign(n.style, patch);
+    }
+  });
+}
+
+export function setNodeShape(id: string, shape: ShapeKind): void {
+  tracked((d) => {
+    const n = d.nodes.find((x) => x.id === id);
+    if (n && n.kind === 'shape') n.shape = shape;
+  });
+}
+
+export function setNodesLocked(ids: string[], locked: boolean): void {
+  tracked((d) => {
+    for (const n of d.nodes) {
+      if (ids.includes(n.id)) n.locked = locked;
+    }
+  });
+}
+
+/** Drag frames: apply positions without history entries. */
+export function moveNodesTransient(positions: Array<{ id: string; x: number; y: number }>): void {
+  transient((d) => {
+    const map = new Map(positions.map((p) => [p.id, p]));
+    for (const n of d.nodes) {
+      const p = map.get(n.id);
+      if (p && !n.locked) {
+        n.x = p.x;
+        n.y = p.y;
+      }
+    }
+  });
+}
+
+/** Resize frames (NodeResizer). Also transient; wrap in a gesture. */
+export function resizeNodeTransient(
+  id: string,
+  box: { x?: number; y?: number; width: number; height: number },
+): void {
+  transient((d) => {
+    const n = d.nodes.find((x) => x.id === id);
+    if (!n || n.locked) return;
+    if (box.x !== undefined) n.x = box.x;
+    if (box.y !== undefined) n.y = box.y;
+    n.width = Math.max(8, box.width);
+    n.height = Math.max(8, box.height);
+  });
+}
+
+/** Tracked position set — used by layout actions (M4) and tests. */
+export function setNodesPosition(
+  ids: string[],
+  pos: (node: ThalyxNode) => { x: number; y: number },
+): void {
+  tracked((d) => {
+    for (const n of d.nodes) {
+      if (ids.includes(n.id) && !n.locked) {
+        const p = pos(n);
+        n.x = p.x;
+        n.y = p.y;
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// selection / delete / duplicate
+// ---------------------------------------------------------------------------
+
+function selectedNodes(d: ThalyxDoc, sel: SessionState): ThalyxNode[] {
+  return d.nodes.filter((n) => sel.selection.nodeIds.includes(n.id));
+}
+
+/**
+ * Delete the current selection. Deleting a node deletes its edges AND its
+ * descendants (containers take their children with them) — all in ONE history
+ * entry (invariant §7.2.1).
+ */
+export function deleteSelection(): void {
+  tracked(
+    (d) => {
+      const sel = getStore().session;
+      const nodeIds = new Set(sel.selection.nodeIds);
+      // expand containers to include descendants
+      for (const id of [...nodeIds]) {
+        const n = getNode(d, id);
+        if (n && n.kind === 'container') {
+          for (const desc of descendantsOf(d, id)) nodeIds.add(desc.id);
+        }
+      }
+      const edgeIds = new Set(sel.selection.edgeIds);
+      for (const e of d.edges) {
+        if (nodeIds.has(e.source) || nodeIds.has(e.target)) edgeIds.add(e.id);
+      }
+      d.nodes = d.nodes.filter((n) => !nodeIds.has(n.id));
+      d.edges = d.edges.filter((e) => !edgeIds.has(e.id));
+    },
+    { selection: { nodeIds: [], edgeIds: [] }, editingLabel: null },
+  );
+}
+
+export interface ReIdResult {
+  nodes: ThalyxNode[];
+  edges: ThalyxEdge[];
+}
+
+/** Re-id a set of nodes + intra-set edges with fresh ids (paste/duplicate core). */
+function reIdSubgraph(
+  nodes: ThalyxNode[],
+  edges: ThalyxEdge[],
+  dx: number,
+  dy: number,
+): ReIdResult {
+  const idMap = new Map<string, string>();
+  const remapId = (id: string): string => idMap.get(id) ?? id;
+  const newNodes = nodes.map((n) => {
+    const id = newId();
+    idMap.set(n.id, id);
+    return {
+      ...n,
+      id,
+      x: n.x + dx,
+      y: n.y + dy,
+      parentId: n.parentId !== undefined ? remapId(n.parentId) : undefined,
+      meta: n.meta ? JSON.parse(JSON.stringify(n.meta)) : undefined,
+    };
+  });
+  const newEdges = edges.map((e) => ({
+    ...e,
+    id: newId(),
+    source: remapId(e.source),
+    target: remapId(e.target),
+    waypoints: e.waypoints?.map((p) => ({ ...p })),
+    meta: e.meta ? JSON.parse(JSON.stringify(e.meta)) : undefined,
+  }));
+  return { nodes: newNodes, edges: newEdges };
+}
+
+/**
+ * Duplicate the current selection: fresh ids, +16/+16 px offset, intra-selection
+ * edges preserved (others not), duplicates become the new selection. One entry.
+ */
+export function duplicateSelection(): void {
+  const state = getStore();
+  const sel = state.session;
+  const selected = selectedNodes(state.doc, sel);
+  if (selected.length === 0) return;
+  // containers duplicate with their descendants iff descendants are selected too;
+  // a partially-selected container still duplicates whole (children re-id)
+  const withDescendants: ThalyxNode[] = [];
+  const seen = new Set<string>();
+  for (const n of selected) {
+    for (const m of [n, ...descendantsOf(state.doc, n.id)]) {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        withDescendants.push(m);
+      }
+    }
+  }
+  const intra = edgesAmong(state.doc, new Set(withDescendants.map((n) => n.id)));
+  const dup = reIdSubgraph(withDescendants, intra, 16, 16);
+  tracked(
+    (d) => {
+      d.nodes.push(...dup.nodes);
+      d.edges.push(...dup.edges);
+    },
+    { selection: { nodeIds: dup.nodes.map((n) => n.id), edgeIds: [] } },
+  );
+}
+
+/** Paste explicit clipboard content (same rules as duplicate). */
+export function pasteInternal(nodes: ThalyxNode[], edges: ThalyxEdge[]): void {
+  if (nodes.length === 0) return;
+  const pasted = reIdSubgraph(nodes, edges, 16, 16);
+  tracked(
+    (d) => {
+      d.nodes.push(...pasted.nodes);
+      d.edges.push(...pasted.edges);
+    },
+    { selection: { nodeIds: pasted.nodes.map((n) => n.id), edgeIds: [] } },
+  );
+}
+
+export type AlignEdge = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
+
+/** Align selected nodes along `edge` (absolute math; parent-relative restored). */
+export function alignSelection(edge: AlignEdge): void {
+  tracked((d) => {
+    const sel = getStore().session;
+    const nodes = d.nodes.filter((n) => sel.selection.nodeIds.includes(n.id) && !n.locked);
+    if (nodes.length < 2) return;
+    const abs = nodes.map((n) => ({ n, p: absolutePosition(d, n) }));
+    const bounds = boundsOfNodes(d, nodes);
+    if (!bounds) return;
+    for (const { n } of abs) {
+      let target: number;
+      switch (edge) {
+        case 'left':
+          target = bounds.x;
+          break;
+        case 'hcenter':
+          target = bounds.x + bounds.width / 2 - n.width / 2;
+          break;
+        case 'right':
+          target = bounds.x + bounds.width - n.width;
+          break;
+        case 'top':
+          target = bounds.y;
+          break;
+        case 'vcenter':
+          target = bounds.y + bounds.height / 2 - n.height / 2;
+          break;
+        case 'bottom':
+          target = bounds.y + bounds.height - n.height;
+          break;
+      }
+      // convert absolute target back to the node's parent-relative frame
+      const parent = n.parentId ? getNode(d, n.parentId) : undefined;
+      const parentAbs = parent ? absolutePosition(d, parent) : { x: 0, y: 0 };
+      if (edge === 'left' || edge === 'hcenter' || edge === 'right') {
+        n.x = target - parentAbs.x;
+      } else {
+        n.y = target - parentAbs.y;
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// z-order
+// ---------------------------------------------------------------------------
+
+export type ZOrderOp = 'forward' | 'backward' | 'front' | 'back';
+
+/**
+ * Reorder the selected nodes in the z-order array. A selection block moves
+ * together with its descendants; containers always stay before their children
+ * (invariant §7.2.3). One history entry.
+ */
+export function reorderZ(op: ZOrderOp): void {
+  tracked((d) => {
+    const sel = getStore().session;
+    const selected = d.nodes.filter((n) => sel.selection.nodeIds.includes(n.id));
+    if (selected.length === 0) return;
+    const blockIds = new Set<string>();
+    for (const n of selected) {
+      blockIds.add(n.id);
+      for (const desc of descendantsOf(d, n.id)) blockIds.add(desc.id);
+    }
+    const block = d.nodes.filter((n) => blockIds.has(n.id));
+    const rest = d.nodes.filter((n) => !blockIds.has(n.id));
+    if (op === 'front') {
+      d.nodes = [...rest, ...block];
+      return;
+    }
+    if (op === 'back') {
+      d.nodes = [...block, ...rest];
+      return;
+    }
+    // one-step: find the boundary element to swap past
+    const lastBlockIdx = d.nodes.reduce((acc, n, i) => (blockIds.has(n.id) ? i : acc), -1);
+    const firstBlockIdx = d.nodes.findIndex((n) => blockIds.has(n.id));
+    if (op === 'forward' && lastBlockIdx >= 0 && lastBlockIdx < d.nodes.length - 1) {
+      const after = d.nodes[lastBlockIdx + 1] as ThalyxNode;
+      // moving past a descendant of the block would violate parent-before-child
+      const insertAt = rest.indexOf(after) + 1;
+      d.nodes = [...rest.slice(0, insertAt), ...block, ...rest.slice(insertAt)];
+    } else if (op === 'backward' && firstBlockIdx > 0) {
+      const before = d.nodes[firstBlockIdx - 1] as ThalyxNode;
+      const insertAt = rest.indexOf(before);
+      d.nodes = [...rest.slice(0, insertAt), ...block, ...rest.slice(insertAt)];
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// containers
+// ---------------------------------------------------------------------------
+
+const CONTAINER_PADDING = 24;
+
+/**
+ * Wrap the current node selection in a new container (D5). Children keep their
+ * ABSOLUTE positions (invariant §7.2.7): stored coords become parent-relative.
+ * The container's parent is the shared parent of the members (top level when
+ * they differ). One history entry.
+ */
+export function groupIntoContainer(label = ''): void {
+  const state = getStore();
+  const members = selectedNodes(state.doc, state.session);
+  if (members.length === 0) return;
+  const doc = state.doc;
+  const bounds = boundsOfNodes(doc, members);
+  if (!bounds) return;
+  const parents = new Set(members.map((m) => m.parentId ?? null));
+  const containerParent = parents.size === 1 ? [...parents][0] : null;
+
+  const container = newNode({
+    kind: 'container',
+    label,
+    x: 0,
+    y: 0,
+    width: Math.max(8, bounds.width + CONTAINER_PADDING * 2),
+    height: Math.max(8, bounds.height + CONTAINER_PADDING * 2),
+    parentId: containerParent ?? undefined,
+    style: { fill: 'surface', stroke: 'ink' },
+  });
+  // position the container so padded bounds match (absolute frame first)
+  const containerAbs = {
+    x: bounds.x - CONTAINER_PADDING,
+    y: bounds.y - CONTAINER_PADDING,
+  };
+  if (containerParent) {
+    const p = getNode(doc, containerParent);
+    if (p) {
+      const pAbs = absolutePosition(doc, p);
+      container.x = containerAbs.x - pAbs.x;
+      container.y = containerAbs.y - pAbs.y;
+    }
+  } else {
+    container.x = containerAbs.x;
+    container.y = containerAbs.y;
+  }
+
+  tracked(
+    (d) => {
+      const firstIdx = d.nodes.findIndex((n) => members.some((m) => m.id === n.id));
+      const insertIdx = firstIdx === -1 ? d.nodes.length : firstIdx;
+      d.nodes.splice(insertIdx, 0, container);
+      for (const m of members) {
+        const node = d.nodes.find((n) => n.id === m.id);
+        if (!node) continue;
+        const rel = positionUnderParent(d, node, container.id);
+        node.parentId = container.id;
+        node.x = rel.x;
+        node.y = rel.y;
+      }
+    },
+    { selection: { nodeIds: [container.id], edgeIds: [] } },
+  );
+}
+
+/**
+ * Dissolve the selected container(s): children are re-parented to the
+ * container's parent (or top level) with coordinates converted so ABSOLUTE
+ * positions are unchanged (invariant §7.2.7). The container node and its own
+ * edges are removed; the freed children become the selection. One history
+ * entry. Nested selected containers dissolve deepest-first.
+ */
+export function dissolveContainer(): void {
+  const state = getStore();
+  const containers = state.doc.nodes.filter(
+    (n) => n.kind === 'container' && state.session.selection.nodeIds.includes(n.id),
+  );
+  if (containers.length === 0) return;
+
+  // deepest-first: dissolving an inner container first re-parents its children
+  // to the outer (dissolved later), then outward — absolute positions preserved.
+  const ordered = [...containers].sort(
+    (a, b) => depthOfNode(state.doc, b.id) - depthOfNode(state.doc, a.id),
+  );
+  const containerIds = new Set(ordered.map((c) => c.id));
+  const freedChildIds: string[] = [];
+
+  tracked(
+    (d) => {
+      for (const c of ordered) {
+        for (const child of d.nodes.filter((n) => n.parentId === c.id)) {
+          const rel = positionUnderParent(d, child, c.parentId);
+          child.parentId = c.parentId;
+          child.x = rel.x;
+          child.y = rel.y;
+          freedChildIds.push(child.id);
+        }
+      }
+      d.nodes = d.nodes.filter((n) => !containerIds.has(n.id));
+      d.edges = d.edges.filter((e) => !containerIds.has(e.source) && !containerIds.has(e.target));
+    },
+    // function form: freedChildIds is filled during the produce pass above
+    () => ({ selection: { nodeIds: [...new Set(freedChildIds)], edgeIds: [] } }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// edges
+// ---------------------------------------------------------------------------
+
+export interface AddEdgeInit {
+  source: string;
+  target: string;
+  kind?: EdgeKind;
+  label?: string;
+  arrowStart?: ArrowHead;
+  arrowEnd?: ArrowHead;
+  style?: Partial<EdgeStyle>;
+}
+
+/** Add an edge; endpoints must exist and not be islands (§7.2.1/5). */
+export function addEdge(init: AddEdgeInit): string {
+  const doc = getStore().doc;
+  const source = getNode(doc, init.source);
+  const target = getNode(doc, init.target);
+  if (!source || !target)
+    throw new Error(`addEdge: unknown endpoint (${init.source} → ${init.target})`);
+  if (source.kind === 'mermaid' || target.kind === 'mermaid') {
+    throw new Error('addEdge: mermaid islands cannot participate in edges');
+  }
+  const edge = newEdge(init);
+  tracked(
+    (d) => {
+      d.edges.push(edge);
+    },
+    { selection: { nodeIds: [], edgeIds: [edge.id] } },
+  );
+  return edge.id;
+}
+
+export function updateEdge(
+  id: string,
+  patch: Partial<Omit<ThalyxEdge, 'id' | 'source' | 'target'>>,
+): void {
+  tracked((d) => {
+    const e = d.edges.find((x) => x.id === id);
+    if (!e) return;
+    if (patch.label !== undefined) patch.label = patch.label.slice(0, LABEL_MAX);
+    Object.assign(e, patch);
+    if (e.labelT !== undefined) e.labelT = Math.min(1, Math.max(0, e.labelT));
+  });
+}
+
+/** Waypoint drag: transient frames inside a gesture; tracked on drop. */
+export function setEdgeWaypoints(
+  id: string,
+  waypoints: { x: number; y: number }[] | undefined,
+  opts: { transient?: boolean } = {},
+): void {
+  const producer: Producer = (d) => {
+    const e = d.edges.find((x) => x.id === id);
+    if (!e) return;
+    if (waypoints === undefined || waypoints.length === 0) {
+      delete e.waypoints;
+    } else {
+      e.waypoints = waypoints.slice(0, 64);
+    }
+  };
+  if (opts.transient) transient(producer);
+  else tracked(producer);
+}
+
+export function clearEdgeWaypoints(id: string): void {
+  setEdgeWaypoints(id, undefined);
+}
+
+/**
+ * D12: moving or resizing either endpoint node clears manual waypoints.
+ * Called by moveNodesTransient/resizeNodeTransient via their callers; exposed
+ * for the canvas layer (M2+) and tests.
+ */
+export function clearWaypointsOfNodeEndpoints(nodeIds: string[]): void {
+  if (nodeIds.length === 0) return;
+  transient((d) => {
+    const ids = new Set(nodeIds);
+    for (const e of d.edges) {
+      if (e.waypoints && (ids.has(e.source) || ids.has(e.target))) delete e.waypoints;
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// canvas / doc-level
+// ---------------------------------------------------------------------------
+
+export function setCanvas(patch: Partial<ThalyxDoc['canvas']>): void {
+  tracked((d) => {
+    Object.assign(d.canvas, patch);
+  });
+}
+
+export function toggleGrid(): void {
+  tracked((d) => {
+    d.canvas.grid = !d.canvas.grid;
+  });
+}
+
+export function setDirection(dir: 'TB' | 'BT' | 'LR' | 'RL'): void {
+  tracked((d) => {
+    d.meta.mermaid ??= { direction: 'TB' };
+    d.meta.mermaid.direction = dir;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// session setters (not history-tracked)
+// ---------------------------------------------------------------------------
+
+export function setSelection(nodeIds: string[], edgeIds: string[] = []): void {
+  setStore((s) => ({ session: { ...s.session, selection: { nodeIds, edgeIds } } }));
+}
+
+export function addToSelection(nodeIds: string[], edgeIds: string[] = []): void {
+  setStore((s) => ({
+    session: {
+      ...s.session,
+      selection: {
+        nodeIds: [...new Set([...s.session.selection.nodeIds, ...nodeIds])],
+        edgeIds: [...new Set([...s.session.selection.edgeIds, ...edgeIds])],
+      },
+    },
+  }));
+}
+
+export function clearSelection(): void {
+  setStore((s) => ({ session: { ...s.session, selection: { nodeIds: [], edgeIds: [] } } }));
+}
+
+export function setTool(tool: Tool): void {
+  setStore((s) => ({ session: { ...s.session, tool } }));
+}
+
+export function setPendingShape(shape: ShapeKind): void {
+  setStore((s) => ({ session: { ...s.session, pendingShape: shape } }));
+}
+
+export function setToolLocked(locked: boolean): void {
+  setStore((s) => ({ session: { ...s.session, toolLocked: locked } }));
+}
+
+export function setEditingLabel(editing: SessionState['editingLabel']): void {
+  setStore((s) => ({ session: { ...s.session, editingLabel: editing } }));
+}
+
+export function setViewport(viewport: SessionState['viewport']): void {
+  setStore((s) => ({ session: { ...s.session, viewport } }));
+}
+
+export function setTheme(theme: SessionState['theme']): void {
+  setStore((s) => ({ session: { ...s.session, theme } }));
+}
+
+export function setGuides(guides: GuideLine[]): void {
+  setStore((s) => ({ session: { ...s.session, guides } }));
+}
+
+export function setFilePath(filePath: string | null): void {
+  setStore((s) => ({ session: { ...s.session, filePath } }));
+}
+
+export function markSaved(): void {
+  setStore((s) => ({ session: { ...s.session, dirtySinceSave: false } }));
+}

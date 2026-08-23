@@ -254,7 +254,7 @@ describe('z-order', () => {
     expect(idx(g)).toBeLessThan(idx(kid)); // invariant 3 preserved
   });
 
-  it('reorderZ commits one entry per array change', () => {
+  it('reorderZ commits one entry per invocation (including a front-while-already-front no-op reorder)', () => {
     const a = A.addNode({ label: 'A' });
     const b = A.addNode({ label: 'B' });
     const before = getStore().history.past.length;

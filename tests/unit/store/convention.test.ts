@@ -31,7 +31,7 @@ describe('store mutation convention (§8.3)', () => {
     for (const file of walk(rendererRoot)) {
       if (ALLOWED.has(file)) continue;
       const src = readFileSync(file, 'utf8');
-      if (/setStore\s*\(|useStore\.setState\s*\(|\.setState\s*\(/.test(src)) {
+      if (/\bsetStore\s*\(|useStore\.setState\s*\(|\.setState\s*\(/.test(src)) {
         offenders.push(file);
       }
     }
@@ -41,12 +41,10 @@ describe('store mutation convention (§8.3)', () => {
   it('shared code never imports the renderer (renderer-free, §6)', () => {
     const offenders: string[] = [];
     const importsRenderer =
-      /(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"](?:\.\.\/)*\.?\/?renderer\//;
-    const importsRendererAbsolute =
-      /(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"](?:src\/)?renderer\//;
+      /\b(?:from|import|require)\s*\(?\s*['"](?:\.\.\/)*\.?\/?(?:src\/)?renderer\//;
     for (const file of walk(sharedRoot)) {
       const src = readFileSync(file, 'utf8');
-      if (importsRenderer.test(src) || importsRendererAbsolute.test(src)) offenders.push(file);
+      if (importsRenderer.test(src)) offenders.push(file);
     }
     expect(offenders).toEqual([]);
   });

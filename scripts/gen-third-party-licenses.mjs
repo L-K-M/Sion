@@ -64,7 +64,7 @@ lines.push('');
 for (const [license, names] of [...devByLicense.entries()].sort((a, b) =>
   a[0].localeCompare(b[0]),
 )) {
-  const unique = [...new Set(names)];
+  const unique = [...new Set(names)].sort((a, b) => a.localeCompare(b));
   lines.push(`- **${license}** (${unique.length}): ${unique.join(', ')}`);
 }
 lines.push('');

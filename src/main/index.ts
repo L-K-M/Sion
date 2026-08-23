@@ -41,10 +41,14 @@ function createWindow(): void {
   mainWindow = win;
 
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
-    void win.loadURL(process.env['ELECTRON_RENDERER_URL']);
+    win.loadURL(process.env['ELECTRON_RENDERER_URL']).catch((err) => {
+      console.error('[main] renderer dev-server load failed:', err);
+    });
   } else {
     // electron-vite emits the renderer bundle to out/renderer/index.html.
-    void win.loadFile(join(__dirname, '../renderer/index.html'));
+    win.loadFile(join(__dirname, '../renderer/index.html')).catch((err) => {
+      console.error('[main] renderer load failed:', err);
+    });
   }
 }
 

@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
     "jsx": "react-jsx",
     "noEmit": true
   },
@@ -10,6 +11,7 @@
     "src/renderer/**/*.d.ts",
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts",
-    "tests/unit/**/*.ts"
+    "tests/unit/**/*.ts",
+    "tests/unit/**/*.tsx"
   ]
 }

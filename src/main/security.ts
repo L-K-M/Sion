@@ -27,13 +27,24 @@ export function applyWebContentsSecurity(contents: WebContents): void {
     return { action: 'deny' };
   });
 
-  // Crash of the renderer: log and reload (document recovery handles state).
+  // Crash of the renderer: log and reload (document recovery handles state),
+  // but stop after repeated consecutive crashes instead of looping forever.
   contents.on('render-process-gone', (_event, details) => {
     console.error(`[security] render-process-gone: ${details.reason} (${details.exitCode})`);
+    const crashes = (crashCounts.get(contents) ?? 0) + 1;
+    crashCounts.set(contents, crashes);
+    if (crashes > MAX_CONSECUTIVE_CRASHES) {
+      console.error('[security] renderer crash loop — giving up on auto-reload');
+      return;
+    }
     const win = BrowserWindow.fromWebContents(contents);
     if (win && !win.isDestroyed()) {
       win.reload();
     }
+  });
+
+  contents.on('did-finish-load', () => {
+    crashCounts.delete(contents);
   });
 }
 
@@ -49,6 +60,10 @@ export function isAllowedNavigation(url: string): boolean {
     return false;
   }
 }
+
+/** Stop reloading a renderer that keeps crashing (crash-loop guard). */
+const MAX_CONSECUTIVE_CRASHES = 5;
+const crashCounts = new WeakMap<WebContents, number>();
 
 /**
  * Open external links safely: explicit user action only, and main validates

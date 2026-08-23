@@ -33,6 +33,11 @@ export function isAllowedExpression(expr) {
   const stripped = String(expr).replace(/[()]/g, ' ').trim();
   if (!stripped || /^(UNKNOWN|UNLICENSED|SEE LICENSE IN .*)$/i.test(stripped)) return false;
 
+  // Mixed AND/OR after paren flattening (e.g. "MIT OR CC0 AND X") — precedence
+  // is ambiguous, so fail closed and require a human/election instead of
+  // guessing permissively.
+  if (stripped.includes(' OR ') && stripped.includes(' AND ')) return false;
+
   for (const orPart of stripped.split(' OR ')) {
     const andParts = orPart.split(' AND ').map((s) => s.trim());
     if (andParts.every((p) => ALLOWED.has(p.replace(/\*$/, '').trim()))) return true;

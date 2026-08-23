@@ -217,8 +217,8 @@ test('theme toggle remaps the palette live', async ({ page }) => {
     .first()
     .evaluate((el) => el.getAttribute('fill'));
 
-  await page.getByRole('button', { name: 'Theme: system' }).click(); // → light
-  await page.getByRole('button', { name: 'Theme: light' }).click(); // → dark
+  await page.getByTitle('Theme: system').click(); // → light
+  await page.getByTitle('Theme: light').click(); // → dark
   await expect(root).toHaveAttribute('data-theme', 'dark');
   const darkFill = await page
     .locator('.react-flow__node path')
@@ -236,6 +236,6 @@ test('theme toggle remaps the palette live', async ({ page }) => {
 
 test('grid toggle shows the dotted background', async ({ page }) => {
   await expect(page.locator('.react-flow__background')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Toggle grid' }).click();
+  await page.getByTitle('Toggle grid').click();
   await expect(page.locator('.react-flow__background')).toHaveCount(1);
 });

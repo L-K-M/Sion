@@ -20,6 +20,9 @@ export function toReactFlowNodes(doc: ThalyxDoc, session: SessionState): Node<Th
     id: n.id,
     type: n.kind === 'mermaid' ? 'mermaid' : n.kind,
     position: { x: n.x, y: n.y },
+    // Explicit wrapper size — custom node content is absolutely positioned and
+    // cannot size the wrapper itself (RF hides unmeasured nodes).
+    style: { width: n.width, height: n.height },
     ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
     ...(n.parentId !== undefined ? { extent: 'parent' as const } : {}),
     data: { node: n },

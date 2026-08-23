@@ -36,7 +36,8 @@ test('launches and shows the Thalyx window', async () => {
   if (!p) throw new Error('app did not launch');
   const title = await p.title();
   expect(title).toBe('Thalyx');
-  await expect(p.getByRole('heading', { level: 1, name: 'Thalyx' })).toBeVisible();
+  await expect(p.locator('.thalyx-toolbar')).toBeVisible();
+  await expect(p.locator('.react-flow')).toBeVisible();
 });
 
 test('renderer is sandboxed: no node globals leaked', async () => {

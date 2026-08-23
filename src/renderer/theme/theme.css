@@ -1,5 +1,6 @@
 /* Thalyx theme variables (PLAN.md §10.4) — values from src/renderer/theme/palette.ts */
 
+:root,
 .thalyx-root {
   --surface: #ffffff;
   --ink: #1f2328;
@@ -47,6 +48,7 @@
   --transparent-text: #1f2328;
 }
 
+:root[data-theme='dark'],
 .thalyx-root[data-theme='dark'] {
   --surface: #1e2126;
   --ink: #e9ebee;

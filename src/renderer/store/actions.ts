@@ -62,10 +62,11 @@ function tracked(producer: Producer, sessionPatch?: SessionPatch): void {
 
 /** Transient mutation (drag frames): no history entry. */
 function transient(producer: Producer): void {
-  setStore((s) => ({
-    doc: produce(s.doc, producer),
-    session: { ...s.session, dirtySinceSave: true },
-  }));
+  setStore((s) => {
+    const next = produce(s.doc, producer);
+    if (next === s.doc) return s; // nothing changed — do not dirty the doc
+    return { doc: next, session: { ...s.session, dirtySinceSave: true } };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -254,20 +255,19 @@ function reIdSubgraph(
   dx: number,
   dy: number,
 ): ReIdResult {
+  // Pass 1: assign ALL fresh ids first, so parentId remapping in pass 2 sees
+  // the complete map regardless of input order (child may precede parent).
   const idMap = new Map<string, string>();
+  for (const n of nodes) idMap.set(n.id, newId());
   const remapId = (id: string): string => idMap.get(id) ?? id;
-  const newNodes = nodes.map((n) => {
-    const id = newId();
-    idMap.set(n.id, id);
-    return {
-      ...n,
-      id,
-      x: n.x + dx,
-      y: n.y + dy,
-      parentId: n.parentId !== undefined ? remapId(n.parentId) : undefined,
-      meta: n.meta ? JSON.parse(JSON.stringify(n.meta)) : undefined,
-    };
-  });
+  const newNodes = nodes.map((n) => ({
+    ...n,
+    id: idMap.get(n.id)!,
+    x: n.x + dx,
+    y: n.y + dy,
+    parentId: n.parentId !== undefined ? remapId(n.parentId) : undefined,
+    meta: n.meta ? JSON.parse(JSON.stringify(n.meta)) : undefined,
+  }));
   const newEdges = edges.map((e) => ({
     ...e,
     id: newId(),
@@ -390,26 +390,50 @@ export function reorderZ(op: ZOrderOp): void {
       blockIds.add(n.id);
       for (const desc of descendantsOf(d, n.id)) blockIds.add(desc.id);
     }
+    // Ancestors of block members that are NOT part of the block: every one of
+    // them must stay BEFORE the block (invariant §7.2.3) no matter how far the
+    // block travels.
+    const ancestors = new Set<string>();
+    for (const id of blockIds) {
+      let cursor = d.nodes.find((n) => n.id === id)?.parentId;
+      let steps = 0;
+      while (cursor !== undefined && !blockIds.has(cursor) && steps < 1000) {
+        ancestors.add(cursor);
+        cursor = d.nodes.find((n) => n.id === cursor)?.parentId;
+        steps += 1;
+      }
+    }
     const block = d.nodes.filter((n) => blockIds.has(n.id));
     const rest = d.nodes.filter((n) => !blockIds.has(n.id));
     if (op === 'front') {
+      // End of array: ancestors remain earlier — always safe.
       d.nodes = [...rest, ...block];
       return;
     }
     if (op === 'back') {
-      d.nodes = [...block, ...rest];
+      // Clamp below the outermost ancestor: insert right after the LAST
+      // ancestor in array order (start of array when there are none).
+      let afterIdx = -1;
+      for (const anc of ancestors) {
+        const i = rest.findIndex((n) => n.id === anc);
+        if (i > afterIdx) afterIdx = i;
+      }
+      const insertAt = afterIdx + 1;
+      d.nodes = [...rest.slice(0, insertAt), ...block, ...rest.slice(insertAt)];
       return;
     }
-    // one-step: find the boundary element to swap past
+    // one-step moves swap the block past the element adjacent in rest
     const lastBlockIdx = d.nodes.reduce((acc, n, i) => (blockIds.has(n.id) ? i : acc), -1);
     const firstBlockIdx = d.nodes.findIndex((n) => blockIds.has(n.id));
     if (op === 'forward' && lastBlockIdx >= 0 && lastBlockIdx < d.nodes.length - 1) {
       const after = d.nodes[lastBlockIdx + 1] as ThalyxNode;
-      // moving past a descendant of the block would violate parent-before-child
+      // ancestors always precede the block, so after can never be one;
+      // descendants are inside the block — safe to move past.
       const insertAt = rest.indexOf(after) + 1;
       d.nodes = [...rest.slice(0, insertAt), ...block, ...rest.slice(insertAt)];
     } else if (op === 'backward' && firstBlockIdx > 0) {
       const before = d.nodes[firstBlockIdx - 1] as ThalyxNode;
+      if (ancestors.has(before.id)) return; // moving past an ancestor is forbidden
       const insertAt = rest.indexOf(before);
       d.nodes = [...rest.slice(0, insertAt), ...block, ...rest.slice(insertAt)];
     }

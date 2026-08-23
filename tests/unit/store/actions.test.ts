@@ -415,3 +415,61 @@ describe('descendant expansion helper sanity', () => {
     ).toEqual(['I', 'leaf']);
   });
 });
+
+describe('review round 3 regressions', () => {
+  it('reIdSubgraph handles child-before-parent input order (pasteInternal)', () => {
+    const parent = newNode({
+      id: 'p-old',
+      kind: 'container',
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 200,
+      label: 'P',
+    });
+    const child = newNode({ id: 'c-old', x: 10, y: 10, label: 'C', parentId: 'p-old' });
+    // child listed BEFORE parent
+    A.pasteInternal([child, parent], []);
+    const s = getStore();
+    const newParent = s.doc.nodes.find((n) => n.id !== 'p-old' && n.kind === 'container')!;
+    const newChild = s.doc.nodes.find((n) => n.id !== 'c-old' && n.label === 'C')!;
+    expect(newChild.parentId).toBe(newParent.id);
+  });
+
+  it('undo mid-gesture reverts to the pre-gesture snapshot', () => {
+    const a = A.addNode({ label: 'A', x: 0, y: 0 }); // one entry
+    A.markSaved();
+    A.beginGesture();
+    A.moveNodesTransient([{ id: a, x: 55, y: 66 }]);
+    expect(doc().nodes.find((n) => n.id === a)!.x).toBe(55);
+    A.undo(); // mid-gesture undo → pending snapshot
+    expect(doc().nodes.find((n) => n.id === a)!.x).toBe(0);
+    expect(getStore().history.pending).toBeNull();
+    A.redo(); // gesture state back
+    expect(doc().nodes.find((n) => n.id === a)!.x).toBe(55);
+  });
+
+  it('a no-op transient produce does not mark the doc dirty', () => {
+    const a = A.addNode({ label: 'A' });
+    A.markSaved();
+    expect(getStore().session.dirtySinceSave).toBe(false);
+    A.beginGesture();
+    A.moveNodesTransient([{ id: a, x: 0, y: 0 }]); // same position → no-op produce
+    A.endGesture();
+    expect(getStore().session.dirtySinceSave).toBe(false);
+  });
+
+  it('send-to-back inside a container stays below its ancestors', () => {
+    const g = A.addNode({ kind: 'container', label: 'G', x: 0, y: 0, width: 400, height: 300 });
+    const kid = A.addNode({ label: 'kid', parentId: g, x: 10, y: 10 });
+    const z = A.addNode({ label: 'Z' }); // top level, after
+    A.setSelection([kid]);
+    A.reorderZ('back');
+    const idx = (id: string) => doc().nodes.findIndex((n) => n.id === id);
+    expect(idx(g)).toBeLessThan(idx(kid)); // invariant 3 preserved
+    expect(idx(kid)).toBeLessThan(idx(z)); // kid sank but not past unrelated nodes' order with G
+    // moving backward past the parent is refused
+    A.reorderZ('backward');
+    expect(idx(g)).toBeLessThan(idx(kid));
+  });
+});

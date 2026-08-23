@@ -52,7 +52,16 @@ export function undo(
   h: History,
   currentDoc: ThalyxDoc,
 ): { history: History; doc: ThalyxDoc } | null {
-  if (h.past.length === 0) return null;
+  if (h.past.length === 0 && h.pending === null) return null;
+  // An in-flight gesture is the most recent undoable state: undoing
+  // mid-gesture reverts to the pre-gesture snapshot first (a gesture is one
+  // intent = one entry, §8.2).
+  if (h.pending !== null) {
+    return {
+      history: { past: h.past, future: [currentDoc, ...h.future], pending: null },
+      doc: h.pending,
+    };
+  }
   const past = [...h.past];
   const doc = past.pop() as ThalyxDoc;
   return { history: { past, future: [currentDoc, ...h.future], pending: null }, doc };

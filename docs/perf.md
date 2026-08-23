@@ -1,4 +1,4 @@
-# Performance gate (M2, PLAN.md §11.7)
+# Performance gate (M2/M3, PLAN.md §11.7)
 
 ## Method
 
@@ -10,19 +10,23 @@
     3 s (2000-node) while counting `requestAnimationFrame` ticks.
   - **Drag latency**: wall time of a 5-step node drag gesture (pointer-down →
     last move frame applied to the store).
+  - **M3 edge-reroute drag fps**: continuous node drag on a 400-node/600-edge
+    document — every frame re-routes the dragged node's edges (§11.3 derived
+    geometry).
 - The spec asserts only loose anti-regression floors; the **acceptance gate**
   (1000-node ≥ 50 fps pan, drag latency < 32 ms on a dev-class machine,
-  2000-node ≥ 25 fps) is measured on real hardware.
+  2000-node ≥ 25 fps, M3: reroute ≥ 60 fps while dragging) is measured on real
+  hardware.
 
 ## Numbers
 
 Measured from the built renderer (`npm run build` + `vite preview`).
 
-| Environment | 1000-node pan fps | 1000-node drag gesture | 2000-node pan fps |
-|---|---|---|---|
-| CI `ubuntu-latest` (headless Chromium, software GL) — [run](https://github.com/L-K-M/Thalyx/actions/runs/32667795720) | **60.3** | 772 ms (whole-gesture wall time, 5 pointer steps — see note) | **60.3** |
-| CI `macos-latest` (headless Chromium) — same run | **50.8** | 577 ms (same metric) | **54.7** |
-| Dev-class machine (manual, per §11.7) | pending | pending | pending |
+| Environment | 1000-node pan fps | 1000-node drag gesture | 2000-node pan fps | M3 edge-reroute drag fps |
+|---|---|---|---|---|
+| CI `ubuntu-latest` (headless Chromium, software GL) — [M2 run](https://github.com/L-K-M/Thalyx/actions/runs/32667795720) | **60.3** | 772 ms (whole-gesture wall time, 5 pointer steps — see note) | **60.3** | TBD (fill from M3 CI run) |
+| CI `macos-latest` (headless Chromium) — same run | **50.8** | 577 ms (same metric) | **54.7** | TBD |
+| Dev-class machine (manual, per §11.7) | pending | pending | pending | pending |
 
 > CI runners render with software GL — their numbers are a *floor /
 > anti-regression baseline*, not the acceptance gate. They already exceed the

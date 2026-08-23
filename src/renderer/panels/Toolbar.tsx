@@ -13,6 +13,8 @@ import { useEffectiveTheme } from '../theme/useEffectiveTheme';
 const TOOLBUTTONS: Array<{ tool: Tool; label: string; title: string; key?: string }> = [
   { tool: 'select', label: '⌖', title: 'Select (V)', key: 'V' },
   { tool: 'hand', label: '✋', title: 'Hand (H) — or hold Space', key: 'H' },
+  { tool: 'arrow', label: '→', title: 'Arrow connector (A)', key: 'A' },
+  { tool: 'line', label: '—', title: 'Line, no arrowheads (L)', key: 'L' },
 ];
 
 const SHAPES: Array<{ shape: ShapeKind; label: string; title: string }> = [

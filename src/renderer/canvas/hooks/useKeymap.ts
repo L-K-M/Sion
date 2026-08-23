@@ -81,6 +81,8 @@ export function useKeymap(): void {
           A.setTool('shape' as Tool);
         },
         KeyH: () => A.setTool('hand' as Tool),
+        KeyA: () => A.setTool('arrow' as Tool),
+        KeyL: () => A.setTool('line' as Tool),
         KeyT: () => A.setTool('text' as Tool),
       };
       const action = toolKeys[e.code];

@@ -8,6 +8,7 @@ import { shapePath } from '../../../shared/geometry/shapes';
 import type { ThalyxNode } from '../../../shared/model/types';
 import type { ThalyxNodeData } from '../rfSelectors';
 import { colorStyle } from '../../theme/colorStyle';
+import { ConnectionHandles } from './ConnectionHandles';
 
 export const ShapeNode = memo(function ShapeNode({ data, selected }: NodeProps) {
   const node = (data as ThalyxNodeData).node as ThalyxNode;
@@ -46,6 +47,7 @@ export const ShapeNode = memo(function ShapeNode({ data, selected }: NodeProps) 
           strokeLinejoin="round"
         />
       </svg>
+      <ConnectionHandles />
       <div className="thalyx-node-label">
         {lines.map((line, i) => (
           <div key={i}>{line}</div>

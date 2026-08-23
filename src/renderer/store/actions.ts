@@ -592,6 +592,28 @@ export function addEdge(init: AddEdgeInit): string {
   return edge.id;
 }
 
+/**
+ * Connect two nodes (the arrow/line tools and handle drags land here).
+ * Inherits the last-used edge style (§10.1 delta 1) and records it back.
+ */
+export function connectEdge(source: string, target: string, tool: Tool): string {
+  const session = getStore().session;
+  const arrowEnd = tool === 'line' ? 'none' : session.lastEdgeStyle.arrowEnd;
+  const line = session.lastEdgeStyle.line;
+  const id = addEdge({ source, target, arrowStart: 'none', arrowEnd, style: { line } });
+  setStore((s) => ({
+    session: { ...s.session, lastEdgeStyle: { arrowEnd, line } },
+  }));
+  return id;
+}
+
+export function setLastEdgeStyle(style: {
+  arrowEnd: 'none' | 'arrow';
+  line: 'solid' | 'dashed' | 'thick';
+}): void {
+  setStore((s) => ({ session: { ...s.session, lastEdgeStyle: style } }));
+}
+
 export function updateEdge(
   id: string,
   patch: Partial<Omit<ThalyxEdge, 'id' | 'source' | 'target'>>,

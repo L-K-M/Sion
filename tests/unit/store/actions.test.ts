@@ -492,3 +492,69 @@ describe('review round 3 regressions', () => {
     expect(idx(g)).toBeLessThan(idx(kid));
   });
 });
+
+describe('connectEdge (M3)', () => {
+  it('arrow tool connects with the last-used style; line tool omits arrowheads', () => {
+    const a = A.addNode({ label: 'A' });
+    const b = A.addNode({ label: 'B' });
+    const e1 = A.connectEdge(a, b, 'arrow');
+    expect(doc().edges).toHaveLength(1);
+    expect(doc().edges[0]!.arrowEnd).toBe('arrow');
+    expect(doc().edges[0]!.kind).toBe('elbow');
+    expect(getStore().session.lastEdgeStyle).toEqual({ arrowEnd: 'arrow', line: 'solid' });
+
+    const e2 = A.connectEdge(b, a, 'line');
+    expect(doc().edges[1]!.arrowEnd).toBe('none');
+    expect(doc().edges[1]!.arrowStart).toBe('none');
+    expect(getStore().session.lastEdgeStyle.arrowEnd).toBe('none');
+    void e1;
+    void e2;
+  });
+
+  it('connect is ONE history entry; undo removes the edge', () => {
+    const a = A.addNode({ label: 'A' });
+    const b = A.addNode({ label: 'B' });
+    const before = getStore().history.past.length;
+    A.connectEdge(a, b, 'arrow');
+    expect(getStore().history.past.length).toBe(before + 1);
+    A.undo();
+    expect(doc().edges).toHaveLength(0);
+  });
+
+  it('style inheritance: dashed last-used style carries into the next edge', () => {
+    const a = A.addNode({ label: 'A' });
+    const b = A.addNode({ label: 'B' });
+    A.setLastEdgeStyle({ arrowEnd: 'arrow', line: 'dashed' });
+    A.connectEdge(a, b, 'arrow');
+    expect(doc().edges[0]!.style.line).toBe('dashed');
+  });
+
+  it('label update via updateEdge is one undo entry; labelT clamped', () => {
+    const a = A.addNode({ label: 'A' });
+    const b = A.addNode({ label: 'B' });
+    const e = A.connectEdge(a, b, 'arrow');
+    const before = getStore().history.past.length;
+    A.updateEdge(e, { label: 'yes', labelT: 2 });
+    expect(getStore().history.past.length).toBe(before + 1);
+    expect(doc().edges[0]!.label).toBe('yes');
+    expect(doc().edges[0]!.labelT).toBe(1);
+    A.undo();
+    expect(doc().edges[0]!.label).toBeUndefined();
+  });
+
+  it('waypoint gesture coalesces and D12 clears on endpoint move', () => {
+    const a = A.addNode({ label: 'A' });
+    const b = A.addNode({ label: 'B' });
+    const e = A.connectEdge(a, b, 'arrow');
+    const before = getStore().history.past.length;
+    A.beginGesture();
+    A.setEdgeWaypoints(e, [{ x: 10, y: 10 }], { transient: true });
+    A.setEdgeWaypoints(e, [{ x: 20, y: 20 }], { transient: true });
+    A.endGesture();
+    expect(getStore().history.past.length).toBe(before + 1); // ONE entry
+    expect(doc().edges[0]!.waypoints).toEqual([{ x: 20, y: 20 }]);
+    // endpoint move clears (D12)
+    A.clearWaypointsOfNodeEndpoints([a]);
+    expect(doc().edges[0]!.waypoints).toBeUndefined();
+  });
+});

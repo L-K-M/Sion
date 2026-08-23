@@ -25,6 +25,7 @@ import { ShapeNode } from './nodes/ShapeNode';
 import { TextNode } from './nodes/TextNode';
 import { ContainerNode } from './nodes/ContainerNode';
 import { EmptyCanvasHint } from './overlays/EmptyCanvasHint';
+import { ThalyxEdgeComponent } from './edges/ThalyxEdge';
 
 const nodeTypes: NodeTypes = {
   shape: ShapeNode,
@@ -32,6 +33,8 @@ const nodeTypes: NodeTypes = {
   container: ContainerNode,
   // 'mermaid' island node type lands with M5.
 };
+
+const edgeTypes = { thalyx: ThalyxEdgeComponent };
 
 export function Canvas() {
   const doc = useStore((s) => s.doc);
@@ -146,6 +149,12 @@ export function Canvas() {
     [session.tool, session.pendingShape, session.toolLocked, rfInstance],
   );
 
+  const onConnect = useCallback((connection: { source: string | null; target: string | null }) => {
+    if (!connection.source || !connection.target || connection.source === connection.target) return;
+    const tool = useStore.getState().session.tool;
+    A.connectEdge(connection.source, connection.target, tool);
+  }, []);
+
   return (
     <div
       className="thalyx-canvas-root"
@@ -170,8 +179,13 @@ export function Canvas() {
         onlyRenderVisibleElements
         proOptions={{ hideAttribution: false }}
         nodesDraggable={session.tool === 'select'}
-        nodesConnectable={false}
+        nodesConnectable={
+          session.tool === 'select' || session.tool === 'arrow' || session.tool === 'line'
+        }
         edgesFocusable
+        edgeTypes={edgeTypes}
+        onConnect={onConnect}
+        connectionRadius={32}
         fitView
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
       >

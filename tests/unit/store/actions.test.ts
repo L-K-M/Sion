@@ -218,7 +218,7 @@ describe('containers', () => {
     expect(s.doc.edges.length).toBe(0); // container edge dropped
     expect(s.history.past.length).toBe(before + 1);
     // freed children selected
-    expect(s.session.selection.nodeIds.sort()).toEqual([a, b].sort());
+    expect([...s.session.selection.nodeIds].sort()).toEqual([a, b].sort());
     A.undo();
     expect(getStore().doc.nodes.length).toBe(4);
     expect(getStore().doc.edges.length).toBe(1);
@@ -254,17 +254,16 @@ describe('z-order', () => {
     expect(idx(g)).toBeLessThan(idx(kid)); // invariant 3 preserved
   });
 
-  it('each reorderZ is one history entry', () => {
+  it('reorderZ commits one entry per array change', () => {
     const a = A.addNode({ label: 'A' });
     const b = A.addNode({ label: 'B' });
     const before = getStore().history.past.length;
     A.setSelection([a]);
-    A.reorderZ('front');
-    A.reorderZ('front'); // no-op second time
-    expect(getStore().history.past.length).toBeGreaterThanOrEqual(before);
-    void b;
+    A.reorderZ('front'); // [b, a] — changed
+    A.reorderZ('front'); // already front — rebuilt array, still one commit
     const entries = getStore().history.past.length - before;
-    expect(entries).toBeLessThanOrEqual(2);
+    expect(entries).toBe(2);
+    expect(getStore().doc.nodes.map((n) => n.id)).toEqual([b, a]);
   });
 });
 
@@ -336,6 +335,17 @@ describe('gestures & transient updates', () => {
     const n = doc().nodes.find((x) => x.id === a)!;
     expect(n.width).toBe(8);
     expect(n.height).toBe(8);
+  });
+
+  it('locked nodes refuse transient resize', () => {
+    const a = A.addNode({ label: 'A' });
+    A.setNodesLocked([a], true);
+    A.beginGesture();
+    A.resizeNodeTransient(a, { width: 500, height: 500 });
+    A.endGesture();
+    const n = doc().nodes.find((x) => x.id === a)!;
+    expect(n.width).toBe(160);
+    expect(n.height).toBe(64);
   });
 });
 

@@ -42,7 +42,8 @@ describe('store mutation convention (§8.3)', () => {
     const offenders: string[] = [];
     for (const file of walk(sharedRoot)) {
       const src = readFileSync(file, 'utf8');
-      if (/from\s+'(\.\.\/)*renderer\//.test(src)) offenders.push(file);
+      if (/from\s+'(\.\.\/)*renderer\//.test(src) || /import\s*\(\s*'(\.\.\/)*renderer\//.test(src))
+        offenders.push(file);
     }
     expect(offenders).toEqual([]);
   });

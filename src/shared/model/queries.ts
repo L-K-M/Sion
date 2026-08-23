@@ -113,9 +113,12 @@ export function boundsOfNodes(doc: ThalyxDoc, nodes: ThalyxNode[]): Bounds | nul
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-/** Bounds of all content (for zoom-to-fit). */
+/** Bounds of all VISIBLE content (for zoom-to-fit; hidden nodes excluded). */
 export function contentBounds(doc: ThalyxDoc): Bounds | null {
-  return boundsOfNodes(doc, doc.nodes);
+  return boundsOfNodes(
+    doc,
+    doc.nodes.filter((n) => !n.hidden),
+  );
 }
 
 /**

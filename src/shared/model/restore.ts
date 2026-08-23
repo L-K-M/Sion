@@ -6,7 +6,7 @@
  * resolve, fix z-order/parent ordering, clamp numbers. Never throw on
  * merely-weird data. The only hard error is `version > 1` (DocTooNewError).
  */
-import { newNode, newEdge, newId } from './create';
+import { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH, newEdge, newId, newNode } from './create';
 import { parseDocSchema, COORD_MAX, COORD_MIN, LABEL_MAX, SIZE_MAX, SIZE_MIN } from './schema';
 import { ARROW_HEADS, MERMAID_DIRECTIONS, NODE_KINDS, SHAPE_KINDS } from './types';
 import type {
@@ -94,6 +94,8 @@ function coerceStringArray(v: unknown, cap = 64, entryMax = 2048): string[] | un
 function coerceNodeMeta(v: unknown): ThalyxNode['meta'] {
   if (!isRecord(v) || !isRecord(v['mermaid'])) return undefined;
   const m = v['mermaid'] as Record<string, unknown>;
+  const classes = coerceStringArray(m['classes'], 64, 512);
+  const styles = coerceStringArray(m['styles'], 64);
   const labelType = coerceEnum(m['labelType'], ['text', 'string', 'markdown'] as const, 'text');
   const dir = MERMAID_DIRECTIONS.includes(m['dir'] as MermaidDirection)
     ? (m['dir'] as MermaidDirection)
@@ -102,10 +104,8 @@ function coerceNodeMeta(v: unknown): ThalyxNode['meta'] {
     mermaid: {
       ...(typeof m['id'] === 'string' ? { id: m['id'].slice(0, 512) } : {}),
       ...(typeof m['shape'] === 'string' ? { shape: m['shape'].slice(0, 128) } : {}),
-      ...(coerceStringArray(m['classes'], 64, 512)
-        ? { classes: coerceStringArray(m['classes'], 64, 512) }
-        : {}),
-      ...(coerceStringArray(m['styles'], 64) ? { styles: coerceStringArray(m['styles'], 64) } : {}),
+      ...(classes ? { classes } : {}),
+      ...(styles ? { styles } : {}),
       ...(typeof m['link'] === 'string' ? { link: m['link'].slice(0, 2048) } : {}),
       ...(typeof m['tooltip'] === 'string' ? { tooltip: m['tooltip'].slice(0, 2048) } : {}),
       ...(m['labelType'] !== undefined ? { labelType } : {}),
@@ -122,8 +122,8 @@ function coerceNode(raw: unknown): ThalyxNode | null {
     kind,
     x: coerceCoord(raw['x']),
     y: coerceCoord(raw['y']),
-    width: coerceSize(raw['width'], 160),
-    height: coerceSize(raw['height'], 64),
+    width: coerceSize(raw['width'], DEFAULT_NODE_WIDTH),
+    height: coerceSize(raw['height'], DEFAULT_NODE_HEIGHT),
     label: coerceLabel(raw['label']),
     parentId: typeof raw['parentId'] === 'string' ? raw['parentId'] : undefined,
     style: coerceNodeStyle(raw['style']),
@@ -146,7 +146,10 @@ function coerceWaypoints(v: unknown): { x: number; y: number }[] | undefined {
   if (!Array.isArray(v) || v.length === 0) return undefined;
   const pts = v
     .filter(isRecord)
-    .map((p) => ({ x: coerceFinite(p['x'], 0), y: coerceFinite(p['y'], 0) }))
+    .map((p) => ({
+      x: clamp(coerceFinite(p['x'], 0), COORD_MIN, COORD_MAX),
+      y: clamp(coerceFinite(p['y'], 0), COORD_MIN, COORD_MAX),
+    }))
     .slice(0, 64);
   return pts.length > 0 ? pts : undefined;
 }
@@ -181,14 +184,15 @@ function coerceEdge(raw: unknown): ThalyxEdge | null {
   };
   if (isRecord(raw['meta']) && isRecord(raw['meta']['mermaid'])) {
     const m = raw['meta']['mermaid'] as Record<string, unknown>;
-    const minlen = coerceFinite(m['minlen'], 1);
+    const styles = coerceStringArray(m['styles'], 64);
+    const rawMinlen = m['minlen'];
     edge.meta = {
       mermaid: {
         ...(typeof m['id'] === 'string' ? { id: m['id'].slice(0, 512) } : {}),
-        ...(minlen >= 1 ? { minlen: clamp(Math.round(minlen), 1, 64) } : {}),
-        ...(coerceStringArray(m['styles'], 64)
-          ? { styles: coerceStringArray(m['styles'], 64) }
+        ...(typeof rawMinlen === 'number' && Number.isFinite(rawMinlen)
+          ? { minlen: clamp(Math.round(rawMinlen), 1, 64) }
           : {}),
+        ...(styles ? { styles } : {}),
       },
     };
   }

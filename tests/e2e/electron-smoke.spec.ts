@@ -66,7 +66,11 @@ test('preload bridge round-trips appx.version() (contextIsolation works, §14.1)
 });
 
 test('packaged renderer index.html carries the strict production CSP (§14.1)', () => {
-  const html = readFileSync(resolve(repoRoot, 'out/renderer/index.html'), 'utf8');
+  const htmlPath = resolve(repoRoot, 'out/renderer/index.html');
+  if (!existsSync(htmlPath)) {
+    throw new Error(`Build output missing: ${htmlPath} — run \`npm run build\` first.`);
+  }
+  const html = readFileSync(htmlPath, 'utf8');
   // Attribute-order-independent: find the CSP meta tag, then its content value.
   const tag = html.match(/<meta\b[^>]*Content-Security-Policy[^>]*>/i)?.[0];
   expect(tag, 'CSP meta tag present').toBeDefined();

@@ -14,13 +14,15 @@ interface TestApi {
   getDocJson(): string;
 }
 
-async function testApi(page: Page): Promise<TestApi> {
-  return (await page.evaluate(
-    () => (globalThis as unknown as { __thalyxTest?: TestApi }).__thalyxTest,
-  ))!;
+async function loadDocJson(page: Page, json: string): Promise<void> {
+  const ok = await page.evaluate(
+    (j) => (globalThis as unknown as { __thalyxTest?: TestApi }).__thalyxTest!.loadDoc(j),
+    json,
+  );
+  if (!ok) throw new Error('loadDoc failed');
 }
 
-async function docState(page: Page): Promise<{
+interface DocState {
   nodes: Array<{
     id: string;
     x: number;
@@ -32,9 +34,12 @@ async function docState(page: Page): Promise<{
     parentId?: string;
   }>;
   edges: unknown[];
-}> {
-  const api = await testApi(page);
-  return JSON.parse(await page.evaluate((a) => a.getDocJson(), api));
+}
+
+async function docState(page: Page): Promise<DocState> {
+  return await page.evaluate(() =>
+    JSON.parse((globalThis as unknown as { __thalyxTest: TestApi }).__thalyxTest.getDocJson()),
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -176,11 +181,7 @@ test('containers from fixture docs render, move with children, and resize', asyn
     canvas: { background: 'default', grid: false },
     meta: { mermaid: { direction: 'TB' } },
   };
-  const api = await testApi(page);
-  await page.evaluate(({ a, json }) => a.loadDoc(json), {
-    a: api,
-    json: JSON.stringify(fixture),
-  });
+  await loadDocJson(page, JSON.stringify(fixture));
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
   await expect(page.locator('.thalyx-container-title')).toHaveText('Group');
 

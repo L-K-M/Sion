@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 
-const repoRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..');
+const repoRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
 const mainEntry = resolve(repoRoot, 'out/main/index.js');
 
 async function launchApp(): Promise<ElectronApplication> {

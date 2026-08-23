@@ -8,6 +8,56 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M2 — Canvas MVP + perf gate (PLAN.md §17 M2)
+
+Added:
+
+- `src/shared/geometry/shapes.ts`: `shapePath(kind,w,h)` for all 16 ShapeKinds
+  (§7.3) + `shapeBoundaryIntersection` (§11.2 analytic rect/ellipse/diamond).
+- Theme system (§10.4): `src/renderer/theme/` — `palette.ts` (12 tokens ×
+  light/dark pairs, Open Color-derived values, WCAG `contrastRatio`),
+  `theme.css` (CSS variables), `colorStyle.ts` (token→var, hex→inline),
+  `useEffectiveTheme.ts` (system/light/dark with live matchMedia).
+- Canvas (§11.1): `Canvas.tsx` controlled React Flow wiring — no snapToGrid
+  ever, `selectionOnDrag`, `panOnDrag={[1,2]}` (+ full pan with hand tool),
+  pinch zoom, `onlyRenderVisibleElements`, min/max zoom 0.1/4, attribution
+  kept; position/resize changes routed through transient store actions inside
+  gestures (committed once per gesture); D12 waypoint clearing on endpoint
+  move/resize. `rfSelectors.ts` (doc → RF nodes/edges; `extent:'parent'` for
+  container children). Node components (memoized): `ShapeNode`, `TextNode`,
+  `ContainerNode` (dashed frame + title). Minimal straight edges so fixture
+  docs read (the real edge component lands in M3).
+- Toolbar (M2 subset): select/hand, five toolbar shapes, text, grid toggle,
+  theme cycle. Empty-canvas hint layer (I1).
+- `useKeymap` (M2 subset of §10.2): tool keys V/R/O/D/H/T, Delete/Backspace,
+  undo/redo, Shift+1/Shift+2 zoom-to-fit/selection (full keymap in M4).
+- Shape/text tools place on canvas click (click-place; drag-size arrives with
+  the M4 pointer layer).
+- Test hooks: dev-only `window.__thalyxTest.loadDoc/getDocJson` (dev server or
+  `?testHooks=1`) for e2e doc injection.
+- Perf fixture generator `tests/perf/genDoc.ts` (500/1000/2000-node docs,
+  mixed shapes, 1.5× edges, 10% containers).
+- Playwright restructured into two tiers (§15.2): `web` project (vite preview
+  serving the built renderer; `vite.preview.config.ts`) with
+  `canvas.spec.ts` (create/move/resize/delete/undo, containers-from-fixture
+  render + move-with-children, theme remap, grid) and `perf.spec.ts` (fps +
+  drag-latency harness with loose CI floors); existing Electron smoke moved
+  to `tests/e2e/electron/`. `tsconfig.e2e.json` added to the typecheck chain.
+- Unit tests (92 total): shapePath goldens/degenerates, boundary
+  intersections, palette contrast ≥ 4.5:1 in both themes (transparent against
+  canvas), resolveColor, plus all M1 suites.
+
+Changed / deviations from PLAN.md (§19.6–7):
+
+- **Perf gate numbers (§11.7 / M2 acceptance)**: this implementation sandbox
+  has no display and CI runners use software GL, so the *dev-class-machine*
+  measurements (1000-node ≥ 50 fps, drag < 32 ms, both OSes) could not be
+  taken here. Automated CI baselines are recorded in `docs/perf.md`
+  (anti-regression floors + logged fps); **hardware measurements remain an
+  open item** for a maintainer with a dev-class Mac + Linux box — methodology
+  is documented in `docs/perf.md`.
+- `@xyflow/react ^12.11.3` added (MIT, §5-listed); ledger regenerated.
+
 ### M1 — Document model, store, history (PLAN.md §17 M1)
 
 Added:

@@ -1,60 +1,181 @@
-:root {
-  color-scheme: light dark;
-  --ink: #1f2328;
-  --paper: #ffffff;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #e6e8eb;
-    --paper: #16181c;
-  }
-}
+/* Thalyx app shell + canvas styles */
 
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 body {
-  background: var(--paper);
+  background: var(--canvas);
   color: var(--ink);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  user-select: none;
 }
 
-.splash {
+.thalyx-root {
   height: 100%;
+  display: flex;
+}
+
+/* --- toolbar ---------------------------------------------------------- */
+
+.thalyx-toolbar {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+}
+
+.thalyx-toolbar-sep {
+  height: 1px;
+  margin: 3px 2px;
+  background: var(--border);
+}
+
+.thalyx-toolbtn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.thalyx-toolbtn:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.thalyx-toolbtn.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* --- canvas ------------------------------------------------------------ */
+
+.thalyx-canvas-root {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.react-flow {
+  background: var(--canvas);
+}
+
+.react-flow__node {
+  font-family: inherit;
+}
+
+.react-flow__node.selected .thalyx-shape,
+.react-flow__node.selected .thalyx-text-node,
+.react-flow__node.selected .thalyx-container {
+  outline: none;
+}
+
+.react-flow__node.selected > .react-flow__node-selectbox {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* --- nodes ------------------------------------------------------------- */
+
+.thalyx-node-label {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  user-select: none;
+  text-align: center;
+  pointer-events: none;
+  padding: 4px 8px;
+  overflow: hidden;
+  white-space: pre;
+  line-height: 1.25;
 }
 
-.splash h1 {
-  margin: 0;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+.thalyx-container {
+  border-radius: 8px;
+  border: 1.5px dashed color-mix(in srgb, var(--ink) 40%, transparent);
 }
 
-.splash-sub {
-  margin: 0;
-  opacity: 0.7;
+.thalyx-container-title {
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
+  pointer-events: none;
 }
 
-.splash-meta {
-  margin-top: 1rem;
-  font-size: 0.85rem;
-  opacity: 0.6;
+.thalyx-resize-line {
+  border-color: var(--accent) !important;
 }
 
-.splash code {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+.thalyx-resize-handle {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 2px !important;
+  background: var(--panel) !important;
+  border: 1.5px solid var(--accent) !important;
+}
+
+/* --- edges (M2 minimal straight) ---------------------------------------- */
+
+.thalyx-canvas-root .react-flow__edge-path {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+/* --- empty hint --------------------------------------------------------- */
+
+.thalyx-empty-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--ink);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.thalyx-empty-hint-row kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--panel);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.thalyx-empty-hint-sub {
+  margin-top: 8px;
+  font-size: 12px;
 }

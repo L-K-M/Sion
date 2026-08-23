@@ -13,7 +13,11 @@ import type {
   ThalyxEdge,
   ThalyxNode,
 } from './types';
-import { version as appVersion } from '../../../package.json';
+import pkg from '../../../package.json' with { type: 'json' };
+
+export function appVersion(): string {
+  return pkg.version;
+}
 
 export function newId(): string {
   return nanoid(12);
@@ -113,7 +117,7 @@ export function newDoc(): ThalyxDoc {
   return {
     type: 'thalyx',
     version: 1,
-    source: `thalyx@${appVersion}`,
+    source: `thalyx@${appVersion()}`,
     nodes: [],
     edges: [],
     canvas: { background: 'default', grid: false },

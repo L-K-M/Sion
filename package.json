@@ -32,8 +32,12 @@
     "gen:licenses": "node scripts/gen-third-party-licenses.mjs"
   },
   "dependencies": {
+    "immer": "^11.1.18",
+    "nanoid": "^6.0.1",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

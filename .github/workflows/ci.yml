@@ -32,6 +32,11 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run check:licenses
+      - name: THIRD_PARTY_LICENSES.md must be current
+        run: |
+          node scripts/gen-third-party-licenses.mjs
+          git diff --exit-code THIRD_PARTY_LICENSES.md || \
+            { echo '::error::THIRD_PARTY_LICENSES.md is stale — run npm run gen:licenses and commit'; exit 1; }
       - run: npm run test
 
   e2e:
@@ -44,6 +49,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/electron' || '~/.cache/electron' }}
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -74,6 +84,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/electron' || '~/.cache/electron' }}
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22

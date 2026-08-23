@@ -51,6 +51,21 @@ test('renderer is sandboxed: no node globals leaked', async () => {
   expect(leaked).toBe(false);
 });
 
+test('preload bridge round-trips appx.version() (contextIsolation works, §14.1)', async () => {
+  const p = page;
+  if (!p) throw new Error('app did not launch');
+  // Electron 43 no longer exposes webContents.getLastWebPreferences() in its
+  // typings, so the security baseline is asserted functionally: the
+  // contextBridge API round-trips (preload ran, isolated-world bridging
+  // works) while the page context has no node globals (previous test).
+  const version = await p.evaluate(async () => {
+    const g = globalThis as { thalyx?: { appx: { version: () => Promise<string> } } };
+    return g.thalyx ? await g.thalyx.appx.version() : null;
+  });
+  expect(typeof version).toBe('string');
+  expect((version ?? '').length).toBeGreaterThan(0);
+});
+
 test('packaged renderer index.html carries the strict production CSP (§14.1)', () => {
   const html = readFileSync(resolve(repoRoot, 'out/renderer/index.html'), 'utf8');
   // Attribute-order-independent: find the CSP meta tag, then its content value.

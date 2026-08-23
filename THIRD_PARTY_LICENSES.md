@@ -1,6 +1,6 @@
 # Third-party licenses
 
-Thalyx is dedicated to the public domain ([Unlicense](../LICENSE)).
+Thalyx is dedicated to the public domain ([Unlicense](LICENSE)).
 
 This file is **generated** by `npm run gen:licenses` — do not edit by hand.
 

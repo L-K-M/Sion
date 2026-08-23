@@ -8,17 +8,18 @@
  *
  * Re-run via `npm run gen:licenses` whenever dependencies change.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { flatten, scan } from './lib/licenses.mjs';
 
 const root = process.cwd();
+const rootName = JSON.parse(readFileSync(`${root}/package.json`, 'utf8')).name;
 
 const prod = flatten(await scan({ start: root, production: true })).filter(
-  (p) => p.name !== 'thalyx',
+  (p) => p.name !== rootName,
 );
 const dev = flatten(await scan({ start: root, development: true })).filter(
-  (p) => p.name !== 'thalyx',
+  (p) => p.name !== rootName,
 );
 
 const devByLicense = new Map();

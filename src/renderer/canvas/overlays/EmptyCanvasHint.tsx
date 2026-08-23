@@ -7,7 +7,7 @@ export function EmptyCanvasHint({ visible, tool }: { visible: boolean; tool: str
   return (
     <div className="thalyx-empty-hint" aria-hidden={tool === 'select' ? undefined : true}>
       <div className="thalyx-empty-hint-row">
-        <kbd>R</kbd> <kbd>O</kbd> <kbd>D</kbd> shape tools · drag on the canvas to place
+        <kbd>R</kbd> <kbd>O</kbd> <kbd>D</kbd> shape tools · click the canvas to place
       </div>
       <div className="thalyx-empty-hint-sub">
         or pick a shape from the toolbar on the left · middle/right-drag or space-drag to pan ·

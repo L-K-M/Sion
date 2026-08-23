@@ -97,15 +97,14 @@ export function shapePath(kind: ShapeKind, w: number, h: number): string {
     }
 
     case 'stadium': {
-      // Fully-rounded sides ("pill").
+      // Fully-rounded sides ("pill"): two semicircular caps, closed outline.
       const r = Math.min(W, H) / 2;
       return [
         `M ${round(r)} 0`,
         `H ${round(W - r)}`,
         `A ${round(r)} ${round(r)} 0 0 1 ${round(W - r)} ${round(H)}`,
         `H ${round(r)}`,
-        `A ${round(r)} ${round(r)} 0 0 1 0 ${round(r)}`,
-        `V ${round(r)}`,
+        `A ${round(r)} ${round(r)} 0 0 1 ${round(r)} 0`,
         'Z',
       ].join(' ');
     }
@@ -213,6 +212,9 @@ export function shapeBoundaryIntersection(
   const cy = h / 2;
   const dx = from.x - cx;
   const dy = from.y - cy;
+  // Degenerate aim (target center): every boundary point is equally valid;
+  // pick the top-center so callers get a finite, stable point.
+  if (dx === 0 && dy === 0) return { x: cx, y: 0 };
   switch (kind) {
     case 'ellipse':
     case 'circle':

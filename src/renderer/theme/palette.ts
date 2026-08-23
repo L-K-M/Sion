@@ -130,8 +130,11 @@ export function contrastRatio(a: string, b: string): number {
     const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
     return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(bl);
   };
-  if (a === 'transparent') a = '#ffffff';
-  if (b === 'transparent') b = '#ffffff';
+  if (a === 'transparent' || b === 'transparent') {
+    throw new Error(
+      'contrastRatio: transparent has no intrinsic contrast — compare against the canvas color',
+    );
+  }
   const l1 = lum(a);
   const l2 = lum(b);
   const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];

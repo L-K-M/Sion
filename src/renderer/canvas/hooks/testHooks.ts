@@ -1,7 +1,13 @@
 /**
- * Dev/test-only hooks (M2 e2e): `window.__thalyxTest.loadDoc(json)` injects a
- * serialized .thalyx document into the store. Stripped from production builds
- * by Vite dead-code elimination (import.meta.env.DEV guard).
+ * Test hooks (M2 e2e): `window.__thalyxTest.loadDoc(json)` injects a
+ * serialized .thalyx document into the store, `getDocJson()` reads it back.
+ *
+ * Availability: the dev server always installs them; BUILT apps install them
+ * only when the URL carries `?testHooks=1` — this is how the Playwright web
+ * suite drives the production bundle (§15.2 requires testing the built
+ * renderer). The hooks only load/read the document model — untrusted data
+ * that restoreDocument() already treats defensively — and never touch the
+ * preload bridge, so enabling them grants no additional capability.
  */
 import { parseDoc } from '../../../shared/files/thalyxFile';
 import { resetStore, useStore } from '../../store/store';

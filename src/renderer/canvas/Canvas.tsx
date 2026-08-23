@@ -92,6 +92,7 @@ export function Canvas() {
     for (const c of dimChanges) {
       if (!gestureActive.current) {
         gestureActive.current = true;
+        movedIds.current = new Set();
         A.beginGesture();
       }
       A.resizeNodeTransient(c.id, {

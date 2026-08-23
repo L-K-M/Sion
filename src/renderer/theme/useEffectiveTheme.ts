@@ -1,26 +1,33 @@
 /**
  * Theme resolution for the app shell: session.theme ('system'|'light'|'dark')
  * → the effective 'light' | 'dark', honoring prefers-color-scheme.
+ *
+ * The system theme is read via useSyncExternalStore — always fresh when
+ * re-entering system mode, no cached value to go stale.
  */
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { useStore } from '../store/store';
 
-function systemTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined' || !window.matchMedia) return 'light';
+function subscribeToSystemTheme(onChange: () => void): () => void {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  mq.addEventListener('change', onChange);
+  return () => mq.removeEventListener('change', onChange);
+}
+
+function systemThemeSnapshot(): 'light' | 'dark' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function systemThemeServerSnapshot(): 'light' | 'dark' {
+  return 'light';
 }
 
 export function useEffectiveTheme(): 'light' | 'dark' {
   const theme = useStore((s) => s.session.theme);
-  const [sys, setSys] = useState<'light' | 'dark'>(systemTheme);
-
-  useEffect(() => {
-    if (theme !== 'system' || !window.matchMedia) return;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = (e: MediaQueryListEvent) => setSys(e.matches ? 'dark' : 'light');
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, [theme]);
-
+  const sys = useSyncExternalStore(
+    subscribeToSystemTheme,
+    systemThemeSnapshot,
+    systemThemeServerSnapshot,
+  );
   return theme === 'system' ? sys : theme;
 }

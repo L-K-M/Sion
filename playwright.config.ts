@@ -18,14 +18,12 @@ export default defineConfig({
   use: {
     trace: 'retain-on-failure',
   },
-  webServer: process.env.THALYX_SKIP_WEB
-    ? undefined
-    : {
-        command: 'npx vite preview --config vite.preview.config.ts --port 4173 --strictPort',
-        url: 'http://localhost:4173',
-        reuseExistingServer: !process.env.CI,
-        timeout: 60_000,
-      },
+  webServer: {
+    command: 'npx vite preview --config vite.preview.config.ts --port 4173 --strictPort',
+    url: 'http://localhost:4173',
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
+  },
   projects: [
     {
       name: 'web',

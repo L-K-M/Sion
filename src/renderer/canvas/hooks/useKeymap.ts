@@ -40,7 +40,7 @@ export function useKeymap(): void {
         A.redo();
         return;
       }
-      if ((e.code === 'Delete' || e.code === 'Backspace') && !mod) {
+      if ((e.code === 'Delete' || e.code === 'Backspace') && !mod && !e.altKey) {
         e.preventDefault();
         A.deleteSelection();
         return;
@@ -57,7 +57,7 @@ export function useKeymap(): void {
         e.preventDefault();
         const { nodeIds } = useStore.getState().session.selection;
         if (nodeIds.length > 0) {
-          void rf.fitView({ nodes: [{ id: nodeIds[0]! }], padding: 2, duration: 200 });
+          void rf.fitView({ nodes: nodeIds.map((id) => ({ id })), padding: 2, duration: 200 });
         } else {
           void rf.fitView({ padding: 0.2, duration: 200 });
         }

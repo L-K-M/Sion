@@ -48,6 +48,15 @@ describe('shapePath (§7.3)', () => {
     );
   });
 
+  it('stadium is a closed pill with two semicircular caps', () => {
+    const d = shapePath('stadium', 100, 40);
+    expect(d).toBe('M 20 0 H 80 A 20 20 0 0 1 80 40 H 20 A 20 20 0 0 1 20 0 Z');
+    // starts where it ends — closed outline
+    expect(d.startsWith('M 20 0')).toBe(true);
+    expect(d.endsWith('20 0 Z')).toBe(true);
+    expect(d).not.toContain('V '); // no stray connector line
+  });
+
   it('degenerates safely at zero size', () => {
     expect(() => shapePath('rect', 0, 0)).not.toThrow();
     expect(shapePath('rect', 0, 0)).toBe('M 0 0 H 0 V 0 H 0 Z');
@@ -69,6 +78,15 @@ describe('shapeBoundaryIntersection (§11.2)', () => {
     // corner direction hits the ellipse, inside the rect corner
     const r = shapeBoundaryIntersection('ellipse', 100, 100, { x: 50 + 50, y: 50 + 50 });
     expect(r.x).toBeCloseTo(50 + 50 / Math.SQRT2, 4);
+  });
+
+  it('aim-at-center returns a stable point instead of NaN', () => {
+    for (const kind of ['rect', 'ellipse', 'diamond'] as const) {
+      const p = shapeBoundaryIntersection(kind, 100, 50, { x: 50, y: 25 });
+      expect(Number.isFinite(p.x)).toBe(true);
+      expect(Number.isFinite(p.y)).toBe(true);
+      expect(p).toEqual({ x: 50, y: 0 });
+    }
   });
 
   it('diamond: diagonal hits the vertex midpoint edge', () => {

@@ -39,12 +39,12 @@ export function toReactFlowEdges(doc: ThalyxDoc, session: SessionState): Edge<Th
   // M2: minimal straight-line edges so fixture docs read; the custom thalyx
   // edge (elbow/straight/curved, labels, arrowheads) lands in M3.
   const selected = new Set(session.selection.edgeIds);
-  void selected;
   return doc.edges.map((e) => ({
     id: e.id,
     source: e.source,
     target: e.target,
     type: 'straight',
+    selected: selected.has(e.id),
     hidden: e.hidden === true,
     data: { edge: e },
   }));

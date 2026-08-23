@@ -5,6 +5,10 @@
   "description": "A fast, friendly desktop diagramming tool with Mermaid as a first-class citizen.",
   "license": "Unlicense",
   "author": "Thalyx contributors",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/L-K-M/Thalyx"

@@ -17,7 +17,9 @@ const root = process.cwd();
 const prod = flatten(await scan({ start: root, production: true })).filter(
   (p) => p.name !== 'thalyx',
 );
-const dev = flatten(await scan({ start: root, development: true }));
+const dev = flatten(await scan({ start: root, development: true })).filter(
+  (p) => p.name !== 'thalyx',
+);
 
 const devByLicense = new Map();
 for (const d of dev) {

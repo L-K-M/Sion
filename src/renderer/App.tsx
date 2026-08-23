@@ -7,9 +7,14 @@ export function App() {
 
   useEffect(() => {
     let alive = true;
-    void platform.version().then((v) => {
-      if (alive) setVersion(v);
-    });
+    void platform
+      .version()
+      .then((v) => {
+        if (alive) setVersion(v);
+      })
+      .catch(() => {
+        if (alive) setVersion('unavailable');
+      });
     return () => {
       alive = false;
     };

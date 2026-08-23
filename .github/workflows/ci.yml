@@ -63,17 +63,17 @@ jobs:
           # Skip the playwright package postinstall (downloads ALL browsers);
           # the e2e job installs exactly what it needs via the explicit step.
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Playwright browsers (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: npx playwright install chromium --with-deps
       - name: Install Playwright browsers (macOS)
         if: matrix.os != 'ubuntu-latest'
         run: npx playwright install chromium
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm run build
       - name: Install xvfb (Linux)
         if: matrix.os == 'ubuntu-latest'

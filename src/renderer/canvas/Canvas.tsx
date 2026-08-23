@@ -147,7 +147,10 @@ export function Canvas() {
   );
 
   return (
-    <div className="thalyx-canvas-root">
+    <div
+      className="thalyx-canvas-root"
+      onContextMenu={(e) => e.preventDefault()} // right-drag pan must not open the browser menu
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -176,7 +179,7 @@ export function Canvas() {
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--grid)" />
         ) : null}
       </ReactFlow>
-      <EmptyCanvasHint visible={doc.nodes.length === 0} tool={session.tool} />
+      <EmptyCanvasHint visible={doc.nodes.length === 0} />
     </div>
   );
 }

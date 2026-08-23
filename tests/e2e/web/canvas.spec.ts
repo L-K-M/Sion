@@ -43,6 +43,8 @@ async function docState(page: Page): Promise<DocState> {
 }
 
 test.beforeEach(async ({ page }) => {
+  // Deterministic default theme regardless of runner/browser preferences.
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.goto(BASE);
   await expect(page.locator('.react-flow')).toBeVisible();
 });

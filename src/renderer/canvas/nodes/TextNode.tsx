@@ -28,7 +28,7 @@ export const TextNode = memo(function TextNode({ data, selected }: NodeProps) {
         lineClassName="thalyx-resize-line"
         handleClassName="thalyx-resize-handle"
       />
-      <div className="thalyx-node-label" style={{ whiteSpace: 'pre' }}>
+      <div className="thalyx-node-label">
         {lines.map((line, i) => (
           <div key={i}>{line}</div>
         ))}

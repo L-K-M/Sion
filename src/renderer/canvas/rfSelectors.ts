@@ -14,8 +14,11 @@ export interface ThalyxEdgeData extends Record<string, unknown> {
   edge: ThalyxEdge;
 }
 
-export function toReactFlowNodes(doc: ThalyxDoc, session: SessionState): Node<ThalyxNodeData>[] {
-  const selected = new Set(session.selection.nodeIds);
+export function toReactFlowNodes(
+  doc: ThalyxDoc,
+  selection: SessionState['selection'],
+): Node<ThalyxNodeData>[] {
+  const selected = new Set(selection.nodeIds);
   return doc.nodes.map((n) => ({
     id: n.id,
     type: n.kind === 'mermaid' ? 'mermaid' : n.kind,
@@ -35,10 +38,13 @@ export function toReactFlowNodes(doc: ThalyxDoc, session: SessionState): Node<Th
   }));
 }
 
-export function toReactFlowEdges(doc: ThalyxDoc, session: SessionState): Edge<ThalyxEdgeData>[] {
+export function toReactFlowEdges(
+  doc: ThalyxDoc,
+  selection: SessionState['selection'],
+): Edge<ThalyxEdgeData>[] {
   // M2: minimal straight-line edges so fixture docs read; the custom thalyx
   // edge (elbow/straight/curved, labels, arrowheads) lands in M3.
-  const selected = new Set(session.selection.edgeIds);
+  const selected = new Set(selection.edgeIds);
   return doc.edges.map((e) => ({
     id: e.id,
     source: e.source,

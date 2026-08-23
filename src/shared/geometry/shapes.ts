@@ -98,7 +98,18 @@ export function shapePath(kind: ShapeKind, w: number, h: number): string {
 
     case 'stadium': {
       // Fully-rounded sides ("pill"): two semicircular caps, closed outline.
+      // Wide boxes cap top/bottom; tall boxes (H > W) cap left/right.
       const r = Math.min(W, H) / 2;
+      if (H > W) {
+        return [
+          `M 0 ${round(r)}`,
+          `V ${round(H - r)}`,
+          `A ${round(r)} ${round(r)} 0 0 1 ${round(W)} ${round(H - r)}`,
+          `V ${round(r)}`,
+          `A ${round(r)} ${round(r)} 0 0 1 0 ${round(r)}`,
+          'Z',
+        ].join(' ');
+      }
       return [
         `M ${round(r)} 0`,
         `H ${round(W - r)}`,
@@ -201,12 +212,14 @@ export function shapePath(kind: ShapeKind, w: number, h: number): string {
 /**
  * Vertex boundary intersection for floating anchors (PLAN.md §11.2):
  * rect/ellipse/diamond analytic; other shapes use their bounding rect.
+ * `from` is a point in the shape's LOCAL box coordinates (top-left origin)
+ * that the boundary is aimed at — typically the other node's center.
  */
 export function shapeBoundaryIntersection(
   kind: ShapeKind,
   w: number,
   h: number,
-  from: { x: number; y: number }, // box center-relative point aimed AT the shape
+  from: { x: number; y: number },
 ): { x: number; y: number } {
   const cx = w / 2;
   const cy = h / 2;

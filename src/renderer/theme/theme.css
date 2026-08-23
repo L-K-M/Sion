@@ -2,6 +2,7 @@
 
 :root,
 .thalyx-root {
+  color-scheme: light;
   --surface: #ffffff;
   --ink: #1f2328;
   --canvas: #fbfbfc;
@@ -50,6 +51,7 @@
 
 :root[data-theme='dark'],
 .thalyx-root[data-theme='dark'] {
+  color-scheme: dark;
   --surface: #1e2126;
   --ink: #e9ebee;
   --canvas: #14161a;

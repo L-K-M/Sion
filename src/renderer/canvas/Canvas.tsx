@@ -36,12 +36,15 @@ const nodeTypes: NodeTypes = {
 export function Canvas() {
   const doc = useStore((s) => s.doc);
   const session = useStore((s) => s.session);
+  // Selection-slice subscription: tool/viewport session changes must not
+  // rebuild the node/edge arrays (§11.1 perf doctrine).
+  const selection = useStore((s) => s.session.selection);
   const rfInstance = useReactFlow();
   const gestureActive = useRef(false);
   const movedIds = useRef<Set<string>>(new Set());
 
-  const nodes = useMemo(() => toReactFlowNodes(doc, session), [doc, session]);
-  const edges = useMemo(() => toReactFlowEdges(doc, session), [doc, session]);
+  const nodes = useMemo(() => toReactFlowNodes(doc, selection), [doc, selection]);
+  const edges = useMemo(() => toReactFlowEdges(doc, selection), [doc, selection]);
 
   const onSelectionChange = useCallback(({ nodes: n, edges: e }: OnSelectionChangeParams) => {
     A.setSelection(

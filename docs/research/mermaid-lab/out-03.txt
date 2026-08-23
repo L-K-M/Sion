@@ -1,0 +1,214 @@
+mermaid.parse() result: {"diagramType":"flowchart-v2","config":{}}
+diagram.type = flowchart-v2
+db class: FlowDB
+db proto methods: addClass, addLink, addNodeFromVertex, addSingleLink, addSubGraph, addVertex, bindFunctions, clear, constructor, countChar, defaultConfig, defaultStyle, destructEdgeType, destructEndLink, destructLink, destructStartLink, exists, findNode, firstGraph, getClasses, getCompiledStyles, getData, getDepthFirstPos, getDirection, getEdges, getPosForId, getSubGraphs, getTooltip, getTypeFromVertex, getVertices, indexNodes, indexNodes2, isLinkData, lookUpDomId, makeUniq, sanitizeNodeLabelType, sanitizeText, setClass, setClickEvent, setClickFun, setDiagramId, setDirection, setGen, setLink, setTooltip, setupToolTips, updateLink, updateLinkInterpolate
+
+=== getDirection() ===
+"LR"
+
+getVertices() returns a Map
+
+=== getVertices() ===
+{
+  "A": {
+    "id": "A",
+    "labelType": "text",
+    "domId": "flowchart-A-0",
+    "styles": [
+      "fill:#f9f"
+    ],
+    "classes": [
+      "clickable"
+    ],
+    "text": "Start",
+    "type": "square",
+    "props": {},
+    "link": "https://example.com/"
+  },
+  "B": {
+    "id": "B",
+    "labelType": "string",
+    "domId": "flowchart-B-1",
+    "styles": [],
+    "classes": [
+      "red"
+    ],
+    "text": "Decision ﬂ°quot¶ßquotedﬂ°quot¶ß",
+    "type": "diamond",
+    "props": {}
+  },
+  "C": {
+    "id": "C",
+    "labelType": "string",
+    "domId": "flowchart-C-3",
+    "styles": [],
+    "classes": [],
+    "text": "a & b",
+    "type": "square",
+    "props": {}
+  },
+  "D": {
+    "id": "D",
+    "labelType": "text",
+    "domId": "flowchart-D-5",
+    "styles": [],
+    "classes": [],
+    "text": "Round",
+    "type": "round",
+    "props": {}
+  },
+  "E": {
+    "id": "E",
+    "labelType": "text",
+    "domId": "flowchart-E-7",
+    "styles": [],
+    "classes": [],
+    "text": "Sub end",
+    "type": "subroutine",
+    "props": {}
+  },
+  "F": {
+    "id": "F",
+    "labelType": "text",
+    "domId": "flowchart-F-11",
+    "styles": [],
+    "classes": [],
+    "text": "db",
+    "type": "cylinder",
+    "props": {}
+  },
+  "G": {
+    "id": "G",
+    "labelType": "text",
+    "domId": "flowchart-G-13",
+    "styles": [],
+    "classes": [],
+    "text": "G",
+    "props": {}
+  }
+}
+
+=== getEdges() ===
+[
+  {
+    "start": "A",
+    "end": "B",
+    "type": "arrow_point",
+    "text": "",
+    "labelType": "text",
+    "classes": [],
+    "isUserDefinedId": false,
+    "stroke": "normal",
+    "length": 1,
+    "id": "L_A_B_0"
+  },
+  {
+    "start": "B",
+    "end": "C",
+    "type": "arrow_point",
+    "text": "yes",
+    "labelType": "text",
+    "classes": [],
+    "isUserDefinedId": false,
+    "stroke": "normal",
+    "length": 1,
+    "id": "L_B_C_0"
+  },
+  {
+    "start": "B",
+    "end": "D",
+    "type": "arrow_point",
+    "text": "no",
+    "labelType": "text",
+    "classes": [],
+    "isUserDefinedId": false,
+    "stroke": "dotted",
+    "length": 1,
+    "id": "L_B_D_0"
+  },
+  {
+    "start": "C",
+    "end": "E",
+    "type": "arrow_point",
+    "text": "",
+    "labelType": "text",
+    "classes": [],
+    "isUserDefinedId": false,
+    "stroke": "thick",
+    "length": 1,
+    "id": "L_C_E_0"
+  },
+  {
+    "start": "D",
+    "end": "E",
+    "type": "arrow_point",
+    "text": "text label",
+    "labelType": "text",
+    "classes": [],
+    "isUserDefinedId": false,
+    "stroke": "normal",
+    "length": 1,
+    "id": "L_D_E_0"
+  },
+  {
+    "start": "E",
+    "end": "F",
+    "type": "arrow_open",
+    "text": "",
+    "labelType": "text",
+    "classes": [],
+    "isUserDefinedId": false,
+    "stroke": "normal",
+    "length": 1,
+    "id": "L_E_F_0"
+  },
+  {
+    "start": "A",
+    "end": "G",
+    "type": "arrow_open",
+    "text": "",
+    "labelType": "text",
+    "classes": [],
+    "isUserDefinedId": false,
+    "stroke": "dotted",
+    "length": 1,
+    "id": "L_A_G_0"
+  }
+]
+
+=== getSubGraphs() ===
+[
+  {
+    "id": "SG1",
+    "nodes": [
+      "C",
+      "D"
+    ],
+    "title": "Group One",
+    "classes": [],
+    "labelType": "text"
+  },
+  {
+    "id": "SG2",
+    "nodes": [
+      "E",
+      "F"
+    ],
+    "title": "SG2",
+    "classes": [],
+    "dir": "TB",
+    "labelType": "text"
+  }
+]
+
+=== getClasses() ===
+{
+  "red": {
+    "id": "red",
+    "styles": [
+      "fill:#f00"
+    ],
+    "textStyles": []
+  }
+}
+getTooltip("A"): "tooltip"

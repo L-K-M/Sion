@@ -1,0 +1,6 @@
+RENDER FAILED: ReferenceError
+MESSAGE: CSSStyleSheet is not defined
+ReferenceError: CSSStyleSheet is not defined
+    at createCssStyles (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/mermaid.core.mjs:1100:21)
+    at createUserStyles (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/mermaid.core.mjs:1211:25)
+    at Object.render (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/mermaid.core.mjs:1329:17)

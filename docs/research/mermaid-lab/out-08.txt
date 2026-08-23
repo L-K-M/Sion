@@ -1,0 +1,46 @@
+=== pie AST ===
+{
+  "$type": "Pie",
+  "title": "Pets",
+  "sections": [
+    {
+      "$type": "PieSection",
+      "label": "Dogs",
+      "value": 386
+    },
+    {
+      "$type": "PieSection",
+      "label": "Cats",
+      "value": 85
+    }
+  ],
+  "showData": false
+}
+
+=== gitGraph AST (statements) ===
+[
+  {
+    "$type": "Commit",
+    "id": "one",
+    "tags": []
+  },
+  {
+    "$type": "Branch",
+    "name": "develop"
+  },
+  {
+    "$type": "Commit",
+    "tags": []
+  },
+  {
+    "$type": "Checkout",
+    "branch": "main"
+  },
+  {
+    "$type": "Merge",
+    "branch": "develop",
+    "tags": []
+  }
+]
+
+flowchart via @mermaid-js/parser → Error: Unknown diagram type: flowchart

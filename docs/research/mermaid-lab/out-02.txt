@@ -1,0 +1,17 @@
+file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-DU6HZSFF.mjs:5075
+  DOMPurify.addHook("beforeSanitizeAttributes", (node) => {
+            ^
+
+TypeError: DOMPurify.addHook is not a function
+    at setupDompurifyHooks (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-DU6HZSFF.mjs:5075:13)
+    at file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-DU6HZSFF.mjs:5068:7
+    at removeScript (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-DU6HZSFF.mjs:5092:3)
+    at sanitizeMore (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-DU6HZSFF.mjs:5100:14)
+    at Object.sanitizeText (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-DU6HZSFF.mjs:5117:31)
+    at FlowDB.sanitizeText (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-RHFEMEQ7.mjs:104:27)
+    at FlowDB.addVertex (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-RHFEMEQ7.mjs:193:18)
+    at Object.anonymous (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-RHFEMEQ7.mjs:1252:14)
+    at Parser.parse (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-RHFEMEQ7.mjs:1639:36)
+    at newParser.parse (file:///tmp/claude-0/-home-user-Thalyx/3bad5ff7-67a8-5ccd-8261-d90eb98fb882/scratchpad/mermaid-lab/node_modules/mermaid/dist/chunks/mermaid.core/chunk-RHFEMEQ7.mjs:2404:23)
+
+Node.js v22.22.2

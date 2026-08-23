@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const rendererRoot = join(__dirname, '../../../src/renderer');
+const sharedRoot = join(__dirname, '../../../src/shared');
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -37,13 +38,14 @@ describe('store mutation convention (§8.3)', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('shared code never imports the store (renderer-free, §6)', () => {
-    const sharedRoot = join(__dirname, '../../../src/shared');
+  it('shared code never imports the renderer (renderer-free, §6)', () => {
     const offenders: string[] = [];
+    const importsRenderer = /(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"](?:\.\.\/)*renderer\//;
+    const importsRendererAbsolute =
+      /(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"](?:src\/)?renderer\//;
     for (const file of walk(sharedRoot)) {
       const src = readFileSync(file, 'utf8');
-      if (/from\s+'(\.\.\/)*renderer\//.test(src) || /import\s*\(\s*'(\.\.\/)*renderer\//.test(src))
-        offenders.push(file);
+      if (importsRenderer.test(src) || importsRendererAbsolute.test(src)) offenders.push(file);
     }
     expect(offenders).toEqual([]);
   });

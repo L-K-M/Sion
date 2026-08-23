@@ -13,7 +13,7 @@ async function launchApp(): Promise<ElectronApplication> {
   });
 }
 
-let app: ElectronApplication;
+let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
@@ -22,8 +22,13 @@ test.beforeAll(async () => {
   await page.waitForLoadState('domcontentloaded');
 });
 
+// Note: the expected policy below is a deliberate golden string (PLAN.md §14.1
+// specifies the exact production policy) rather than an import of
+// CSP_BY_MODE — the test should fail if the shipped policy drifts from the
+// plan, not merely mirror whatever the config exports.
+
 test.afterAll(async () => {
-  await app.close();
+  await app?.close();
 });
 
 test('launches and shows the Thalyx window', async () => {

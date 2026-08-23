@@ -31,7 +31,7 @@ for (const d of dev) {
 const lines = [];
 lines.push('# Third-party licenses');
 lines.push('');
-lines.push('Thalyx is dedicated to the public domain ([Unlicense](../LICENSE)).');
+lines.push('Thalyx is dedicated to the public domain ([Unlicense](LICENSE)).');
 lines.push('');
 lines.push('This file is **generated** by `npm run gen:licenses` — do not edit by hand.');
 lines.push('');

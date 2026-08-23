@@ -10,6 +10,7 @@
 import { app, shell } from 'electron';
 import { BrowserWindow } from 'electron';
 import type { WebContents } from 'electron';
+import { pathToFileURL } from 'node:url';
 
 export function applyWebContentsSecurity(contents: WebContents): void {
   // Block all navigation away from the app bundle. The initial load does not
@@ -53,9 +54,10 @@ export function isAllowedNavigation(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'file:') return false;
-    // Allow loading from within the app bundle only.
-    const appRoot = new URL(`file://${app.getAppPath()}/`);
-    return parsed.href === appRoot.href || parsed.href.startsWith(appRoot.href);
+    // Allow loading from within the app bundle only (encode properly — the
+    // app path may contain spaces or other URL-significant characters).
+    const appRoot = pathToFileURL(`${app.getAppPath()}/`);
+    return parsed.href.startsWith(appRoot.href);
   } catch {
     return false;
   }

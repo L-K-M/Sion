@@ -28,7 +28,7 @@ function createWindow(): void {
       webSecurity: true,
       // CJS preload (sandboxed preloads cannot use the ESM loader);
       // bundled by electron-vite to out/preload/index.cjs.
-      preload: join(__dirname, '../preload/index.cjs'),
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
       spellcheck: false,
     },
   });
@@ -46,7 +46,7 @@ function createWindow(): void {
     });
   } else {
     // electron-vite emits the renderer bundle to out/renderer/index.html.
-    win.loadFile(join(__dirname, '../renderer/index.html')).catch((err) => {
+    win.loadFile(join(import.meta.dirname, '../renderer/index.html')).catch((err) => {
       console.error('[main] renderer load failed:', err);
     });
   }

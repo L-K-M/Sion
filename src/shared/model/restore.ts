@@ -75,20 +75,20 @@ function coerceFontSize(v: unknown): NodeStyle['fontSize'] {
 function coerceNodeStyle(v: unknown): NodeStyle {
   const raw = isRecord(v) ? v : {};
   return {
-    fill: coerceString(raw['fill'], 'surface') || 'surface',
-    stroke: coerceString(raw['stroke'], 'ink') || 'ink',
+    fill: coerceString(raw['fill'], 'surface').slice(0, 64) || 'surface',
+    stroke: coerceString(raw['stroke'], 'ink').slice(0, 64) || 'ink',
     strokeWidth: coerceStrokeWidth(raw['strokeWidth']),
     fontSize: coerceFontSize(raw['fontSize']),
     textAlign: 'center',
   };
 }
 
-function coerceStringArray(v: unknown, cap = 64): string[] | undefined {
+function coerceStringArray(v: unknown, cap = 64, entryMax = 2048): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
   return v
     .filter((s): s is string => typeof s === 'string')
     .slice(0, cap)
-    .map((s) => s.slice(0, 2048));
+    .map((s) => s.slice(0, entryMax));
 }
 
 function coerceNodeMeta(v: unknown): ThalyxNode['meta'] {
@@ -102,8 +102,8 @@ function coerceNodeMeta(v: unknown): ThalyxNode['meta'] {
     mermaid: {
       ...(typeof m['id'] === 'string' ? { id: m['id'].slice(0, 512) } : {}),
       ...(typeof m['shape'] === 'string' ? { shape: m['shape'].slice(0, 128) } : {}),
-      ...(coerceStringArray(m['classes'], 64)
-        ? { classes: coerceStringArray(m['classes'], 64) }
+      ...(coerceStringArray(m['classes'], 64, 512)
+        ? { classes: coerceStringArray(m['classes'], 64, 512) }
         : {}),
       ...(coerceStringArray(m['styles'], 64) ? { styles: coerceStringArray(m['styles'], 64) } : {}),
       ...(typeof m['link'] === 'string' ? { link: m['link'].slice(0, 2048) } : {}),
@@ -176,7 +176,7 @@ function coerceEdge(raw: unknown): ThalyxEdge | null {
   const rawStyle = isRecord(raw['style']) ? (raw['style'] as Record<string, unknown>) : {};
   edge.style = {
     line: coerceEnum(rawStyle['line'], ['solid', 'dashed', 'thick'] as const, 'solid'),
-    stroke: coerceString(rawStyle['stroke'], 'ink') || 'ink',
+    stroke: coerceString(rawStyle['stroke'], 'ink').slice(0, 64) || 'ink',
     rounded: rawStyle['rounded'] !== false,
   };
   if (isRecord(raw['meta']) && isRecord(raw['meta']['mermaid'])) {
@@ -198,7 +198,7 @@ function coerceEdge(raw: unknown): ThalyxEdge | null {
 function coerceCanvas(raw: unknown): ThalyxDoc['canvas'] {
   const r = isRecord(raw) ? raw : {};
   return {
-    background: coerceString(r['background'], 'default') || 'default',
+    background: coerceString(r['background'], 'default').slice(0, 128) || 'default',
     grid: r['grid'] === true,
   };
 }
@@ -326,7 +326,7 @@ export function restoreDocument(raw: unknown): ThalyxDoc {
   const doc: ThalyxDoc = {
     type: 'thalyx',
     version: 1,
-    source: coerceString(raw_['source'], 'thalyx@0.0.0') || 'thalyx@0.0.0',
+    source: coerceString(raw_['source'], 'thalyx@0.0.0').slice(0, 128) || 'thalyx@0.0.0',
     nodes: ordered,
     edges,
     canvas: coerceCanvas(raw_['canvas']),

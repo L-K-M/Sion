@@ -122,8 +122,6 @@ describe('queries', () => {
     // move a under outer (abs 100,100):
     expect(positionUnderParent(doc, a, 'outer')).toEqual({ x: 60, y: 60 });
     // move a under c (abs 120,120):
-    const c = doc.nodes.find((n) => n.id === 'c')!;
-    expect(positionUnderParent(doc, a, 'c') === null).toBe(false);
-    void c;
+    expect(positionUnderParent(doc, a, 'c')).toEqual({ x: 40, y: 40 });
   });
 });

@@ -31,6 +31,8 @@ export function applyWebContentsSecurity(contents: WebContents): void {
   // Crash of the renderer: log and reload (document recovery handles state),
   // but stop after repeated consecutive crashes instead of looping forever.
   contents.on('render-process-gone', (_event, details) => {
+    // Normal shutdown reports here too — don't "recover" a quitting app.
+    if (details.reason === 'clean-exit') return;
     console.error(`[security] render-process-gone: ${details.reason} (${details.exitCode})`);
     const crashes = (crashCounts.get(contents) ?? 0) + 1;
     crashCounts.set(contents, crashes);
@@ -49,10 +51,14 @@ export function applyWebContentsSecurity(contents: WebContents): void {
   });
 }
 
-/** Only same-file loads of the packaged app may ever navigate. */
+/** Only the packaged app (or the dev server, in dev builds) may navigate. */
 export function isAllowedNavigation(url: string): boolean {
   try {
     const parsed = new URL(url);
+    // Dev: the renderer is served by electron-vite's HTTP dev server; allow
+    // same-origin navigation there (the initial loadURL never fires this).
+    const devUrl = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL'];
+    if (devUrl && parsed.origin === new URL(devUrl).origin) return true;
     if (parsed.protocol !== 'file:') return false;
     // Allow loading from within the app bundle only (encode properly — the
     // app path may contain spaces or other URL-significant characters).

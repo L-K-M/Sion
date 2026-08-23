@@ -1,8 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { _electron } from 'playwright';
+import { _electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 
 const repoRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..');
 const mainEntry = resolve(repoRoot, 'out/main/index.js');

@@ -15,11 +15,17 @@ import { flatten, scan } from './lib/licenses.mjs';
 const root = process.cwd();
 const rootName = JSON.parse(readFileSync(`${root}/package.json`, 'utf8')).name;
 
+// Platform/arch-specific optional deps (esbuild/rollup binaries, napi modules)
+// differ per OS — exclude them so the ledger (and the CI staleness diff) is
+// deterministic across macOS/Linux contributors.
+const PLATFORM_BINARY =
+  /^(@esbuild\/|@rollup\/rollup-|@napi-rs\/|@parcel\/watcher-|@swc\/core-|lightningcss-)/;
+
 const prod = flatten(await scan({ start: root, production: true })).filter(
-  (p) => p.name !== rootName,
+  (p) => p.name !== rootName && !PLATFORM_BINARY.test(p.name),
 );
 const dev = flatten(await scan({ start: root, development: true })).filter(
-  (p) => p.name !== rootName,
+  (p) => p.name !== rootName && !PLATFORM_BINARY.test(p.name),
 );
 
 const devByLicense = new Map();

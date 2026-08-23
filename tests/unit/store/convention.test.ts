@@ -40,7 +40,8 @@ describe('store mutation convention (§8.3)', () => {
 
   it('shared code never imports the renderer (renderer-free, §6)', () => {
     const offenders: string[] = [];
-    const importsRenderer = /(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"](?:\.\.\/)*renderer\//;
+    const importsRenderer =
+      /(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"](?:\.\.\/)*\.?\/?renderer\//;
     const importsRendererAbsolute =
       /(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"](?:src\/)?renderer\//;
     for (const file of walk(sharedRoot)) {

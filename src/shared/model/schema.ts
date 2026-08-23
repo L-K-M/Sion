@@ -84,7 +84,12 @@ export const thalyxEdgeSchema = z.object({
   arrowEnd: z.enum(ARROW_HEADS as unknown as [string, ...string[]]),
   hidden: z.boolean().optional(),
   waypoints: z
-    .array(z.object({ x: z.number().finite(), y: z.number().finite() }))
+    .array(
+      z.object({
+        x: z.number().finite().min(COORD_MIN).max(COORD_MAX),
+        y: z.number().finite().min(COORD_MIN).max(COORD_MAX),
+      }),
+    )
     .max(64)
     .optional(),
   style: edgeStyleSchema,

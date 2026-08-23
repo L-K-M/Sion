@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resetStore, getStore } from '../../../src/renderer/store/store';
 import * as A from '../../../src/renderer/store/actions';
 import { absolutePosition, descendantsOf } from '../../../src/shared/model/queries';
-import { newNode } from '../../../src/shared/model/create';
+import { newEdge, newNode } from '../../../src/shared/model/create';
 import type { ThalyxDoc } from '../../../src/shared/model/types';
 
 function doc(): ThalyxDoc {
@@ -350,15 +350,34 @@ describe('gestures & transient updates', () => {
 });
 
 describe('doc-level actions', () => {
-  it('toggleGrid / setCanvas / setDirection are tracked', () => {
+  it('toggleGrid / setCanvas / setDirection are tracked and undoable', () => {
     A.toggleGrid();
     expect(doc().canvas.grid).toBe(true);
     A.undo();
     expect(doc().canvas.grid).toBe(false);
+
     A.setDirection('LR');
     expect(doc().meta.mermaid?.direction).toBe('LR');
+    A.undo();
+    expect(doc().meta.mermaid?.direction).toBe('TB');
+
     A.setCanvas({ background: '#fff' });
     expect(doc().canvas.background).toBe('#fff');
+    A.undo();
+    expect(doc().canvas.background).toBe('default');
+  });
+
+  it('paste drops dangling parentIds and unresolvable edge endpoints', () => {
+    const a = newNode({ id: 'clip-a', x: 0, y: 0, label: 'A' });
+    const orphan = newNode({ id: 'clip-orphan', x: 50, y: 0, label: 'O', parentId: 'not-in-clip' });
+    const edgeIn = { ...newEdge({ id: 'clip-e1', source: 'clip-a', target: 'clip-orphan' }) };
+    const edgeOut = { ...newEdge({ id: 'clip-e2', source: 'clip-a', target: 'elsewhere' }) };
+    A.pasteInternal([a, orphan], [edgeIn, edgeOut]);
+    const s = getStore();
+    expect(s.doc.nodes.length).toBe(2);
+    expect(s.doc.nodes.every((n) => n.parentId === undefined)).toBe(true); // dangling dropped
+    expect(s.doc.edges.length).toBe(1); // unresolvable endpoint dropped
+    expect(s.doc.edges[0]!.source).toBe(s.doc.nodes.find((n) => n.label === 'A')!.id);
   });
 
   it('session setters do not create history entries', () => {

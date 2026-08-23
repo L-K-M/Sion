@@ -238,14 +238,13 @@ function coerceMeta(raw: unknown): ThalyxDoc['meta'] {
 function parentDepth(nodes: Map<string, ThalyxNode>, id: string): number {
   let depth = 0;
   let cursor: string | undefined = id;
-  const seen = new Set<string>();
+  const seen = new Set<string>(); // terminates cycles — no depth cap needed
   while (cursor !== undefined) {
     const node = nodes.get(cursor);
     if (!node || seen.has(cursor)) break;
     seen.add(cursor);
     cursor = node.parentId;
     depth += 1;
-    if (depth > MAX_PARENT_DEPTH) break;
   }
   return depth - 1 < 0 ? 0 : depth - 1;
 }

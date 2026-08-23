@@ -65,7 +65,12 @@ function transient(producer: Producer): void {
   setStore((s) => {
     const next = produce(s.doc, producer);
     if (next === s.doc) return s; // nothing changed — do not dirty the doc
-    return { doc: next, session: { ...s.session, dirtySinceSave: true } };
+    return {
+      doc: next,
+      // Any doc change invalidates redo; the in-flight gesture (pending) is kept.
+      history: { ...s.history, future: [] },
+      session: { ...s.session, dirtySinceSave: true },
+    };
   });
 }
 
@@ -265,17 +270,23 @@ function reIdSubgraph(
     id: idMap.get(n.id)!,
     x: n.x + dx,
     y: n.y + dy,
-    parentId: n.parentId !== undefined ? remapId(n.parentId) : undefined,
+    // Containment must stay within the pasted subgraph — a parentId pointing
+    // outside it would dangle (invariant §7.2.2).
+    parentId:
+      n.parentId !== undefined && idMap.has(n.parentId) ? idMap.get(n.parentId)! : undefined,
     meta: n.meta ? JSON.parse(JSON.stringify(n.meta)) : undefined,
   }));
-  const newEdges = edges.map((e) => ({
-    ...e,
-    id: newId(),
-    source: remapId(e.source),
-    target: remapId(e.target),
-    waypoints: e.waypoints?.map((p) => ({ ...p })),
-    meta: e.meta ? JSON.parse(JSON.stringify(e.meta)) : undefined,
-  }));
+  // Edges must resolve inside the pasted subgraph (invariant §7.2.1).
+  const newEdges = edges
+    .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+    .map((e) => ({
+      ...e,
+      id: newId(),
+      source: remapId(e.source),
+      target: remapId(e.target),
+      waypoints: e.waypoints?.map((p) => ({ ...p })),
+      meta: e.meta ? JSON.parse(JSON.stringify(e.meta)) : undefined,
+    }));
   return { nodes: newNodes, edges: newEdges };
 }
 
@@ -332,10 +343,9 @@ export function alignSelection(edge: AlignEdge): void {
     const sel = getStore().session;
     const nodes = d.nodes.filter((n) => sel.selection.nodeIds.includes(n.id) && !n.locked);
     if (nodes.length < 2) return;
-    const abs = nodes.map((n) => ({ n, p: absolutePosition(d, n) }));
     const bounds = boundsOfNodes(d, nodes);
     if (!bounds) return;
-    for (const { n } of abs) {
+    for (const n of nodes) {
       let target: number;
       switch (edge) {
         case 'left':
@@ -589,8 +599,9 @@ export function updateEdge(
   tracked((d) => {
     const e = d.edges.find((x) => x.id === id);
     if (!e) return;
-    if (patch.label !== undefined) patch.label = patch.label.slice(0, LABEL_MAX);
-    Object.assign(e, patch);
+    const p = { ...patch }; // never mutate the caller's object
+    if (p.label !== undefined) p.label = p.label.slice(0, LABEL_MAX);
+    Object.assign(e, p);
     if (e.labelT !== undefined) e.labelT = Math.min(1, Math.max(0, e.labelT));
   });
 }

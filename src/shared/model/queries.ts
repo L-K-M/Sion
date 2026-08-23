@@ -32,9 +32,11 @@ export function childrenOf(doc: ThalyxDoc, parentId: string): ThalyxNode[] {
 /** All descendants (children, recursively), in array order. */
 export function descendantsOf(doc: ThalyxDoc, id: string): ThalyxNode[] {
   const out: ThalyxNode[] = [];
+  const visited = new Set<string>([id]); // cycle guard (defensive)
   const walk = (pid: string) => {
     for (const n of doc.nodes) {
-      if (n.parentId === pid) {
+      if (n.parentId === pid && !visited.has(n.id)) {
+        visited.add(n.id);
         out.push(n);
         if (n.kind === 'container') walk(n.id);
       }

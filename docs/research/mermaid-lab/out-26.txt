@@ -1,0 +1,5 @@
+pipe-in-edge-label OK "a | b"
+pipe-in-node-label OK "a | b"
+bracket-in-node-label OK "a ] b"
+paren-in-quoted OK "f(x)"
+backslash OK "c:\\temp\\x"

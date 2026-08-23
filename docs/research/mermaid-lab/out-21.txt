@@ -1,0 +1,15 @@
+{"case":"br-in-quotes","line":"A[\"line1<br>line2\"]","result":"OK","rawText":"line1<br>line2","decoded":"line1<br>line2","labelType":"string"}
+{"case":"br-selfclose","line":"A[\"line1<br/>line2\"]","result":"OK","rawText":"line1<br>line2","decoded":"line1<br>line2","labelType":"string"}
+{"case":"amp-in-quotes","line":"A[\"a & b\"]","result":"OK","rawText":"a & b","decoded":"a & b","labelType":"string"}
+{"case":"literal-amp-entity","line":"A[\"AT&amp;T\"]","result":"OK","rawText":"AT&amp;T","decoded":"AT&amp;T","labelType":"string"}
+{"case":"literal-lt-entity","line":"A[\"5 &lt; 6\"]","result":"OK","rawText":"5 &lt; 6","decoded":"5 &lt; 6","labelType":"string"}
+{"case":"quot-escape","line":"A[\"say #quot;hi#quot;\"]","result":"OK","rawText":"say ﬂ°quot¶ßhiﬂ°quot¶ß","decoded":"say &quot;hi&quot;","labelType":"string"}
+{"case":"hash-35","line":"A[\"100#35; done\"]","result":"OK","rawText":"100ﬂ°°35¶ß done","decoded":"100&#35; done","labelType":"string"}
+{"case":"raw-hash","line":"A[\"#1 item\"]","result":"OK","rawText":"#1 item","decoded":"#1 item","labelType":"string"}
+{"case":"raw-lt","line":"A[\"x < y\"]","result":"OK","rawText":"x &lt; y","decoded":"x &lt; y","labelType":"string"}
+{"case":"bold-tag","line":"A[\"a <b>bold</b> claim\"]","result":"OK","rawText":"a <b>bold</b> claim","decoded":"a <b>bold</b> claim","labelType":"string"}
+{"case":"edge-label-quoted","line":"A -->|\"a & b\"| B","result":"OK","rawText":"A","decoded":"A","labelType":"text","edgeRawText":"a & b","edgeDecoded":"a & b"}
+{"case":"edge-label-quot-esc","line":"A -->|\"say #quot;hi#quot;\"| B","result":"OK","rawText":"A","decoded":"A","labelType":"text","edgeRawText":"say ﬂ°quot¶ßhiﬂ°quot¶ß","edgeDecoded":"say &quot;hi&quot;"}
+{"case":"edge-label-br","line":"A -->|\"l1<br>l2\"| B","result":"OK","rawText":"A","decoded":"A","labelType":"text","edgeRawText":"l1<br>l2","edgeDecoded":"l1<br>l2"}
+{"case":"subgraph-quoted-title","result":"OK","title":"Group ﬂ°quot¶ßOneﬂ°quot¶ß & Co","decoded":"Group &quot;One&quot; & Co","labelType":"string"}
+{"case":"literal-newline","line":"A[\"line1\nline2\"]","result":"OK","rawText":"line1\nline2","decoded":"line1\nline2","labelType":"string"}

@@ -1,0 +1,26 @@
+1. {"line":"A -- B","result":"PARSE_ERROR","message":"Parse error on line 4: | ...wchart TD  A -- B | --------------------^"}
+1. {"line":"A == B","result":"PARSE_ERROR","message":"Parse error on line 4: | ...wchart TD  A == B | --------------------^"}
+1. {"line":"A -. B","result":"PARSE_ERROR","message":"Parse error on line 4: | ...wchart TD  A -. B | --------------------^"}
+1. {"line":"A ~~ B","result":"PARSE_ERROR","message":"Lexical error on line 2. Unrecognized text. | flowchart TD  A ~~ B | ----------------^"}
+2. {"line":"A -.--> B","result":"PARSE_ERROR","message":"Parse error on line 4: | ...art TD  A -.--> B | --------------------^"}
+2. {"line":"A --.-> B","result":"PARSE_ERROR","message":"Parse error on line 4: | ...art TD  A --.-> B | --------------------^"}
+2. {"line":"A -.-- B","result":"PARSE_ERROR","message":"Parse error on line 2: | ...owchart TD  A -.-- B | ----------------------^"}
+2. {"line":"A -...-> B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_point","stroke":"dotted","length":3,"id":"L_A_B_0"}]}
+2. {"line":"A -...- B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_open","stroke":"dotted","length":3,"id":"L_A_B_0"}]}
+3. {"line":"A ==-> B","result":"PARSE_ERROR","message":"Parse error on line 4: | ...hart TD  A ==-> B | --------------------^"}
+3. {"line":"A --=> B","result":"PARSE_ERROR","message":"Parse error on line 4: | ...hart TD  A --=> B | --------------------^"}
+4. {"line":"A --> B\n  A --> B\n  A -->|x| B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_point","stroke":"normal","length":1,"id":"L_A_B_0"},{"start":"A","end":"B","type":"arrow_point","stroke":"normal","length":1,"id":"L_A_B_2"},{"start":"A","end":"B","type":"arrow_point","stroke":"normal","length":1,"id":"L_A_B_3"}]}
+5. {"result":"OK","link":"https://example.com/","tooltip":"tool tip"}
+6. {"frontmatterParse":{"diagramType":"flowchart-v2","config":{}}}
+7. {"line":"A ~~~|ghost| B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_open","stroke":"invisible","length":1,"id":"L_A_B_0"}]}
+8. {"line":"A ---oK","result":"OK","edges":[{"start":"A","end":"K","type":"arrow_circle","stroke":"normal","length":2,"id":"L_A_K_0"}]}
+8. {"line":"A ---xK","result":"OK","edges":[{"start":"A","end":"K","type":"arrow_cross","stroke":"normal","length":2,"id":"L_A_K_0"}]}
+8. {"line":"B --oK","result":"OK","edges":[{"start":"B","end":"K","type":"arrow_circle","stroke":"normal","length":1,"id":"L_B_K_0"}]}
+8. {"line":"A --- ok[Okay]","result":"OK","edges":[{"start":"A","end":"ok","type":"arrow_open","stroke":"normal","length":1,"id":"L_A_ok_0"}]}
+9. {"line":"A ---> B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_point","stroke":"normal","length":2,"id":"L_A_B_0"}]}
+9. {"line":"A ---- B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_open","stroke":"normal","length":2,"id":"L_A_B_0"}]}
+9. {"line":"A -..-> B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_point","stroke":"dotted","length":2,"id":"L_A_B_0"}]}
+9. {"line":"A -..- B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_open","stroke":"dotted","length":2,"id":"L_A_B_0"}]}
+9. {"line":"A ===> B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_point","stroke":"thick","length":2,"id":"L_A_B_0"}]}
+9. {"line":"A ==== B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_open","stroke":"thick","length":2,"id":"L_A_B_0"}]}
+9. {"line":"A ~~~~ B","result":"OK","edges":[{"start":"A","end":"B","type":"arrow_open","stroke":"invisible","length":2,"id":"L_A_B_0"}]}

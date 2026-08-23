@@ -1,0 +1,7 @@
+A. flowchart-elk TD → type: flowchart-elk
+B. subgraph w/ direction stmt: [{"id":"SG1","nodes":["B","A"],"title":"T","classes":[],"dir":"LR","labelType":"string"}]
+C. id=Style OK
+C. id=Class OK
+C. id=Graph OK
+C. id=End OK
+C. id=Subgraph OK

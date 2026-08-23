@@ -98,11 +98,11 @@ Do not relitigate these during implementation.
 | D8 | Minimap | **Not rendered.** Do not mount React Flow's `<MiniMap/>`. | Zoom-to-fit (`Shift+1`) + zoom-to-selection (`Shift+2`) replace it; none of the "fast" tools ship one. |
 | D9 | Mermaid parse init sequence | Canonical sequence (verified in the lab): **(1)** in tests only: install jsdom globals *before* dynamically importing mermaid; **(2)** `await mermaid.parse(text, {suppressErrors: true})` — returns `false` on invalid input and, critically, registers the lazy diagram detectors; **(3)** `await mermaid.mermaidAPI.getDiagramFromText(text)` → `{type, db}`. | The alternative single-call `registerExternalDiagrams([], {lazyLoad:false})` init also works, but the lab-verified parse-first sequence is the one with real output dumps behind it; standardize on it. In the app, parsing runs in the **renderer** (real Chromium DOM — no jsdom shims needed at runtime; jsdom is test-only). |
 | D10 | mermaid `htmlLabels` | **`htmlLabels: false` always** (`mermaid.initialize({ flowchart: { htmlLabels: false }, htmlLabels: false, ... })`). | Makes rendered preview SVGs self-contained `<text>` (no `foreignObject>`), which exports cleanly and behaves identically everywhere. |
-| D11 | PDF export | **`svg2pdf.js` + `jsPDF` (both MIT), driven from the model-rendered SVG.** Electron's `webContents.printToPDF` exists but is only wired to the "Print…" menu item, never to "Export as PDF". | Vector fidelity + one export pipeline for all formats. (The research note's "never webview print-to-PDF" rule was a Tauri-specific argument; under Electron the choice is re-justified here on fidelity/pipeline-unity grounds.) |
+| D11 | PDF export | **`svg2pdf.js` + `jsPDF` (both MIT), driven from the model-rendered SVG.** The "Print…" menu item uses `webContents.print()` (native print dialog); `webContents.printToPDF` is not used anywhere. | Vector fidelity + one export pipeline for all formats. (The research note's "never webview print-to-PDF" rule was a Tauri-specific argument; under Electron the choice is re-justified here on fidelity/pipeline-unity grounds.) |
 | D12 | Edge geometry authority | Edge geometry is **always derived** for attached endpoints. Optional user waypoints (`waypoints[]`) exist only for manually adjusted routes and are **cleared whenever either endpoint node moves or resizes**. The Mermaid exporter ignores geometry entirely. | One simple invalidation rule beats incremental route-repair; keeps export pure. |
 | D13 | Where positions live across round-trip | Positions live **only in `.thalyx` files**. Exported `.mmd` is pure logic — no coordinate comments/frontmatter smuggling. Re-importing text into an *open* document goes through `reconcileDocument()` (§9.6), which preserves positions of matched nodes. A fresh import of a `.mmd` file gets auto-layout. | Keeps exported Mermaid idiomatic and diff-friendly; hand-tuned layout is preserved through the reconcile path, which is the path users actually use. |
 | D14 | Mermaid diagram-type scope | **Flowcharts: full native round-trip (import + export) in MVP.** **Every other Mermaid type: imported as a live "Mermaid island" node** (rendered SVG whose source text stays editable in a dialog). State-diagram *native* import/export is the first post-MVP target (M9); sequence/class/ER native support is v2+. | Flowcharts are ~the whole graph-editing use case and FlowDB is the richest verified surface. Islands give *meaningful* day-one support for all 40 diagram types without inventing canvas UX for lifelines/compartments now. |
-| D15 | Grow-gesture & keymap conflicts | Keymap in §10.2 is final. Notables: `Mod+Arrow` grow (gated off while text-editing, so macOS `Cmd+Arrow` text navigation is unaffected); Tidy Up = **`Alt+Shift+T`** (NOT Figma's `Ctrl+Alt+T`, which launches a terminal on Ubuntu/GNOME); Auto-layout = `Alt+Shift+L`; theme = `Shift+Alt+D`. | OS conflicts checked per-platform; see §10.2. |
+| D15 | Grow-gesture & keymap conflicts | Keymap in §10.2 is final. Notables: `Mod+Arrow` grow (gated off while text-editing, so macOS `Cmd+Arrow` text navigation is unaffected); Tidy Up = **`Alt+Shift+T`** (NOT Figma's `Ctrl+Alt+T`, which launches a terminal on Ubuntu/GNOME); Auto-layout = `Alt+Shift+L`; theme = `Shift+Alt+D`; Mermaid panel = **`Mod+Shift+M`** (`Mod+M` is consumed by the app's own Window→Minimize menu role). Chords containing `Alt`, and `Shift`+digit chords, must be matched on `e.code` — see the §10.2 implementation note. | OS/self conflicts checked per-platform; see §10.2. |
 | D16 | Mermaid version | **Pin `mermaid` exactly (`11.17.0`, no caret)**. Upgrades only via the golden-corpus gate (§15). | Every db property name Thalyx relies on is internal, semver-unprotected API, verified against exactly 11.17.0. |
 | D17 | dompurify license arm | Thalyx elects the **Apache-2.0 arm** of dompurify's `MPL-2.0 OR Apache-2.0` dual license (it arrives as a mermaid transitive dep and is also used directly for island-SVG sanitization). Record in `THIRD_PARTY_LICENSES.md`. | Keeps the dependency ledger permissive-only. |
 | D18 | Windows | **Out of scope for this plan.** Nothing may *preclude* it (avoid mac/linux-only APIs where an equivalent exists), but no Windows CI, packaging, or testing. | User requirement is Mac + Linux. |
@@ -174,8 +174,9 @@ requiring keys/watermarks. Concretely banned packages that research evaluated an
 **Rules for the implementer:**
 
 1. **CI license gate** (M0): `scripts/check-licenses.mjs` runs `license-checker-rseidelsohn`
-   over production deps against the allowlist and fails the build otherwise. Dual-licensed
-   packages resolve via an explicit elections map in the script (initially:
+   twice — over **production deps (violations FAIL the build)** and over dev deps (violations
+   print a WARNING report only; dev toolchains drag in odd transitive licenses that never ship).
+   Dual-licensed packages resolve via an explicit elections map in the script (initially:
    `dompurify → Apache-2.0`).
 2. **`THIRD_PARTY_LICENSES.md`** is generated by `scripts/gen-third-party-licenses.mjs` (same
    library) and surfaced in the About dialog. Regenerate whenever deps change.
@@ -273,7 +274,7 @@ thalyx/
 │   │   ├── mermaid/
 │   │   │   ├── detect.ts        # isProbablyMermaid(text) (§9.7)
 │   │   │   ├── import.ts        # importMermaid(text) → ImportResult (§9.3)
-│   │   │   ├── export.ts        # exportMermaid(doc | selection) → string (§9.4)
+│   │   │   ├── export.ts        # exportMermaid(doc, {selection?}) → {text, idAssignments} — pure (§9.4)
 │   │   │   ├── reconcile.ts     # reconcileDocument(doc, imported) (§9.6)
 │   │   │   ├── entities.ts      # placeholder decode / entity encode (§9.2)
 │   │   │   └── tables.ts        # arrow/shape/LINETYPE mapping tables (§9.2)
@@ -354,8 +355,11 @@ export interface NodeStyle {
   strokeWidth: 1 | 2 | 4;                 // thin | medium | bold
   fontSize: 12 | 14 | 18 | 24;            // S | M | L | XL
   textAlign: 'center';                    // reserved; only center in MVP
-  corner: 'sharp' | 'round';              // rect only
 }
+// NOTE: there is deliberately NO corner-radius style property. Sharp vs rounded rectangles are
+// two ShapeKinds ('rect' vs 'rounded') — one representation only, so Mermaid export ([x] vs (x))
+// can never disagree with what the canvas shows. The context panel's sharp/round toggle swaps
+// the ShapeKind between 'rect' and 'rounded' (shown only for those two kinds).
 
 export interface ThalyxNode {
   id: NodeId;
@@ -384,6 +388,7 @@ export interface NodeMeta {
     link?: string;          // click href
     tooltip?: string;
     labelType?: 'text' | 'string' | 'markdown';
+    dir?: 'TB' | 'BT' | 'LR' | 'RL';  // containers only: subgraph-local `direction` (round-tripped)
   };
 }
 
@@ -451,7 +456,12 @@ them; raw hex is allowed (from mermaid imports / custom picker) and renders as-i
    `dangerouslySetInnerHTML` for labels).
 5. Islands (`kind:'mermaid'`) never participate in edges.
 6. All numbers finite; width/height ≥ 8.
-   `restoreDocument()` (§7.5) clamps/repairs all of these on load.
+7. **Re-parenting preserves absolute position.** Because child coordinates are parent-relative,
+   *every* code path that changes a node's `parentId` (drag-across-container re-parent in §11.1,
+   `groupIntoContainer`/`dissolveContainer`, reconcile §9.6 step 1) must convert the stored
+   `x/y` so the node's absolute canvas position is unchanged
+   (`abs = own + Σ ancestor offsets`; recompute relative under the new parent).
+   `restoreDocument()` (§7.5) clamps/repairs invariants 1–6 on load.
 
 ### 7.3 Shape rendering
 
@@ -518,7 +528,10 @@ interface StoreState {
     filePath: string | null;
     dirtySinceSave: boolean;
     selection: { nodeIds: NodeId[]; edgeIds: EdgeId[] };
-    tool: 'select' | 'rect' | 'ellipse' | 'diamond' | 'arrow' | 'line' | 'text' | 'container' | 'hand';
+    tool: 'select' | 'shape' | 'arrow' | 'line' | 'text' | 'container' | 'hand';
+    pendingShape: ShapeKind;          // which shape the 'shape' tool places (toolbar buttons and
+                                      // R/O/D set tool:'shape' + this; lets the toolbar offer
+                                      // rect/rounded/ellipse/diamond/cylinder with one tool)
     toolLocked: boolean;
     editingLabel: { kind: 'node' | 'edge'; id: string } | null;
     viewport: { x: number; y: number; zoom: number };
@@ -569,11 +582,18 @@ Every doc mutation is a named function in `actions.ts` taking/returning plain da
 `tracked(fn)` (history commit) or `transient(fn)` (drag frames). Initial catalog — implement
 exactly these, add sparingly:
 
-`addNode, updateNodeLabel, updateNodeStyle, moveNodes(transient+gesture), resizeNode(gesture),
-setNodesPosition, deleteSelection, duplicateSelection, addEdge, updateEdge, setEdgeWaypoints(gesture),
-clearEdgeWaypoints, reorderZ(op: 'forward'|'backward'|'front'|'back'), groupIntoContainer,
-dissolveContainer, setCanvas, importMermaidAsNew, applyMermaidText(reconcile), autoLayout, tidyUp,
-pasteInternal, toggleGrid`.
+`addNode, updateNodeLabel, updateNodeStyle, setNodeShape, setNodeLocked, moveNodes(transient+gesture),
+resizeNode(gesture), setNodesPosition, deleteSelection, duplicateSelection,
+alignSelection(edge: 'left'|'hcenter'|'right'|'top'|'vcenter'|'bottom'), addEdge, updateEdge,
+setEdgeWaypoints(gesture), clearEdgeWaypoints, reorderZ(op: 'forward'|'backward'|'front'|'back'),
+groupIntoContainer, dissolveContainer, setCanvas, setDirection(dir), importMermaidAsNew,
+applyMermaidText(reconcile), autoLayout, tidyUp, pasteInternal, toggleGrid`.
+
+One deliberate exception to history tracking: **`ensureMermaidIds`** applies the id assignments
+returned by `exportMermaid` (§9.4 step 1) to `meta.mermaid.id`. It is **untracked** — it creates
+no history entry (it is idempotent bookkeeping metadata, a fixpoint after one pass, and it can be
+triggered by merely *viewing* the Mermaid panel, which must never pollute undo). It is the only
+untracked doc mutation in the app; document it with a comment at the definition.
 
 ---
 
@@ -588,7 +608,7 @@ file is the regression reference; if any assertion here surprises you, check the
 
 ```ts
 // src/renderer/mermaid/runtime.ts
-import mermaid from 'mermaid';
+import mermaid, { type MermaidConfig } from 'mermaid';
 mermaid.initialize({
   startOnLoad: false,
   securityLevel: 'strict',
@@ -598,7 +618,7 @@ mermaid.initialize({
 });
 
 export async function parseMermaid(text: string): Promise<
-  | { ok: true; diagramType: string; config: Record<string, unknown>; db: any }
+  | { ok: true; diagramType: string; config: MermaidConfig; db: any }   // MermaidConfig, not Record — strict TS rejects the interface→Record assignment
   | { ok: false; error: { message: string; line?: number; col?: number; expected?: string[] } }
 > {
   const res = await mermaid.parse(text, { suppressErrors: true }); // false on invalid; ALSO registers lazy detectors (D9)
@@ -641,51 +661,87 @@ dir?, labelType }]` (nested subgraphs: inner id appears in outer's `nodes`). `db
 → `'TB'|'BT'|'LR'|'RL'` (`TD` normalizes to `TB`). `db.getClasses()` → Map of classDefs.
 `db.getTooltip(id)` for tooltips.
 
-**Arrow mapping (verified, complete):**
+**Arrow mapping — two orthogonal lookups (import) plus a closed emit table (export).**
+Every entry below was parse-verified against 11.17.0 (`docs/research/mermaid-lab/out-20.txt`,
+`out-23.txt`). The db's `type` and `stroke` vary independently, so the **import** mapping is two
+composable lookups (never a single syntax table — real inputs like `-.-o` combine them):
 
-| mermaid syntax | `type` | `stroke` | Thalyx (arrowStart, arrowEnd, line, hidden) |
-|---|---|---|---|
-| `-->` | `arrow_point` | `normal` | none, arrow, solid |
-| `---` | `arrow_open` | `normal` | none, none, solid |
-| `-.->` | `arrow_point` | `dotted` | none, arrow, dashed |
-| `-.-` | `arrow_open` | `dotted` | none, none, dashed |
-| `==>` | `arrow_point` | `thick` | none, arrow, thick |
-| `===` | `arrow_open` | `thick` | none, none, thick |
-| `--o` | `arrow_circle` | `normal` | none, circle, solid |
-| `--x` | `arrow_cross` | `normal` | none, cross, solid |
-| `<-->` | `double_arrow_point` | `normal` | arrow, arrow, solid |
-| `o--o` | `double_arrow_circle` | `normal` | circle, circle, solid |
-| `x--x` | `double_arrow_cross` | `normal` | cross, cross, solid |
-| `~~~` | `arrow_open` | `invisible` | none, none, solid, hidden:true |
-| `---->` (extra dashes) | | `length: dashes-1` | store `meta.mermaid.minlen` |
-| `A e1@--> B` | | `id:'e1', isUserDefinedId:true` | store `meta.mermaid.id` |
+```ts
+// db edge.type → (arrowStart, arrowEnd)
+arrow_point:(none,arrow)  arrow_open:(none,none)  arrow_circle:(none,circle)
+arrow_cross:(none,cross)  double_arrow_point:(arrow,arrow)
+double_arrow_circle:(circle,circle)  double_arrow_cross:(cross,cross)
+// db edge.stroke → (line, hidden)
+normal:(solid,–)  dotted:(dashed,–)  thick:(thick,–)  invisible:(solid, hidden:true)
+// db edge.length L > 1 → meta.mermaid.minlen = L
+```
 
-Edge labels from `-->|lbl|` or `--lbl-->` land in `edge.text` identically. Auto edge ids look
-like `L_A_B_0` — synthetic; never persist them as `meta.mermaid.id`.
+**Export emit table** — keyed by `(line, arrowStart, arrowEnd)`; these 22 syntaxes are the ONLY
+arrow bodies the exporter may emit (each one parse-verified; anything else, e.g. a bare `A -- B`
+or `A == B`, is a **hard parse error**):
+
+| line \ heads | (none,none) | (none,arrow) | (none,circle) | (none,cross) | (arrow,arrow) | (circle,circle) | (cross,cross) |
+|---|---|---|---|---|---|---|---|
+| solid | `---` | `-->` | `--o` | `--x` | `<-->` | `o--o` | `x--x` |
+| dashed | `-.-` | `-.->` | `-.-o` | `-.-x` | `<-.->` | `o-.-o` | `x-.-x` |
+| thick | `===` | `==>` | `==o` | `==x` | `<==>` | `o==o` | `x==x` |
+
+plus `~~~` for `hidden:true` (whatever the heads — hidden edges carry no arrowheads in mermaid).
+
+**Degrade rule** for head pairs outside this table (asymmetric pairs with `arrowStart ≠ 'none'`
+and `arrowStart ≠ arrowEnd`, e.g. circle→arrow): emit `(none, arrowEnd)` — keep the target head,
+drop the source head. This rule is also the canonicalization used by the round-trip tests
+(§15.1).
+
+**minlen extension**: repeat the line's *middle* character — solid `-`, dashed `.`, thick `=`,
+hidden `~` — an extra `(minlen − 1)` times; no extension when minlen is absent or 1. Verified
+examples for minlen 2: `--->`, `----`, `-..->`, `-..-`, `===>`, `====`, `~~~~` (all parse with
+`length: 2`). Never insert extra dashes into dashed/thick/hidden bodies — `-.-->`, `==->` etc.
+are parse errors.
+
+Edge labels from `-->|lbl|` or `--lbl-->` land in `edge.text` identically; the exporter always
+uses the `|lbl|` form. User edge ids: `A e1@--> B` (the `id@` sits between source and arrow;
+verified to compose with every line style). Auto edge ids look like `L_A_B_0` — synthetic; never
+persist them as `meta.mermaid.id`.
 
 **Entity placeholders (critical gotcha).** `#quot;` etc. surface in db `text` as internal
 placeholders. Decode on import (verbatim from mermaid's own `decodeEntities`):
 
 ```ts
-export const decodePlaceholders = (t: string) =>
-  t.replace(/ﬂ°°/g, '&#').replace(/ﬂ°/g, '&').replace(/¶ß/g, ';');
-// then decode standard HTML entities (&quot; &#9829; &amp; &lt;) to plain characters
+export const decodeMermaidLabel = (t: string) => htmlEntityDecodeOnce(
+    t.replace(/ﬂ°°/g, '&#').replace(/ﬂ°/g, '&').replace(/¶ß/g, ';'))
+  .replace(/<br\s*\/?>/gi, '\n');
+// 1. placeholder decode (mermaid's own inverse), 2. EXACTLY ONE HTML-entity-decode pass
+//    (&quot; &#9829; &amp; &lt; → characters — a recursive decoder would re-break '&amp;lt;'),
+// 3. <br>/<br/> → '\n' (mermaid normalizes <br/> to <br>; without this step multi-line labels
+//    round-trip as the literal text 'line1<br>line2').
 ```
 
-Skipping this **silently corrupts every label containing quotes** — it is covered by a mandatory
-corpus test.
+Skipping the placeholder decode **silently corrupts every label containing quotes**; skipping the
+`<br>` step corrupts every multi-line label — both are covered by mandatory corpus tests.
 
 **Export escaping (verified).** A raw `"` in a label is a hard parse error and backslash escapes
-don't exist. Serializer label rule:
+don't exist. Serializer label rule — **replacement order matters**:
 
 ```ts
 export const encodeLabel = (s: string) =>
-  '"' + s.replace(/#/g, '#35;').replace(/"/g, '#quot;').replace(/\n/g, '<br>') + '"';
-// ALWAYS quote labels (unquoted parens etc. are parse errors)
+  '"' + s.replace(/#/g, '#35;')      // 1. first, so later entities' own '#' isn't re-escaped
+         .replace(/&/g, '#38;')      // 2. '&' MUST be escaped: import entity-decodes once, so a
+                                     //    literal 'AT&T' or '5 &lt; 6' would otherwise corrupt
+         .replace(/"/g, '#quot;')    // 3. the only quote mechanism (\" is a parse error)
+         .replace(/\n/g, '<br>')     // 4. newlines
+  + '"';
+// ALWAYS wrap in quotes (unquoted parens etc. are parse errors)
+// Verified round-trip example (out-24.txt): '5 &lt; 6' → emit '5 #38;lt; 6' → db raw
+// '5 ﬂ°°38¶ßlt; 6' → placeholder-decode '5 &#38;lt; 6' → one entity pass → '5 &lt; 6' ✓
 ```
 
-**Mermaid-safe ids.** Generate exporter ids matching `[A-Za-z_][A-Za-z0-9_]*`; never emit the id
-`end` (breaks flowcharts) or ids whose leading `o`/`x` could fuse with `---` arrows.
+**Mermaid-safe ids.** Generate exporter ids matching `[A-Za-z_][A-Za-z0-9_]*`, excluding this
+**case-sensitive blocklist** (each verified to be a parse error as a node id, `out-24.txt`):
+`end, style, class, classDef, click, subgraph, graph, flowchart, linkStyle` — on collision (or a
+blocklisted derivation) append `_`. Capitalized forms (`End`, `Style`, …) and `direction`,
+`default`, `o`, `x` are safe as ids, but avoid emitting ids whose leading `o`/`x` could fuse
+with an adjacent arrow body (`A ---oK` parses as a circle-arrow to `K`).
 
 **Sequence LINETYPE table** (needed for island tooltips now, native sequence later — embed the
 FULL table; the abbreviated one in `mermaid-api.md` is missing 26–34):
@@ -709,16 +765,21 @@ importMermaid(text) →
    `doc.meta.mermaid.frontmatter` (the parse still receives the full text — mermaid handles
    frontmatter itself; we only *remember* it).
 2. `parseMermaid(text)`. Invalid → `error` (show message + line/col in UI).
-3. `diagramType === 'flowchart-v2'` (covers both `graph` and `flowchart` sources) → **native
-   import**:
+3. `diagramType === 'flowchart-v2' || diagramType === 'flowchart-elk'` (both use FlowDB; `graph`
+   and `flowchart` sources both report `flowchart-v2`, a `flowchart-elk` header reports
+   `flowchart-elk` — verified `out-25.txt`) → **native import**:
    - Vertices → `ThalyxNode` (`kind:'shape'`): shape via §7.3 table; label =
-     `decode(vertex.text)`; `meta.mermaid = { id, shape?, classes, styles, link, tooltip:
-     db.getTooltip(id), labelType }`. Map recognizable `styles` entries (`fill:`, `stroke:`,
-     `stroke-width:`) into `NodeStyle`; keep the raw strings too.
-   - Subgraphs → `ThalyxNode` (`kind:'container'`, label = title, `meta.mermaid.id = sg.id`);
-     membership (`sg.nodes[]`, which may contain inner subgraph ids) → `parentId`. Containers
-     precede children in `nodes[]` (invariant 3). Subgraph `dir` → container `meta.mermaid` note.
-   - Edges → `ThalyxEdge` via the arrow table; label = `decode(edge.text)`; `kind:'elbow'`.
+     `decodeMermaidLabel(vertex.text)`; `meta.mermaid = { id, shape?, classes, styles, link,
+     tooltip: db.getTooltip(id), labelType }`. Map recognizable `styles` entries (`fill:`,
+     `stroke:`, `stroke-width:`) into `NodeStyle`; keep the raw strings too.
+   - Subgraphs → `ThalyxNode` (`kind:'container'`, label = title, `meta.mermaid.id = sg.id`,
+     `meta.mermaid.dir = sg.dir` when present); membership (`sg.nodes[]`, which may contain
+     inner subgraph ids) → `parentId`. Two verified gotchas (`out-22.txt`): `getSubGraphs()`
+     lists **inner subgraphs before outer ones** — topologically sort containers parent-first
+     before appending to `nodes[]` (invariant 3) — and subgraph ids do **not** appear in
+     `getVertices()`.
+   - Edges → `ThalyxEdge` via the two §9.2 import lookups (type→heads, stroke→line/hidden);
+     label = `decodeMermaidLabel(edge.text)`; `kind:'elbow'`.
    - **Initial node sizing** (before layout): `width = clamp(96, 8 + 9·longestLine, 320)`,
      `height = 40 + 20·(lines-1)`; diamonds ×1.4 both axes; circles square. (Exact text
      measurement happens on first render; these seeds only feed dagre.)
@@ -731,40 +792,57 @@ importMermaid(text) →
 
 ### 9.4 Export pipeline (`exportMermaid`)
 
-Hand-rolled serializer (~200 LOC — no npm package exists for this; verified). Scope: `doc` or a
-selection (for "Copy as Mermaid"). Only flowcharts in MVP; islands export as their verbatim
-`mermaidSource` when a single island is selected.
+Hand-rolled serializer (~200 LOC — no npm package exists for this; verified). Only flowcharts in
+MVP. **Purity contract**: `exportMermaid(doc, opts?: {selection?}) → { text: string;
+idAssignments: Record<NodeId, string> }` is a pure function — it computes any missing mermaid ids
+but does NOT mutate the doc. Callers apply `idAssignments` via the untracked `ensureMermaidIds`
+action (§8.3) — after one application the assignments are empty on every subsequent export
+(fixpoint; this is what makes M6's "byte-stable export" acceptance checkable and cannot loop the
+live panel).
+
+Island handling: a doc whose only content is one island exports as that island's verbatim
+`mermaidSource`; a single selected island likewise. A **mixed** doc (flowchart content +
+islands) exports the flowchart serialization only, and the caller surfaces "N mermaid island(s)
+not included" (the Mermaid panel shows this as a notice line; Copy as Mermaid shows a toast).
 
 Algorithm:
 
-1. **Assign mermaid ids.** For each non-island node: use `meta.mermaid.id` if present, else derive
-   from the label (`[A-Za-z_][A-Za-z0-9_]*`, CamelCase words, collision-suffixed `_2`), else
-   `n1, n2…`. **Write derived ids back into `meta.mermaid.id`** (same action) so subsequent
-   exports are stable and reconcile (§9.6) can match.
+1. **Compute mermaid ids.** For each non-island node: use `meta.mermaid.id` if present, else
+   derive from the label (`[A-Za-z_][A-Za-z0-9_]*`, CamelCase words, §9.2 blocklist respected,
+   collision-suffixed `_2`), else `n1, n2…`. Derived ids go into the returned `idAssignments`
+   so callers persist them (untracked) and reconcile (§9.6) can match on them later.
 2. Emit frontmatter verbatim if stored. Then `flowchart ${doc.meta.mermaid.direction ?? 'TB'}`.
 3. Node lines in z-order: `  ${id}${brackets(shape, encodeLabel(label))}` where `brackets`
    inverts the §7.3 table (if `meta.mermaid.shape` holds an unmapped original like `cyl`, emit
-   `${id}@{ shape: cyl, label: ${encodeLabel(label)} }`). Nodes whose label equals their id and
-   whose shape is `rect` may be declared implicitly by their first edge (emit no standalone line).
-4. Container blocks: `subgraph ${id}[${encodeLabel(title)}]` … nested … `end`, members = children.
-5. Edge lines: invert the arrow table: pick base by `line` (`--`/`-.-`/`==`), extend by
-   `meta.mermaid.minlen` extra dashes, terminate by arrowheads (both-sided combos from the table;
-   an unrepresentable combo — e.g. circle-start + arrow-end — degrades to `-->` and is fine),
-   `~~~` for `hidden`. Label: `|${encodeLabel(label)}|` right after the arrow. User edge id:
-   `${meta.mermaid.id}@` prefix before the arrow. `A["…"] --> B` inline declarations are allowed;
-   keep node declarations separate (simpler, still idiomatic).
+   `${id}@{ shape: cyl, label: ${encodeLabel(label)} }`). A node may skip its standalone
+   declaration line **only if** its label equals its id, its shape is `rect`, **and** it appears
+   in at least one emitted edge line — an edge-less node always gets a standalone line or it
+   vanishes from the export.
+4. Container blocks: `subgraph ${id}[${encodeLabel(title)}]` … `end`, members = children,
+   nested containers nested. When the container carries `meta.mermaid.dir`, emit
+   `direction ${dir}` as the first line inside the block (round-trips; verified `out-25.txt`).
+5. Edge lines: use the **§9.2 emit table exactly** — the 22 verified `(line, heads)` bodies,
+   the degrade rule for asymmetric head pairs, `~~~` for hidden, and the middle-character
+   `(minlen − 1)` extension rule. Label: `|${encodeLabel(label)}|` right after the arrow. User
+   edge id: `${meta.mermaid.id}@` prefix between source id and arrow. Keep node declarations
+   separate from edge lines (simpler, still idiomatic).
 6. Style tail: `classDef` lines from `doc.meta.mermaid.classDefs`; `class ${id} ${cls}` from node
    meta; `style ${id} …` for nodes with unmapped raw styles; `click ${id} href "…" "tooltip"`.
 7. **Known losses (by design, do not "fix"):** `%%` comments, whitespace, statement order/sugar,
-   `TD` vs `TB` spelling, `graph` vs `flowchart` keyword, auto edge ids. Round-trip is
-   **semantic**, not textual (§15.1 defines the fixpoint test).
+   `TD` vs `TB` spelling, `graph` vs `flowchart` keyword, auto edge ids, asymmetric arrowhead
+   pairs (degrade rule). Round-trip is **semantic modulo the degrade canonicalization**, not
+   textual (§15.1 defines the fixpoint test).
 
 ### 9.5 Mermaid panel (UX)
 
-Right-side collapsible panel (`Mod+M` toggles):
+Right-side collapsible panel (`Mod+Shift+M` toggles — plain `Mod+M` belongs to the native
+Window→Minimize menu role):
 
 - **Live view**: regenerated `exportMermaid(doc)` text (read-only styling, monospace,
-  select/copy enabled), updated debounced 300 ms after doc changes.
+  select/copy enabled), updated debounced 300 ms after doc changes. Non-empty `idAssignments`
+  are applied via the untracked `ensureMermaidIds` (§8.3) — never a history entry. Docs
+  containing islands show the "N mermaid island(s) not included" notice line (§9.4); a
+  single-island doc shows the island's source itself.
 - **Edit mode**: user edits the text freely; parse errors show inline (message + line from
   §9.1); an **Apply** button (and `Mod+Enter`) runs `applyMermaidText` → reconcile (§9.6).
   A **Revert** button returns to live view. Leaving edit mode with unapplied changes asks once
@@ -777,10 +855,13 @@ Right-side collapsible panel (`Mod+M` toggles):
 `applyMermaidText(text)`: run `importMermaid(text)`; on flowchart result, **merge instead of
 replace**, in one history entry:
 
-1. Match imported nodes to existing nodes by `meta.mermaid.id` (exporter guarantees existing
-   nodes have one — §9.4 step 1). Matched: keep `x/y/width/height/style` (unless the imported
-   text carries explicit `style`/class info that changed), update `label`, `shape`, `link`,
-   `tooltip`, `parentId`.
+1. Match imported nodes to existing nodes by `meta.mermaid.id` (the panel's live view has
+   already applied `ensureMermaidIds`, so every existing exportable node has one). Matched: keep
+   `x/y/width/height/style` (unless the imported text carries explicit `style`/class info that
+   changed), update `label`, `shape`, `link`, `tooltip`, `parentId` — and when `parentId`
+   changes, apply invariant §7.2.7: convert coordinates so the node's **absolute** position is
+   unchanged (positions are parent-relative; keeping raw x/y across a parent change would
+   teleport the node).
 2. Unmatched imported nodes are **new**: position at the barycenter of their already-placed graph
    neighbors offset one `GRID_GAP` (48 px) in the document's flow direction; no placed neighbor →
    below the current content bounding box. Nudge ±16 px until not overlapping any node.
@@ -797,8 +878,10 @@ Island documents: `applyMermaidText` on an island node simply replaces its `merm
 
 ### 9.7 Paste & file detection
 
-- `isProbablyMermaid(text)`: trimmed text (after optional frontmatter) starts with one of the
-  known diagram keywords (`flowchart`, `graph`, `sequenceDiagram`, `classDiagram`,
+- `isProbablyMermaid(text)`: after skipping an optional frontmatter block AND any leading
+  comment/directive lines matching `/^\s*%%/` (mermaid allows `%%` comments and `%%{init:…}%%`
+  directives before the header), the next non-blank line starts with one of the known diagram
+  keywords (`flowchart`, `graph`, `sequenceDiagram`, `classDiagram`,
   `stateDiagram`, `stateDiagram-v2`, `erDiagram`, `gantt`, `pie`, `mindmap`, `timeline`,
   `gitGraph`, `journey`, `quadrantChart`, `sankey`, `xychart`, `block`, `kanban`,
   `architecture`, `packet`, `radar`, `treemap`, `c4`, …). Cheap prefilter only — final arbiter
@@ -845,21 +928,39 @@ Deltas / clarifications vs the research spec:
 6. (I18) Autosave: once a doc has a path, debounced (800 ms) atomic save in place;
    untitled docs autosave to the recovery dir; `.bak` created before the first in-place save of
    a session (§12.4).
+7. (I4) The container ("frame") tool `F`/`8` is new (not in I1–I18), and `H` (hand) loses its
+   digit alias to make room. Shape keys R/O/D select the single `shape` tool with the matching
+   `pendingShape` (§8.1); rounded-rect and cylinder are toolbar-only (no letter keys).
+8. (I2) Right-button drag also pans (in addition to space-drag and middle-drag) — React Flow's
+   `panOnDrag={[1, 2]}` provides it for free and draw.io/Lucidchart users expect it.
 
 ### 10.2 Keymap (authoritative table)
 
-`Mod` = `Cmd` on macOS, `Ctrl` on Linux. Implementation: one `useKeymap` hook; letters matched
-via `e.key.toLowerCase()` (layout-aware), all bindings ignored while `e.isComposing` or while an
-input/textarea/contentEditable has focus (except Esc / Mod+Enter where specified). Menu
-accelerators are declared only for items that exist in the app menu (§12.3) and both paths
+`Mod` = `Cmd` on macOS, `Ctrl` on Linux. Implementation: one `useKeymap` hook. **Matching
+rules** (getting these wrong silently kills shortcuts):
+
+- Plain single-letter bindings (tools, H, Q…) match on `e.key.toLowerCase()` (layout-aware).
+- **Any chord containing `Alt`, and any `Shift`+digit or `Shift`+punctuation chord, matches on
+  `e.code`** (`KeyT`, `KeyL`, `KeyD`, `Digit1`, `Digit2`, `Slash`…). On macOS, Option composes
+  characters (`Alt+Shift+T` → `e.key === 'ˇ'`), and `Shift+1` → `e.key === '!'` everywhere —
+  `e.key` never matches those chords.
+- All bindings are ignored while `e.isComposing` or while an input/textarea/contentEditable has
+  focus (except Esc / Mod+Enter where specified).
+- **Type-to-edit precedence**: when exactly one *node* is selected, printable keys without
+  `Mod`/`Alt` (including `Shift`+letter for capitals) start label editing with that character —
+  this **suppresses the single-key tool/toggle bindings** in that state. `Shift`+digit (zoom)
+  and `Shift+/` (help) still win because they match on `e.code` before the type-to-edit branch.
+  Tool keys work whenever the selection is empty, multiple, or an edge — or after Esc.
+
+Menu accelerators are declared only for items that exist in the app menu (§12.3) and both paths
 dispatch the same store action.
 
 | Binding | Action |
 |---|---|
 | `V`/`1` | Select tool |
-| `R`/`2` | Rectangle tool |
-| `O`/`3` | Ellipse tool |
-| `D`/`4` | Diamond tool |
+| `R`/`2` | Shape tool, pendingShape `rect` (toolbar also offers `rounded` and `cylinder`, no letter keys) |
+| `O`/`3` | Shape tool, pendingShape `ellipse` |
+| `D`/`4` | Shape tool, pendingShape `diamond` |
 | `A`/`5` | Arrow (connector) tool |
 | `L`/`6` | Line (no-arrowheads connector) tool |
 | `T`/`7` | Text tool |
@@ -883,7 +984,7 @@ dispatch the same store action.
 | `Shift+/` | Help overlay (searchable shortcut sheet) |
 | `Alt+Shift+T` | Tidy Up selection |
 | `Alt+Shift+L` | Auto-layout selection (or all, if nothing selected) |
-| `Mod+M` | Toggle Mermaid panel; inside panel edit mode: `Mod+Enter` = Apply |
+| `Mod+Shift+M` | Toggle Mermaid panel; inside panel edit mode: `Mod+Enter` = Apply |
 | `Mod+Shift+C` | Copy selection as Mermaid |
 | `Mod+N` `Mod+O` `Mod+S` `Mod+Shift+S` | New / Open / Save / Save As (menu) |
 | `Mod+Shift+E` | Export dialog (SVG/PNG/PDF/MMD) |
@@ -891,20 +992,26 @@ dispatch the same store action.
 
 Known-conflict audit (why these bindings): `Ctrl+Alt+T` avoided (GNOME terminal);
 `Cmd+Arrow` gated during text edit (macOS caret); `Shift+Alt+D`/`Alt+Shift+L/T` have no default
-GNOME/macOS bindings; `Mod+Shift+C` collides only with DevTools-inspect in dev builds
-(acceptable); single-key tools follow Excalidraw muscle memory.
+GNOME/macOS bindings (and match on `e.code`, so macOS Option-composition doesn't break them);
+`Mod+M` avoided — the app's own Window→Minimize menu role owns `CommandOrControl+M` and menu
+accelerators fire before renderer keydown, hence `Mod+Shift+M` for the panel; `Mod+Shift+C`
+collides only with DevTools-inspect in dev builds (acceptable); single-key tools follow
+Excalidraw muscle memory, with the type-to-edit precedence rule above resolving the
+tool-key-vs-typing clash.
 
 ### 10.3 Context panel
 
 One floating panel, left-docked (Excalidraw placement), showing only:
 
 - **Node(s) selected**: fill (palette row), stroke (auto-derived + override row), stroke width
-  (3 segmented), corner sharp/round, font size (4 segmented), shape swap (popup with the full
-  §7.3 set), link (URL field → `meta.mermaid.link`). Mixed selection: show shared controls only.
+  (3 segmented), corner sharp/round (shown only for `rect`/`rounded` — it swaps the ShapeKind,
+  see §7.1 note), font size (4 segmented), shape swap (popup with the full §7.3 set), link
+  (URL field → `meta.mermaid.link`), lock toggle. Mixed selection: show shared controls only.
 - **Edge(s) selected**: line style (solid/dashed/thick), kind (elbow/straight/curved), arrowheads
   per end (none/arrow/circle/cross), label field.
 - **Container selected**: label, fill (subtle tints), lock.
-- **Nothing selected**: canvas background, grid toggle, theme, direction (TB/LR), Mermaid panel
+- **Nothing selected**: canvas background, grid toggle, theme, direction (TB/LR/BT/RL — the
+  same four options as the Mermaid panel's dropdown; both call `setDirection`), Mermaid panel
   toggle.
 - **≥2 nodes**: alignment row (left/center-h/right/top/center-v/bottom), Tidy Up, Auto-layout.
 
@@ -921,7 +1028,8 @@ equivalents; validate every pair for ≥4.5:1 label contrast in **both** themes 
 contrast function). Custom hex from the escape-hatch picker renders identically in both themes.
 
 New shapes inherit the last-applied style (Whimsical persistence); defaults: `surface` fill,
-theme-ink stroke, medium width, font M, rounded rect corners.
+theme-ink stroke, medium width, font M; the default `pendingShape` is `rounded` (soft-cornered
+rectangles read friendlier; `R` explicitly selects sharp `rect`).
 
 ---
 
@@ -930,8 +1038,10 @@ theme-ink stroke, medium width, font M, rounded rect corners.
 ### 11.1 React Flow integration
 
 - `<ReactFlow>` props: controlled `nodes`/`edges`; `nodeTypes={{shape, text, container, mermaid}}`;
-  `edgeTypes={{thalyx}}`; `snapToGrid` only when grid enabled (`snapGrid={[8,8]}`);
-  `selectionOnDrag`; `panOnDrag={[1,2]}` config to match §10 (space/middle-drag pan);
+  `edgeTypes={{thalyx}}`; **no `snapToGrid` prop, ever** — React Flow's built-in grid snap
+  quantizes positions before `onNodeDrag` fires and would fight the custom snap engine;
+  `snap.ts` (§11.4) is the single snapping authority, including the 8 px lattice;
+  `selectionOnDrag`; `panOnDrag={[1,2]}` (middle- and right-button drag pan, per §10.1 delta 8);
   `zoomOnPinch`; `onlyRenderVisibleElements` **enabled from M2**; `minZoom=0.1` `maxZoom=4`;
   `proOptions={{hideAttribution: false}}` (keep attribution; it's honest).
 - Node components are `React.memo`'d and read only their own `data`; edges likewise. No
@@ -956,8 +1066,11 @@ Recompute every render — geometry is derived (D12).
 route(sourceRect, targetRect, sourceSide?, targetSide?):
   1. pick sourceSide = side of source facing target center (unless pinned); same for target
   2. stub out 16 px perpendicular from each side
-  3. connect stubs with 1–3 axis-aligned segments via the midline between the rects
-     (side cases: same-side / opposite-side / orthogonal-side → 3/4/5 point polylines)
+  3. connect stubs with axis-aligned segments via the midline between the rects. Side-case
+     point counts (polyline points incl. endpoints): orthogonal sides → 3-point L;
+     opposite sides → 4-point Z; same side → 4-point U (via a rail 16 px beyond the outermost
+     bound — two stubs pointing the same direction can never close in 3 points);
+     non-facing/blocked variants add up to two more points (5–6-point S/C shapes)
   4. return polyline points; renderer draws with optional 6 px corner rounding
 ```
 
@@ -973,7 +1086,18 @@ moving/resizing either endpoint node clears them (D12).
 ### 11.4 Smart guides & snapping
 
 `snap.ts` — pure: `computeSnap(draggedBounds, staticBounds[], zoom, opts)` returns
-`{ dx, dy, guides: GuideLine[] }`.
+`{ dx, dy, guides: GuideLine[] }`, where (this type lives in `snap.ts` and is what
+`session.guides` holds):
+
+```ts
+export interface GuideLine {
+  kind: 'align' | 'gap';
+  axis: 'x' | 'y';          // the axis the guide constrains
+  position: number;          // canvas coord of the guide line (align) / gap midline (gap)
+  start: number; end: number; // extent along the other axis, spanning the aligned bounds
+  label?: string;            // gap chips: the px value, e.g. '24'
+}
+```
 
 - Candidates: edges + centers (x: L/C/R, y: T/C/B) of nodes in the viewport (cap at nearest 40
   by distance for perf).
@@ -989,11 +1113,19 @@ moving/resizing either endpoint node clears them (D12).
 
 ### 11.5 Layout actions
 
-- `dagreLayout.ts`: build `new dagre.graphlib.Graph()`, `setGraph({ rankdir, nodesep: 40,
-  ranksep: 60, marginx: 24, marginy: 24 })`, nodes with real (rendered) sizes, edges with
-  `minlen` from `meta.mermaid.minlen`; containers via dagre clusters (`setParent`). Output
-  centers → convert to top-left. Ignore dagre's edge points (our router draws edges).
-  Direction from `doc.meta.mermaid.direction` unless the action passes one.
+- `dagreLayout.ts`: build
+  `new dagre.graphlib.Graph({ compound: true, multigraph: true })` — **`compound: true` is
+  mandatory or `setParent` throws** — then `g.setDefaultEdgeLabel(() => ({}))` (dagre throws on
+  label-less edges otherwise), `setGraph({ rankdir, nodesep: 40, ranksep: 60, marginx: 24,
+  marginy: 24 })`, nodes with real (rendered) sizes, edges as
+  `g.setEdge(src, tgt, { minlen: edge.meta?.mermaid?.minlen ?? 1 }, edge.id)`; containers via
+  clusters (`g.setParent(child, container)`). **Edges whose source or target is a container are
+  NOT added to the dagre graph** (dagre cannot route cluster edges — a documented limitation
+  mermaid itself works around); they are simply drawn by our own router after layout using the
+  container's laid-out bounds. Output centers → convert to top-left. Ignore dagre's edge points
+  (our router draws edges). Direction from `doc.meta.mermaid.direction` unless the action
+  passes one. Unit test: a containered corpus doc runs through `autoLayout` without throwing
+  and children stay inside their containers.
 - Scope: selection's connected subgraph, or whole doc if no selection. One history entry;
   animated 150 ms position transition (CSS) — respect `prefers-reduced-motion`.
 - `tidy.ts`: unconnected-shape selection → infer row/column/grid from current arrangement
@@ -1050,7 +1182,10 @@ handlers validate inputs with zod and enforce the path policy (§14):
 
 ```
 dialog:  openFile(filters) → path|null · saveFile(defaultName, filters) → path|null
-file:    read(path) → string · writeAtomic(path, contents) → void · backup(path) → void
+file:    read(path) → string · writeAtomic(path, contents) → void · backup(path) → void ·
+         pathForDropped(file: File) → string   // preload-only: wraps Electron webUtils.getPathForFile
+                                               // (File.path was REMOVED in Electron 32 — do not use it);
+                                               // the returned path still goes through main's grant check
 recovery: write(docId, contents) · list() → RecoveryEntry[] · read(docId) → string · clear(docId)
 recents: list() → {path, name}[] · add(path) · clear()
 prefs:   get(key) → json · set(key, json)
@@ -1058,7 +1193,7 @@ shellx:  openExternal(url)                      // scheme-validated in main
 clip:    writePng(bytes: Uint8Array)            // native clipboard fallback
 appx:    version() → string · onMenu(cb(actionId)) · onOpenFile(cb(path)) ·
          setDocumentEdited(bool) · setTitle(string)
-export:  printToPdf() → void                    // menu Print… only
+export:  print() → void                         // menu Print… only: webContents.print() native dialog
 updater: check() · onUpdateReady(cb) · quitAndInstall()
 ```
 
@@ -1067,13 +1202,19 @@ exports) so the renderer runs in plain Chromium for Playwright and `vite dev` (�
 
 ### 12.3 Application menu
 
-`Menu.buildFromTemplate` with native roles wherever possible: macOS app menu (`about`, prefs
-placeholder, `quit`), File (New/Open/Open Recent/Save/Save As/Import Mermaid…/Export…/Print…),
-Edit (`undo redo cut copy paste selectAll` roles wired to store actions via `menu:action` events
-when the canvas has focus, native behavior in text fields), View (zoom actions, theme, Mermaid
-panel, grid), Window (`minimize zoom close` roles), Help (shortcut overlay, GitHub link, About
-with THIRD_PARTY_LICENSES viewer). Accelerators per §10.2. Linux: same template renders as
-in-window menubar.
+`Menu.buildFromTemplate`. **Role rule**: an Electron menu item with a `role` ignores its `click`
+handler and dispatches native WebContents commands (which are no-ops when no editable element is
+focused) — so **roles are used only for items with no canvas meaning**: the macOS app menu
+(`about`, `quit`), Window (`minimize`, `zoom`, `close` — minimize keeps its native
+`CommandOrControl+M`, which is why the Mermaid panel binding is `Mod+Shift+M`). The **Edit menu
+items are role-less custom items** (Undo/Redo/Cut/Copy/Paste/Select All) with §10.2
+accelerators whose `click` sends a `menu:action` event; the renderer routes each: if focus is in
+an input/textarea/contentEditable, invoke the corresponding native editing behavior
+(`webContents` editing methods via a tiny IPC, or simply let the accelerator-equivalent keydown
+path handle it), otherwise dispatch the store action. Other menus: File (New/Open/Open
+Recent/Save/Save As/Import Mermaid…/Export…/Print…), View (zoom actions, theme, Mermaid panel,
+grid), Help (shortcut overlay, GitHub link, About with THIRD_PARTY_LICENSES viewer). Linux: same
+template renders as an in-window menubar.
 
 ### 12.4 Saving, autosave, recovery (main-process rules)
 
@@ -1083,9 +1224,13 @@ in-window menubar.
 - Autosave (renderer-triggered, 800 ms debounce after doc changes): with a path → atomic save in
   place + `dirtySinceSave=false`; untitled → `recovery.write(docId, contents)`.
 - Recovery dir `app.getPath('userData')/recovery/<docId>.thalyx` + `manifest.json`
-  (`{docId, originalPath|null, savedAt}`). Clean exit clears entries for saved docs. On launch
-  with entries present: restore untitled scratch silently; for path-associated entries newer
-  than the file, offer a toast "Recovered newer version — Restore / Discard".
+  (`{docId, originalPath|null, savedAt}`). **docId rule** (deterministic across relaunches):
+  for path-associated docs, `docId = sha256(absolutePath).slice(0, 16)` so a reopened file finds
+  its old recovery entry; untitled docs get a session `nanoid()` persisted in the manifest (the
+  scratch doc restores from the manifest, not from the path). Clean exit clears entries for
+  saved docs. On launch with entries present: restore untitled scratch silently; for
+  path-associated entries newer than the file, offer a toast "Recovered newer version —
+  Restore / Discard".
 
 ### 12.5 Prefs & recents
 
@@ -1101,8 +1246,10 @@ windowState, chevronsEnabled, lastExportDir, updateChannelOptIn }`.
 - electron-updater: GitHub Releases provider; check on launch (after 5 s) + manual "Check for
   Updates…"; download in background; "Restart to update" toast; never force. **Verify at M8**
   the current electron-updater Linux coverage (docs say AppImage/deb/rpm/pacman — confirm
-  against the shipped version's release notes; AppImage is the guaranteed path). Flatpak (M9)
-  disables in-app updates.
+  against the shipped version's release notes; AppImage is the guaranteed path). **macOS
+  auto-update hard-requires code-signed builds** (Squirrel.Mac rejects updates for unsigned
+  apps) — without the signing secrets, mac auto-update is inert and the release workflow prints
+  a warning saying so. Flatpak (M9) disables in-app updates.
 - Dev-mode granting: `process.env.THALYX_ALLOW_ANY_PATH=1` loosens the path policy for local
   dev only.
 
@@ -1112,19 +1259,30 @@ windowState, chevronsEnabled, lastExportDir, updateChannelOptIn }`.
 
 ### 13.1 One source of truth
 
-`renderDocToSvg(doc, opts: { selectionOnly?, background: 'light'|'dark'|'transparent', padding=16 })`
+`renderDocToSvg(doc, opts: { selectionOnly?, background: 'light'|'dark'|'transparent',
+padding=16, islandSvgs?: Record<NodeId, string> })`
 in `src/shared/export/svg.ts` — a **pure function from the model**, never DOM scraping. Emits
 `<svg viewBox…>` with: background rect (unless transparent), containers (back), edges (elbow
 polylines with markers — `<marker>` defs per arrowhead/color), nodes via `shapePath`, centered
 `<text>` labels (line-broken to the node's stored width using a character-width estimate table
-for Inter; label overflow clips), label chips. Fonts: `font-family="Inter, system-ui, sans-serif"`
-(D19). All styling inline attributes; no CSS classes; no `foreignObject`.
+for Inter; label overflow clips), label chips. **Mermaid islands** cannot be rendered by pure
+code (they need `mermaid.render` in the renderer), so the caller passes each island's cached,
+DOMPurify-sanitized SVG string via `opts.islandSvgs`; `renderDocToSvg` embeds it as a nested
+`<svg x y width height>` at the island's bounds, and draws a labeled placeholder rect for any
+island missing from the map. Fonts: `font-family="Inter, system-ui, sans-serif"` (D19). All
+styling inline attributes; no CSS classes; no `foreignObject`.
 
 ### 13.2 Formats
 
 - **SVG**: serialize the string → save dialog.
 - **PNG**: `Blob` the SVG string → `Image` → offscreen `<canvas>` at 1×/2× (dialog toggle) →
-  `toBlob('image/png')`. (Same-origin blob: no tainting.)
+  `toBlob('image/png')`. (Same-origin blob: no tainting.) **Font caveat**: Chromium renders
+  SVG-in-`<img>` in an isolated context that cannot see document `@font-face` fonts or load
+  external resources — with D19's non-embedded SVG, labels would silently rasterize in a
+  fallback font with wrong metrics. So **for the rasterization path only** (PNG export +
+  clipboard PNG), inject the bundled Inter woff2 as a `data:` URI `@font-face` `<style>` into
+  the SVG string before creating the blob, and draw only after `img.onload` fires (data-URI
+  fonts inside an SVG image do resolve). The on-disk SVG export stays unembedded per D19.
 - **PDF**: `new jsPDF({unit:'pt', format:[w,h]})`; register bundled Inter TTF
   (`addFileToVFS`/`addFont`); `await pdf.svg(svgElement, {…})` (svg2pdf). Known limitation
   (document in README): non-Latin glyphs fall back to jsPDF's built-ins — CJK PDF export is
@@ -1149,10 +1307,15 @@ for Inter; label overflow clips), label chips. Fonts: `font-family="Inter, syste
 Untrusted inputs: `.thalyx` files, `.mmd` files, pasted text. The renderer is a full Chromium —
 treat XSS there as RCE-adjacent even with sandbox on.
 
-1. **Renderer lockdown**: `contextIsolation:true`, `sandbox:true`, `nodeIntegration:false`;
-   CSP meta in `index.html`: `default-src 'self'; script-src 'self'; style-src 'self'
-   'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'` (no remote
-   anything; updater runs in main).
+1. **Renderer lockdown**: `contextIsolation:true`, `sandbox:true`, `nodeIntegration:false`.
+   CSP meta injected into `index.html` **by a Vite HTML transform, per build mode** — the strict
+   policy would break `npm run dev` (Vite's React-refresh preamble and HMR WebSocket):
+   - production: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+     img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'` (no remote
+     anything; updater runs in main);
+   - dev only: additionally allow the plugin preamble (`'unsafe-inline'` in script-src) and
+     `connect-src 'self' ws://localhost:*` for HMR.
+   A unit/e2e assertion checks the **packaged** index.html carries the strict policy.
 2. `will-navigate` → `preventDefault` always; `setWindowOpenHandler` → `deny` always.
    `webContents.on('render-process-gone')` → log + reload with recovery.
 3. **Labels are text**: rendered via React text nodes only (invariant 7.2.4). The only
@@ -1163,10 +1326,13 @@ treat XSS there as RCE-adjacent even with sandbox on.
    validates scheme ∈ {`https:`, `http:`, `mailto:`} and refuses everything else (`file:`,
    `javascript:`, smb, etc.).
 5. **IPC path policy** (main): reads/writes only under (a) paths returned by this session's
-   dialogs, (b) recents entries the user clicks, (c) argv/open-file/drag-drop paths (drag-drop
-   delivers `File.path` — main re-validates it's a file, size <50 MB, extension allowlisted),
-   (d) `userData`. Maintain the grant set in main; reject anything else. All IPC payloads
-   zod-validated; oversize contents rejected (50 MB).
+   dialogs, (b) recents entries the user clicks, (c) argv/open-file/drag-drop paths — for
+   drag-drop the renderer hands the dropped `File` object to the preload's `pathForDropped`
+   bridge, which calls Electron's `webUtils.getPathForFile(file)` (the non-standard `File.path`
+   property was **removed in Electron 32**; do not use it), and main re-validates the result:
+   it's a file, size <50 MB, extension allowlisted — and (d) `userData`. Maintain the grant set
+   in main; reject anything else. All IPC payloads zod-validated; oversize contents rejected
+   (50 MB).
 6. **Docs are data**: `restoreDocument` never `eval`s, never interprets strings as paths/URLs to
    fetch. zod bounds all sizes/lengths (labels ≤ 4 kB, ≤ 20 k nodes).
 7. `npm audit` in CI (non-blocking report), Renovate weekly for Electron majors (§16).
@@ -1183,21 +1349,31 @@ treat XSS there as RCE-adjacent even with sandbox on.
 - **Geometry**: anchors, elbow router (golden polylines for the side-case matrix), shapePath
   snapshots, snap engine (table-driven: candidates → expected dx/dy/guides).
 - **Mermaid import**: the jsdom harness (§9.1) against `tests/corpus/*.mmd` — the corpus starts
-  from the lab's verified samples and must include: every arrow variant; every shape bracket;
-  labels with `#quot;`, `&`, unicode, markdown backticks; nested subgraphs with `direction`;
+  from the lab's verified samples and must include: every arrow variant (all 22 emit-table
+  bodies plus minlen extensions); every shape bracket; labels with `#quot;`, `&`, entity-like
+  text (`5 &lt; 6`), multi-line `<br>` labels, unicode, markdown backticks; nested subgraphs
+  with `direction`;
   `classDef`/`class`/`style`/`linkStyle`/`click`/tooltips; `~~~`; `---->`; `e1@-->`;
   the `@{shape: cyl}` syntax; frontmatter; a 150-node generated chart. Each fixture asserts the
   exact imported model (JSON snapshot).
 - **Mermaid export + round-trip (the crown jewel)**: for every corpus file:
-  `M1 = import(text)` → `out = export(M1)` → `M2 = import(out)` → assert **semantic equality**
-  (same node set by mermaid id with same labels/shapes/links, same edge multiset with same
-  arrows/lines/labels, same containment) and **fixpoint**: `export(M2) === out` (byte-equal
-  from the second pass on). Plus property-based: random Thalyx docs → export → import →
-  semantic equality.
-- **Reconcile**: matched-position preservation, new-node placement, deletion, edge matching.
-- **Palette contrast** both themes.
-- **Mermaid upgrade gate**: `npm ls mermaid` version assertion test — fails if the pin changes
-  without regenerating corpus snapshots (forces conscious upgrades, D16).
+  `M1 = import(text)` → `out = export(M1)` → `M2 = import(out)` → assert **semantic equality
+  modulo canonicalization** and **fixpoint**: `export(M2) === out` (byte-equal from the second
+  pass on). Semantic equality compares: same node set by mermaid id with same labels/shapes/
+  links, same edge multiset with same line styles/labels and `canonicalizeHeads(edge)` equal,
+  same containment including subgraph `dir`. `canonicalizeHeads` applies the §9.2 degrade rule
+  (asymmetric head pairs with a non-none start collapse to `(none, end)`) — without this, the
+  sanctioned degradation would fail the test by construction. The property-based test (random
+  Thalyx docs → export → import → semantic equality) uses the same canonicalized comparison, so
+  its generator may produce all 16 head pairs.
+- **Reconcile** (built in M8): matched-position preservation (including the parentId-change
+  coordinate conversion), new-node placement, deletion, edge matching.
+- **Palette contrast** both themes (built in M2).
+- **Mermaid upgrade gate** (built in M5): `npm ls mermaid` version assertion test — fails if the
+  pin changes without regenerating corpus snapshots (forces conscious upgrades, D16).
+- **PDF golden tests** (built in M7, runs in the Playwright web-mode suite since jsPDF/svg2pdf
+  need a real browser): render three corpus docs to PDF, assert non-empty output, expected page
+  dimensions, and page count 1 — a smoke net for svg2pdf marker/text regressions (§18).
 
 ### 15.2 E2E (Playwright, `tests/e2e`)
 
@@ -1273,9 +1449,10 @@ Tasks:
 6. `ci.yml` fully green on both matrix OSes; Renovate config; `CONTRIBUTING.md` (§4.6);
    `README.md` skeleton.
 
-Acceptance: `npm run dev` opens a window with hot reload on mac+linux; CI green including
-packaging job (unsigned artifacts produced); license gate demonstrably fails when a GPL dev-dep
-is added in a test branch.
+Acceptance: `npm run dev` opens a window with hot reload on mac+linux (CSP dev allowances per
+§14.1); CI green including packaging job (unsigned artifacts produced); license gate
+demonstrably fails when a GPL **production** dep is added in a test branch (dev-dep violations
+only warn, per §4.1).
 
 ### M1 — Document model, store, history
 
@@ -1294,13 +1471,16 @@ convention test that `set(state => …)` appears only in actions.ts/history.ts).
 **Goal**: see and edit a document.
 
 Tasks: `Canvas.tsx` with controlled RF wiring (§11.1); ShapeNode/TextNode/ContainerNode;
-selection (click/shift/rubber-band); move (transient+gesture); NodeResizer resize; shape tools
-R/O/D + click-place and drag-size; pan/zoom/nav per I2–I3 (no minimap); theme system + palette
-tokens (§10.4); toolbar; empty-canvas hint layer (I1); perf fixture + spike (§11.7).
+selection (click/shift/rubber-band); move (transient+gesture); NodeResizer resize; the `shape`
+tool (§8.1 pendingShape; keys R/O/D + all five toolbar shape buttons) with click-place and
+drag-size; pan/zoom/nav per I2–I3 (no minimap); theme system + palette tokens (§10.4) including
+the contrast unit test (§15.1); toolbar; empty-canvas hint layer (I1); perf fixture + spike
+(§11.7).
 
-Acceptance: create/move/resize/delete/undo all shapes incl. nested containers; theme toggle
-remaps palette live; **perf gate numbers recorded in `docs/perf.md`** for both OSes; e2e
-web-suite covers the basics.
+Acceptance: create/move/resize/delete/undo all placeable shapes; containers loaded from fixture
+docs render, move, and resize correctly with their children (container *creation* UX — F tool,
+Mod+G — lands in M4); theme toggle remaps palette live; **perf gate numbers recorded in
+`docs/perf.md`** for both OSes; e2e web-suite covers the basics.
 
 ### M3 — Connections
 
@@ -1321,15 +1501,21 @@ undo granularity: one entry per connect/label/waypoint gesture.
 
 Tasks: inline label editing (I10: double-click/Enter/type-to-edit, textarea-in-node, IME
 `isComposing` guard); alt-drag duplicate + `Mod+D` (I11); smart guides + equal spacing + grid
-(I12, §11.4); nudge; z-order commands; group/ungroup containers (D5); context panel (§10.3);
-curated palette + custom picker escape hatch; keymap hook complete (§10.2) + help overlay
-(`Shift+/`); quick-connect chevrons + `Mod+Arrow` grow + Tab-cycle (§11.6); Tidy Up + dagre
-auto-layout actions (§11.5).
+(I12, §11.4); nudge; z-order commands; group/ungroup containers (D5) + F/8 container tool;
+alignment row actions (`alignSelection`, §8.3/§10.3); context panel (§10.3); curated palette +
+custom picker escape hatch; keymap hook complete (§10.2 — including the e.code matching rules
+and the type-to-edit precedence rule) + help overlay (`Shift+/`); quick-connect chevrons +
+`Mod+Arrow` grow + Tab-cycle (§11.6); Tidy Up + dagre auto-layout actions (§11.5, incl. the
+containered-doc layout unit test).
 
-Acceptance: a first-time user can build the "login flow" demo (6 nodes, 7 edges, one container)
-in under 90 seconds using only keyboard+mouse per the spec; every I1–I18 behavior manually
-verified against the checklist (record in `docs/qa-checklist.md` draft); e2e suite covers grow
-gesture, chevrons, guides snapping, group, palette.
+Acceptance: a first-time user can build the **login-flow demo** in under 90 seconds using only
+keyboard+mouse per the spec. The demo (fixed, for repeatable timing): rounded nodes `Start` →
+`Login form` → diamond `Valid?` —yes→ `Dashboard`, —no→ `Show error` → back to `Login form`;
+`Login form`, `Valid?`, and `Show error` sit inside a container titled `Auth`; a final edge
+`Dashboard` → `Log out`. (7 nodes counting the container, 6 edges.) Every I1–I18 behavior
+manually verified against the checklist (record in `docs/qa-checklist.md` draft); e2e suite
+covers grow gesture, chevrons, guides snapping, group, palette, and the type-to-edit-vs-tool-key
+precedence.
 
 ### M5 — Mermaid import
 
@@ -1339,7 +1525,7 @@ Tasks: renderer mermaid runtime (§9.1, D10 settings); tables.ts + entities.ts w
 ground truth; `importMermaid` (§9.3) + `importMermaidAsNew` action; dagre layout on import;
 paste detection + toast (§9.7); island node + editor dialog (§9.8); `.mmd` open path (File →
 Import Mermaid… + drag-drop of text files in web-mode); parse-error surfaces (line/col).
-Corpus tests (§15.1 import half).
+Corpus tests (§15.1 import half) + the mermaid upgrade-gate version-assertion test.
 
 Acceptance: the corpus imports to exact snapshots; pasting each of: a 50-node flowchart (native,
 laid out, editable), a sequence diagram (island), garbage ("not mermaid" → plain text paste)
@@ -1350,9 +1536,10 @@ undo step.
 
 **Goal**: the graph is always available as clean Mermaid text.
 
-Tasks: `exportMermaid` (§9.4) incl. id assignment write-back; Copy as Mermaid (`Mod+Shift+C`);
-Save as `.mmd`; Mermaid panel live view (§9.5, read-only + copy); round-trip + fixpoint corpus
-tests (§15.1 export half); property-based doc→text→doc test.
+Tasks: `exportMermaid` (§9.4, pure — returns `{text, idAssignments}`) + the untracked
+`ensureMermaidIds` action (§8.3); Copy as Mermaid (`Mod+Shift+C`); Save as `.mmd`; Mermaid panel
+live view (§9.5, read-only + copy + island notice); round-trip + fixpoint corpus tests (§15.1
+export half, canonicalized comparison); property-based doc→text→doc test.
 
 Acceptance: full corpus round-trip green; hand-built diagram from the M4 demo exports to Mermaid
 that renders correctly on mermaid.live (manual check) and re-imports semantically identical;
@@ -1365,8 +1552,10 @@ byte-stable export across two consecutive exports (id stability).
 Tasks: complete IPC surface (§12.2) + path policy (§14.5); menus (§12.3); open/save/save-as with
 dirty tracking; atomic writes + .bak; autosave + recovery + scratch-doc restore (§12.4); recents;
 prefs; window-state; single-instance + open-file events; file associations (builder config);
-drag-drop of `.thalyx`/`.mmd` onto the window; export dialog (SVG/PNG/PDF per §13, background
-choice, 1x/2x); clipboard flavors (§13.3); Print…; About dialog with licenses.
+drag-drop of `.thalyx`/`.mmd` onto the window (via the `pathForDropped` preload bridge, §14.5);
+export dialog (SVG/PNG/PDF per §13, background choice, 1x/2x, PNG font inlining); PDF golden
+tests (§15.1); clipboard flavors (§13.3); Print… (`webContents.print()`); About dialog with
+licenses.
 
 Acceptance: kill -9 during editing → relaunch restores the exact doc; double-click a `.thalyx`
 in Finder/Files opens it (packaged build); exports open correctly in Inkscape (SVG), Preview
@@ -1378,7 +1567,8 @@ green on both OSes.
 **Goal**: v0.1.0 shipped.
 
 Tasks: Mermaid panel edit mode + `applyMermaidText` reconcile (§9.5–9.6) with position
-preservation; direction switcher; toast system polish; a11y pass (toolbar/panel keyboard
+preservation, plus the reconcile unit tests (§15.1); direction switcher (`setDirection`); toast
+system polish; a11y pass (toolbar/panel keyboard
 navigation + ARIA labels, focus rings, reduced-motion); `docs/qa-checklist.md` final + full
 manual pass on Ubuntu LTS (X11+Wayland) and macOS; updater wiring + verification of
 electron-updater Linux target coverage (§12.6); release workflow + signing hooks; icons; README
@@ -1387,8 +1577,10 @@ throwaway build.
 
 Acceptance: edit exported text in the panel (rename a node, add an edge, delete a node), Apply →
 canvas updates with all untouched positions preserved, one undo step reverts; v0.1.0 artifacts
-install and pass the QA checklist on both OSes; update from previous build works on AppImage +
-dmg.
+install and pass the QA checklist on both OSes; auto-update from a previous build works on
+AppImage unconditionally, and on dmg **only if the macOS signing secrets are configured**
+(unsigned mac builds cannot auto-update — §12.6; verify manually-downloaded dmg installs
+instead).
 
 ### M9+ — Post-MVP
 

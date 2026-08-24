@@ -94,7 +94,7 @@ export function useKeymap(): void {
         }
         if (e.code === 'Slash') {
           e.preventDefault();
-          // Help overlay lands with the M4b panel/keymap PR.
+          A.setHelpOpen(!useStore.getState().session.helpOpen);
           return;
         }
         if (e.code.startsWith('Digit')) {
@@ -158,6 +158,22 @@ export function useKeymap(): void {
         ) {
           A.setTool('select');
         }
+        return;
+      }
+
+      // Shift+Alt+D: cycle theme (Alt chord → e.code matching, §10.2)
+      if (e.altKey && e.shiftKey && !mod && e.code === 'KeyD') {
+        e.preventDefault();
+        const current = useStore.getState().session.theme;
+        const next = current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system';
+        A.setTheme(next);
+        return;
+      }
+
+      // Q: toggle quick-connect chevrons
+      if (e.code === 'KeyQ' && !mod && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        A.toggleChevrons();
         return;
       }
 

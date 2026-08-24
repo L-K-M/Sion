@@ -274,3 +274,205 @@ body {
   line-height: 1.25;
   outline: none;
 }
+
+/* --- context panel (§10.3) -------------------------------------------------- */
+
+.thalyx-panel {
+  position: absolute;
+  left: 60px;
+  top: 12px;
+  z-index: 10;
+  width: 264px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.thalyx-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.thalyx-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thalyx-panel-label {
+  width: 52px;
+  flex: none;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.thalyx-panel-control {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.thalyx-seg-group {
+  display: flex;
+  gap: 2px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.thalyx-seg {
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.thalyx-seg[aria-checked='true'],
+.thalyx-seg.is-active {
+  background: var(--accent);
+  color: var(--panel);
+}
+
+.thalyx-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.thalyx-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+}
+
+.thalyx-swatch.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.thalyx-swatch-custom {
+  position: relative;
+  overflow: hidden;
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+
+.thalyx-swatch-custom input {
+  position: absolute;
+  inset: -4px;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.thalyx-panel-input,
+.thalyx-panel-select {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+/* --- help overlay ----------------------------------------------------------- */
+
+.thalyx-help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgb(0 0 0 / 35%);
+  display: grid;
+  place-items: center;
+}
+
+.thalyx-help {
+  width: min(560px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  gap: 10px;
+}
+
+.thalyx-help-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.thalyx-help-search {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.thalyx-help-list {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.thalyx-help-row {
+  display: grid;
+  grid-template-columns: 84px 150px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.thalyx-help-row:nth-child(odd) {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.thalyx-help-group {
+  font-size: 11px;
+  opacity: 0.55;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.thalyx-help-row kbd {
+  font-family: inherit;
+  font-size: 11px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  justify-self: start;
+}
+
+.thalyx-help-empty {
+  opacity: 0.6;
+  padding: 12px;
+  text-align: center;
+}

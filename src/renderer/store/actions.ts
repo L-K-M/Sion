@@ -159,6 +159,18 @@ export function setNodeShape(id: string, shape: ShapeKind): void {
   });
 }
 
+/** Set/clear a node's mermaid link (§10.3 context panel). */
+export function setNodeLink(id: string, link: string | undefined): void {
+  tracked((d) => {
+    const n = d.nodes.find((x) => x.id === id);
+    if (!n) return;
+    n.meta ??= {};
+    n.meta.mermaid ??= {};
+    if (link === undefined || link.length === 0) delete n.meta.mermaid.link;
+    else n.meta.mermaid.link = link.slice(0, 2048);
+  });
+}
+
 export function setNodesLocked(ids: string[], locked: boolean): void {
   tracked((d) => {
     for (const n of d.nodes) {
@@ -799,6 +811,15 @@ export function setTheme(theme: SessionState['theme']): void {
 
 export function setGuides(guides: GuideLine[]): void {
   setStore((s) => ({ session: { ...s.session, guides } }));
+}
+
+export function setHelpOpen(open: boolean): void {
+  setStore((s) => ({ session: { ...s.session, helpOpen: open } }));
+}
+
+/** Q toggle (§10.2): quick-connect chevrons visibility. */
+export function toggleChevrons(): void {
+  setStore((s) => ({ session: { ...s.session, chevronsEnabled: !s.session.chevronsEnabled } }));
 }
 
 export function setFilePath(filePath: string | null): void {

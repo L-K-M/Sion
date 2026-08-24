@@ -85,7 +85,7 @@ test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }
   expect(state.edges).toHaveLength(1);
   expect(state.edges[0]!.source).toBe(state.nodes[0]!.id);
   expect(state.edges[0]!.target).toBe(state.nodes[1]!.id);
-  await expect(page.locator('.react-flow__edge path').first()).toBeVisible();
+  await expect(page.locator('.react-flow__edge-path').first()).toBeVisible();
 });
 
 test('line tool connects without arrowheads', async ({ page }) => {
@@ -106,6 +106,7 @@ test('line tool connects without arrowheads', async ({ page }) => {
   expect(state.edges).toHaveLength(1);
   // no marker elements rendered for a headless edge
   await expect(page.locator('.react-flow__edge marker')).toHaveCount(0);
+  await expect(page.locator('.react-flow__edge-path').first()).toBeVisible();
 });
 
 test('edge re-routes when a node drags (derived geometry, D12)', async ({ page }) => {
@@ -123,7 +124,7 @@ test('edge re-routes when a node drags (derived geometry, D12)', async ({ page }
   await page.mouse.up();
   await expect(page.locator('.react-flow__edge')).toHaveCount(1);
 
-  const before = await page.locator('.react-flow__edge path').first().getAttribute('d');
+  const before = await page.locator('.react-flow__edge-path').first().getAttribute('d');
   // drag node A — the path must change (re-route)
   await page.mouse.move(aBox!.x + aBox!.width / 2, aBox!.y + aBox!.height / 2);
   await page.mouse.down();
@@ -131,7 +132,7 @@ test('edge re-routes when a node drags (derived geometry, D12)', async ({ page }
     steps: 8,
   });
   await page.mouse.up();
-  const after = await page.locator('.react-flow__edge path').first().getAttribute('d');
+  const after = await page.locator('.react-flow__edge-path').first().getAttribute('d');
   expect(after).not.toBe(before);
 });
 
@@ -151,7 +152,7 @@ test('edge selection + delete; undo restores (one entry per intent)', async ({ p
   await expect(page.locator('.react-flow__edge')).toHaveCount(1);
 
   // click the edge path to select, then delete
-  const edgePath = page.locator('.react-flow__edge path').first();
+  const edgePath = page.locator('.react-flow__edge-path').first();
   await edgePath.click({ position: { x: 20, y: 5 }, force: true });
   await page.keyboard.press('Delete');
   await expect(page.locator('.react-flow__edge')).toHaveCount(0);

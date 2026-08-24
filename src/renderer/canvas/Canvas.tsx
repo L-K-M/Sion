@@ -7,7 +7,7 @@
  * - onlyRenderVisibleElements from M2; minZoom 0.1 / maxZoom 4
  * - position changes are transient during drag and committed on drag-end (§8.2)
  */
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import {
   Background,
@@ -49,6 +49,7 @@ export function Canvas() {
   // rebuild the node/edge arrays (§11.1 perf doctrine).
   const selection = useStore((s) => s.session.selection);
   const rfInstance = useReactFlow();
+  const rootRef = useRef<HTMLDivElement>(null);
   const gestureActive = useRef(false);
   const movedIds = useRef<Set<string>>(new Set());
   const snapDisabled = useRef(false); // Mod held during a drag (§11.4)
@@ -100,7 +101,9 @@ export function Canvas() {
       for (const p of positions) movedIds.current.add(p.id);
 
       // Smart guides (§11.4): snap the (single) dragged box against statics.
-      if (dragging && positions.length >= 1 && !snapDisabled.current) {
+      // Gated on the gesture (not the dragging flag) so the final raw frame
+      // from React Flow also snaps.
+      if (gestureActive.current && positions.length >= 1 && !snapDisabled.current) {
         const state = useStore.getState();
         const draggedIds = new Set(positions.map((p) => p.id));
         const byId = new Map(state.doc.nodes.map((n) => [n.id, n]));
@@ -213,12 +216,6 @@ export function Canvas() {
     }
   }, []);
 
-  // Double-click: inline label editing (I10)
-  const onNodeDoubleClick = useCallback((e: React.MouseEvent, node: { id: string }) => {
-    e.preventDefault();
-    A.setEditingLabel({ kind: 'node', id: node.id });
-  }, []);
-
   // Shape/text tools: click-place (drag-size affordance arrives with M4's
   // pointer layer; M2 places at default size centered on the click).
   const onPaneClick = useCallback(
@@ -270,8 +267,28 @@ export function Canvas() {
     A.connectEdge(connection.source, connection.target, tool);
   }, []);
 
+  // Double-click: inline label editing (I10). A native capture-phase
+  // listener on the canvas root — React-delegated dblclick on nodes is
+  // unreliable under React Flow's d3-drag pointer handling.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const onDblClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const nodeEl = target?.closest?.('.react-flow__node');
+      const id = nodeEl?.getAttribute('data-id');
+      if (id) {
+        e.preventDefault();
+        A.setEditingLabel({ kind: 'node', id });
+      }
+    };
+    el.addEventListener('dblclick', onDblClick, true);
+    return () => el.removeEventListener('dblclick', onDblClick, true);
+  }, []);
+
   return (
     <div
+      ref={rootRef}
       className="thalyx-canvas-root"
       onContextMenu={(e) => e.preventDefault()} // right-drag pan must not open the browser menu
     >
@@ -284,7 +301,6 @@ export function Canvas() {
         onPaneClick={onPaneClick}
         onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}
-        onNodeDoubleClick={onNodeDoubleClick}
         selectionOnDrag={session.tool !== 'hand'}
         panOnDrag={session.tool === 'hand' ? true : [1, 2]}
         zoomOnDoubleClick={false}

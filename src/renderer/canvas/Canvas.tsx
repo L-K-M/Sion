@@ -100,9 +100,11 @@ export function Canvas() {
       }));
       for (const p of positions) movedIds.current.add(p.id);
 
-      // Smart guides (§11.4): snap the (single) dragged box against statics.
-      // Gated on the gesture (not the dragging flag) so the final raw frame
-      // from React Flow also snaps.
+      // Smart guides (§11.4): compute the snap for guide rendering on every
+      // drag frame, but APPLY the delta only on the final frame (settle-on-
+      // drop). Applying it mid-drag fights React Flow's internal drag state
+      // (controlled positions feed back into the next raw frame).
+      const applyDelta = changes.some((c) => c.type === 'position' && c.dragging === false);
       if (gestureActive.current && positions.length >= 1 && !snapDisabled.current) {
         const state = useStore.getState();
         const draggedIds = new Set(positions.map((p) => p.id));
@@ -140,7 +142,7 @@ export function Canvas() {
             grid: state.doc.canvas.grid,
             zoom,
           });
-          if (snap.dx !== 0 || snap.dy !== 0) {
+          if (applyDelta && (snap.dx !== 0 || snap.dy !== 0)) {
             positions = positions.map((p) => ({ ...p, x: p.x + snap.dx, y: p.y + snap.dy }));
           }
           A.setGuides(snap.guides);

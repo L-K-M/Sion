@@ -49,6 +49,16 @@ async function placeTwoNodes(page: Page): Promise<{ aBox: Box; bBox: Box }> {
   return { aBox: boxes[0]!, bBox: boxes[1]! };
 }
 
+async function targetHandlePoint(page: Page): Promise<{ x: number; y: number }> {
+  const h = await page
+    .locator('.react-flow__node')
+    .nth(1)
+    .locator('.react-flow__handle-left.thalyx-handle')
+    .boundingBox();
+  if (!h) throw new Error('no target handle');
+  return { x: h.x + h.width / 2, y: h.y + h.height / 2 };
+}
+
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto(BASE);
@@ -56,9 +66,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }) => {
-  const { aBox, bBox } = await placeTwoNodes(page);
+  await placeTwoNodes(page);
   await page.keyboard.press('a'); // arrow tool
-  void aBox;
   const handle = page
     .locator('.react-flow__node')
     .first()
@@ -68,7 +77,8 @@ test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }
   if (!hBox) throw new Error('no handle box');
   await page.mouse.move(hBox.x + hBox.width / 2, hBox.y + hBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(bBox!.x + bBox!.width / 2, bBox!.y + bBox!.height / 2, { steps: 8 });
+  const drop = await targetHandlePoint(page);
+  await page.mouse.move(drop.x, drop.y, { steps: 8 });
   await page.mouse.up();
 
   const state = await docState(page);
@@ -79,9 +89,8 @@ test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }
 });
 
 test('line tool connects without arrowheads', async ({ page }) => {
-  const { aBox, bBox } = await placeTwoNodes(page);
+  await placeTwoNodes(page);
   await page.keyboard.press('l'); // line tool
-  void aBox;
   const handle = page
     .locator('.react-flow__node')
     .first()
@@ -90,7 +99,8 @@ test('line tool connects without arrowheads', async ({ page }) => {
   if (!hBox) throw new Error('no handle box');
   await page.mouse.move(hBox.x + hBox.width / 2, hBox.y + hBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(bBox!.x + 30, bBox!.y + 30, { steps: 8 });
+  const drop = await targetHandlePoint(page);
+  await page.mouse.move(drop.x, drop.y, { steps: 8 });
   await page.mouse.up();
   const state = await docState(page);
   expect(state.edges).toHaveLength(1);
@@ -106,10 +116,10 @@ test('edge re-routes when a node drags (derived geometry, D12)', async ({ page }
     .first()
     .locator('.react-flow__handle-right.thalyx-handle');
   const hBox = await handle.boundingBox();
-  const boxes = await nodeBoxes(page);
   await page.mouse.move(hBox!.x + 4, hBox!.y + 4);
   await page.mouse.down();
-  await page.mouse.move(boxes[1]!.x + 40, boxes[1]!.y + 40, { steps: 8 });
+  const drop = await targetHandlePoint(page);
+  await page.mouse.move(drop.x, drop.y, { steps: 8 });
   await page.mouse.up();
   await expect(page.locator('.react-flow__edge')).toHaveCount(1);
 
@@ -133,10 +143,10 @@ test('edge selection + delete; undo restores (one entry per intent)', async ({ p
     .first()
     .locator('.react-flow__handle-right.thalyx-handle');
   const hBox = await handle.boundingBox();
-  const boxes = await nodeBoxes(page);
   await page.mouse.move(hBox!.x + 4, hBox!.y + 4);
   await page.mouse.down();
-  await page.mouse.move(boxes[1]!.x + 40, boxes[1]!.y + 40, { steps: 8 });
+  const drop = await targetHandlePoint(page);
+  await page.mouse.move(drop.x, drop.y, { steps: 8 });
   await page.mouse.up();
   await expect(page.locator('.react-flow__edge')).toHaveCount(1);
 
@@ -161,10 +171,10 @@ test('label via test hook renders a chip; stays legible over the line', async ({
     .first()
     .locator('.react-flow__handle-right.thalyx-handle');
   const hBox = await handle.boundingBox();
-  const boxes = await nodeBoxes(page);
   await page.mouse.move(hBox!.x + 4, hBox!.y + 4);
   await page.mouse.down();
-  await page.mouse.move(boxes[1]!.x + 40, boxes[1]!.y + 40, { steps: 8 });
+  const drop = await targetHandlePoint(page);
+  await page.mouse.move(drop.x, drop.y, { steps: 8 });
   await page.mouse.up();
   await expect(page.locator('.react-flow__edge')).toHaveCount(1);
 

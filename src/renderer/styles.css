@@ -179,3 +179,47 @@ body {
   margin-top: 8px;
   font-size: 12px;
 }
+
+/* --- connection handles (§11.2) ----------------------------------------- */
+
+.thalyx-handle {
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 50% !important;
+  background: var(--panel) !important;
+  border: 2px solid var(--accent) !important;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.react-flow__node:hover .thalyx-handle,
+.react-flow__node.selected .thalyx-handle,
+.react-flow__node.connectablestart .thalyx-handle {
+  opacity: 1;
+}
+
+/* --- edges (§11.3) ------------------------------------------------------- */
+
+.thalyx-edge-label {
+  position: absolute;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 12px;
+  white-space: pre;
+  cursor: grab;
+  border: 1px solid transparent;
+}
+
+.thalyx-edge-label:hover {
+  border-color: var(--border);
+}
+
+.react-flow__edge.selected .thalyx-edge-label {
+  border-color: var(--accent);
+}
+
+.react-flow__edge-path {
+  cursor: move;
+}

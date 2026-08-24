@@ -6,6 +6,7 @@ import { NodeResizer, type NodeProps } from '@xyflow/react';
 import type { ThalyxNode } from '../../../shared/model/types';
 import type { ThalyxNodeData } from '../rfSelectors';
 import { colorStyle } from '../../theme/colorStyle';
+import { ConnectionHandles } from './ConnectionHandles';
 
 export const TextNode = memo(function TextNode({ data, selected }: NodeProps) {
   const node = (data as ThalyxNodeData).node as ThalyxNode;
@@ -28,6 +29,7 @@ export const TextNode = memo(function TextNode({ data, selected }: NodeProps) {
         lineClassName="thalyx-resize-line"
         handleClassName="thalyx-resize-handle"
       />
+      <ConnectionHandles />
       <div className="thalyx-node-label">
         {lines.map((line, i) => (
           <div key={i}>{line}</div>

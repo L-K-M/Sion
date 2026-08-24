@@ -73,7 +73,7 @@ export function toReactFlowEdges(
     id: e.id,
     source: e.source,
     target: e.target,
-    type: 'straight',
+    type: 'thalyx',
     selected: selected.has(e.id),
     hidden: e.hidden === true,
     data: edgeData(e),

@@ -84,6 +84,60 @@ test.describe.serial('perf spike (§11.7)', () => {
     expect(latency).toBeLessThan(5_000);
   });
 
+  test('1000-node doc with edges: drag reroute fps', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto('/?testHooks=1');
+    await expect(page.locator('.react-flow')).toBeVisible();
+    await loadDoc(page, 400); // 400 nodes → ~600 edges — every drag re-routes its edges
+    await page.keyboard.press('Shift+1');
+    await page.waitForTimeout(400);
+    const node = page.locator('.react-flow__node').first();
+    const box = await node.boundingBox();
+    if (!box) throw new Error('no node box');
+
+    const fps = await page.evaluate(
+      async ({ x, y }) => {
+        const start = performance.now();
+        let frames = 0;
+        const tick = () => {
+          frames += 1;
+          if (performance.now() - start < 3000) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+        // continuous drag in small steps across the canvas
+        const el = document.querySelector('.react-flow') as HTMLElement;
+        el.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            clientX: x,
+            clientY: y,
+            bubbles: true,
+            isPrimary: true,
+            pointerId: 1,
+          }),
+        );
+        let t = 0;
+        while (performance.now() - start < 3000) {
+          t += 1;
+          window.dispatchEvent(
+            new PointerEvent('pointermove', {
+              clientX: x + Math.sin(t / 6) * 60,
+              clientY: y + Math.cos(t / 8) * 40,
+              bubbles: true,
+              isPrimary: true,
+              pointerId: 1,
+            }),
+          );
+          await new Promise((r) => setTimeout(r, 8));
+        }
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));
+        return (frames / 3000) * 1000;
+      },
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+    console.log(`[perf] edge-reroute drag fps (400 nodes/600 edges): ${fps.toFixed(1)}`);
+    expect(fps).toBeGreaterThan(4);
+  });
+
   test('2000-node doc stays usable', async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto('/?testHooks=1');

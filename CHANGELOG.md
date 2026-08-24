@@ -8,6 +8,46 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M3 — Connections (PLAN.md §17 M3)
+
+Added:
+
+- `src/shared/geometry/anchors.ts` (§11.2): `edgeEndpoints` — floating
+  'auto' endpoints via shape-boundary intersection on the center-to-center
+  line (analytic rect/ellipse/diamond), pinned sides via side midpoints,
+  `facingSide` for the router.
+- `src/shared/geometry/elbow.ts` (§11.3): `route()` — stub 16 px, L for
+  orthogonal sides, Z via midline for opposite sides, U via
+  rail-beyond-outermost for same side; `collapseCollinear`, `pointAtT`,
+  `polylineLength` for label placement.
+- `ThalyxEdge` component (§11.3): elbow (rounded 6 px corners via
+  arc-joined polylines) / straight / curved (RF helpers); arrowhead markers
+  (arrow/circle/cross, auto-start-reverse for the source end) defined inline
+  per edge; solid/dashed/thick; hidden edges render nothing; a 16-px-wide
+  invisible hit path for easy grabbing.
+- Edge label chip at `labelT` (draggable — pointer drag updates `labelT` to
+  the nearest point on the route, gesture-coalesced into ONE undo entry);
+  opaque canvas background so labels stay legible over lines.
+- Manual waypoints: dragging an elbow body inserts a waypoint at the drag
+  position (transient frames in one gesture); D12 clear-on-endpoint-move is
+  wired from M2's canvas gesture hooks.
+- `ConnectionHandles` (§11.2): RF Handles on all four sides (id n/s/e/w) on
+  every node kind — the drag affordance; the model always stores 'auto'.
+- Arrow tool (A) + line tool (L): toolbar buttons, keymap keys;
+  `connectEdge` action with last-used style inheritance (§10.1 delta 1 —
+  session `lastEdgeStyle`).
+- Edge selection (click) + deletion + undo; edges carry the `selected` flag
+  since M2's selector fix.
+- Tests: router side-case matrix (opposite/same/orthogonal sides, all-axis
+  alignment + finiteness incl. overlapping rects, collapse/pointAtT), anchor
+  goldens (center-line membership, ellipse radial, pinned midpoints,
+  facingSide), actions tests (connect = one entry, style inheritance, label
+  update, waypoint gesture coalescing, D12 clearing), and the
+  `connections.spec.ts` web e2e (connect from handle with both tools,
+  re-route on drag, select/delete/undo, label chip legibility).
+- Perf (§17 M3): edge-reroute drag fps case in the perf spec; `docs/perf.md`
+  extended (CI numbers to be filled from the first green run).
+
 ### M2 — Canvas MVP + perf gate (PLAN.md §17 M2)
 
 Added:

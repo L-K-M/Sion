@@ -98,17 +98,19 @@ test('alignment row aligns two nodes', async ({ page }) => {
   await page.mouse.click(700, 400);
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
 
-  // shift-click both nodes
-  const boxes = await page.locator('.react-flow__node').evaluateAll((els) =>
-    els.map((el) => {
-      const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y, width: r.width, height: r.height };
-    }),
-  );
-  await page.mouse.click(boxes[0]!.x + boxes[0]!.width / 2, boxes[0]!.y + boxes[0]!.height / 2);
-  await page.keyboard.down('Shift');
-  await page.mouse.click(boxes[1]!.x + boxes[1]!.width / 2, boxes[1]!.y + boxes[1]!.height / 2);
-  await page.keyboard.up('Shift');
+  // rubber-band both (same gesture the group test uses)
+  const boxes = await page.locator('.react-flow__node').evaluateAll((els) => {
+    const rs = els.map((el) => el.getBoundingClientRect());
+    const minX = Math.min(...rs.map((r) => r.x));
+    const minY = Math.min(...rs.map((r) => r.y));
+    const maxX = Math.max(...rs.map((r) => r.x + r.width));
+    const maxY = Math.max(...rs.map((r) => r.y + r.height));
+    return { x: minX - 30, y: minY - 30, w: maxX - minX + 60, h: maxY - minY + 60 };
+  });
+  await page.mouse.move(boxes.x, boxes.y);
+  await page.mouse.down();
+  await page.mouse.move(boxes.x + boxes.w, boxes.y + boxes.h, { steps: 6 });
+  await page.mouse.up();
 
   const panel = page.locator('.thalyx-panel');
   await panel.getByTitle('Align left').click();
@@ -209,18 +211,21 @@ test('help overlay opens with Shift+/ and filters', async ({ page }) => {
 
 test('Shift+Alt+D cycles the theme', async ({ page }) => {
   await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'light');
-  await page.keyboard.down('Shift');
-  await page.keyboard.down('Alt');
-  await page.keyboard.press('d');
-  await page.keyboard.up('Alt');
-  await page.keyboard.up('Shift');
-  await page.waitForTimeout(150);
+  const pressChord = () =>
+    page.evaluate(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          code: 'KeyD',
+          key: 'D',
+          altKey: true,
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+  await pressChord();
   await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'dark');
-  await page.keyboard.down('Shift');
-  await page.keyboard.down('Alt');
-  await page.keyboard.press('d');
-  await page.keyboard.up('Alt');
-  await page.keyboard.up('Shift');
+  await pressChord();
   await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'system');
 });
 

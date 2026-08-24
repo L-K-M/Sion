@@ -62,7 +62,7 @@ test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }
   const handle = page
     .locator('.react-flow__node')
     .first()
-    .locator('.react-flow__handle-e.thalyx-handle');
+    .locator('.react-flow__handle-right.thalyx-handle');
   await expect(handle).toBeVisible();
   const hBox = await handle.boundingBox();
   if (!hBox) throw new Error('no handle box');
@@ -85,7 +85,7 @@ test('line tool connects without arrowheads', async ({ page }) => {
   const handle = page
     .locator('.react-flow__node')
     .first()
-    .locator('.react-flow__handle-e.thalyx-handle');
+    .locator('.react-flow__handle-right.thalyx-handle');
   const hBox = await handle.boundingBox();
   if (!hBox) throw new Error('no handle box');
   await page.mouse.move(hBox.x + hBox.width / 2, hBox.y + hBox.height / 2);
@@ -104,7 +104,7 @@ test('edge re-routes when a node drags (derived geometry, D12)', async ({ page }
   const handle = page
     .locator('.react-flow__node')
     .first()
-    .locator('.react-flow__handle-e.thalyx-handle');
+    .locator('.react-flow__handle-right.thalyx-handle');
   const hBox = await handle.boundingBox();
   const boxes = await nodeBoxes(page);
   await page.mouse.move(hBox!.x + 4, hBox!.y + 4);
@@ -131,7 +131,7 @@ test('edge selection + delete; undo restores (one entry per intent)', async ({ p
   const handle = page
     .locator('.react-flow__node')
     .first()
-    .locator('.react-flow__handle-e.thalyx-handle');
+    .locator('.react-flow__handle-right.thalyx-handle');
   const hBox = await handle.boundingBox();
   const boxes = await nodeBoxes(page);
   await page.mouse.move(hBox!.x + 4, hBox!.y + 4);
@@ -159,7 +159,7 @@ test('label via test hook renders a chip; stays legible over the line', async ({
   const handle = page
     .locator('.react-flow__node')
     .first()
-    .locator('.react-flow__handle-e.thalyx-handle');
+    .locator('.react-flow__handle-right.thalyx-handle');
   const hBox = await handle.boundingBox();
   const boxes = await nodeBoxes(page);
   await page.mouse.move(hBox!.x + 4, hBox!.y + 4);

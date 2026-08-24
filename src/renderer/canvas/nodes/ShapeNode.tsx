@@ -73,7 +73,10 @@ function NodeLabel({
       <LabelTextarea
         value={label}
         fontSize={fontSize}
-        onCommit={(next) => A.updateNodeLabel(id, next)}
+        onCommit={(next) => {
+          A.updateNodeLabel(id, next);
+          A.setEditingLabel(null);
+        }}
         onCancel={() => A.clearSelection()}
       />
     );

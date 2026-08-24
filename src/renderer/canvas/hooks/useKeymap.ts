@@ -145,11 +145,6 @@ export function useKeymap(): void {
           A.setEditingLabel({ kind: 'node', id: sel.nodeIds[0]! });
           return;
         }
-        if (sel.edgeIds.length === 1 && sel.nodeIds.length === 0) {
-          e.preventDefault();
-          A.setEditingLabel({ kind: 'edge', id: sel.edgeIds[0]! });
-          return;
-        }
         return;
       }
 

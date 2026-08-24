@@ -95,29 +95,30 @@ test('Mod+D duplicates the selection with re-ids', async ({ page }) => {
 });
 
 test('smart guides snap the dragged node to an aligned edge', async ({ page }) => {
-  // two nodes at the same y; drag the second until its left edge nears the
-  // first's right edge — it must snap to exactly 16px apart… actually to the
-  // aligned edge candidate within 6px.
   await page.getByTitle('Rounded rectangle').click();
   await page.mouse.click(400, 300);
   await page.getByTitle('Rounded rectangle').click();
   await page.mouse.click(700, 300);
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
 
-  const boxes = await page.locator('.react-flow__node').evaluateAll((els) =>
-    els.map((el) => {
-      const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y, w: r.width, h: r.height };
-    }),
-  );
-  const firstRight = boxes[0]!.x + boxes[0]!.w;
-  // drag the second node so its left edge lands ~2px past first's right edge
-  const targetLeft = firstRight + 2;
-  const second = boxes[1]!;
-  const dx = targetLeft - second.x;
-  await page.mouse.move(second.x + second.w / 2, second.y + second.h / 2);
+  // Viewport-aware drag: compute the flow-space delta from the store and the
+  // live zoom from the viewport transform.
+  const state0 = await docState(page);
+  const a0 = state0.nodes[0]!;
+  const b0 = state0.nodes[1]!;
+  const zoom = await page.evaluate(() => {
+    const t = document.querySelector('.react-flow__viewport')?.style.transform ?? '';
+    const m = t.match(/scale\(([\d.]+)\)/);
+    return m ? Number(m[1]) : 1;
+  });
+  const flowDx = a0.x + a0.width + 2 - b0.x; // land 2 flow px past a's right edge
+  const box = await page.locator('.react-flow__node').nth(1).boundingBox();
+  if (!box) throw new Error('no second node box');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(second.x + second.w / 2 + dx, second.y + second.h / 2, { steps: 10 });
+  await page.mouse.move(box.x + box.width / 2 + flowDx * zoom, box.y + box.height / 2, {
+    steps: 10,
+  });
   await page.mouse.up();
 
   const state = await docState(page);

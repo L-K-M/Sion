@@ -287,6 +287,7 @@ export function Canvas() {
         onNodeDoubleClick={onNodeDoubleClick}
         selectionOnDrag={session.tool !== 'hand'}
         panOnDrag={session.tool === 'hand' ? true : [1, 2]}
+        zoomOnDoubleClick={false}
         zoomOnPinch
         selectionKeyCode={null}
         multiSelectionKeyCode="Shift"

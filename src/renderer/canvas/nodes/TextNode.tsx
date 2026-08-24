@@ -38,7 +38,10 @@ export const TextNode = memo(function TextNode({ data, selected, id }: NodeProps
         <LabelTextarea
           value={node.label}
           fontSize={node.style.fontSize}
-          onCommit={(next) => A.updateNodeLabel(id, next)}
+          onCommit={(next) => {
+            A.updateNodeLabel(id, next);
+            A.setEditingLabel(null);
+          }}
           onCancel={() => A.clearSelection()}
         />
       ) : (

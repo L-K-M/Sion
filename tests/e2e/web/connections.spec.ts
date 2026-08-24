@@ -67,6 +67,7 @@ test.beforeEach(async ({ page }) => {
 
 test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }) => {
   await placeTwoNodes(page);
+  await page.keyboard.press('Escape'); // deselect — printable keys would start label editing (§10.2)
   await page.keyboard.press('a'); // arrow tool
   const handle = page
     .locator('.react-flow__node')
@@ -90,6 +91,7 @@ test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }
 
 test('line tool connects without arrowheads', async ({ page }) => {
   await placeTwoNodes(page);
+  await page.keyboard.press('Escape'); // deselect
   await page.keyboard.press('l'); // line tool
   const handle = page
     .locator('.react-flow__node')

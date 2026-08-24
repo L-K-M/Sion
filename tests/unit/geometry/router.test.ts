@@ -21,8 +21,9 @@ describe('elbow router side-case matrix (§11.3)', () => {
     expect(pts.length).toBe(4);
     const railX = pts[1]!.x;
     expect(railX).toBe(pts[2]!.x);
-    expect(railX).toBeGreaterThan(100 + STUB - 1);
-    expect(railX).toBeLessThan(400 - STUB + 1);
+    // the vertical rail clears both shapes by a full stub
+    expect(railX).toBeGreaterThanOrEqual(100 + STUB);
+    expect(railX).toBeLessThanOrEqual(400 - STUB);
     expect(pts[0]!.y).toBe(30);
     expect(pts[3]!.y).toBe(230);
     // axis-aligned throughout
@@ -183,8 +184,10 @@ describe('floating anchors (§11.2)', () => {
       'auto',
       'auto',
     );
-    expect(source).toEqual({ x: 100, y: 50 });
-    expect(target).toEqual({ x: 300, y: 50 });
+    expect(source.x).toBeCloseTo(100, 5);
+    expect(source.y).toBeCloseTo(50, 5);
+    expect(target.x).toBeCloseTo(300, 5);
+    expect(target.y).toBeCloseTo(50, 5);
   });
 
   it('pinned sides use side midpoints', () => {

@@ -506,9 +506,14 @@ describe('connectEdge (M3)', () => {
     const e2 = A.connectEdge(b, a, 'line');
     expect(doc().edges[1]!.arrowEnd).toBe('none');
     expect(doc().edges[1]!.arrowStart).toBe('none');
-    expect(getStore().session.lastEdgeStyle.arrowEnd).toBe('none');
-    void e1;
-    void e2;
+    expect(getStore().session.lastEdgeStyle).toEqual({ arrowEnd: 'none', line: 'solid' });
+    // distinct ids, both present in the doc
+    expect(e1).not.toBe(e2);
+    expect(
+      doc()
+        .edges.map((e) => e.id)
+        .sort(),
+    ).toEqual([e1, e2].sort());
   });
 
   it('connect is ONE history entry; undo removes the edge', () => {
@@ -519,6 +524,12 @@ describe('connectEdge (M3)', () => {
     expect(getStore().history.past.length).toBe(before + 1);
     A.undo();
     expect(doc().edges).toHaveLength(0);
+    // undoing the connect must not touch the nodes
+    expect(
+      doc()
+        .nodes.map((n) => n.label)
+        .sort(),
+    ).toEqual(['A', 'B']);
   });
 
   it('style inheritance: dashed last-used style carries into the next edge', () => {
@@ -537,7 +548,10 @@ describe('connectEdge (M3)', () => {
     A.updateEdge(e, { label: 'yes', labelT: 2 });
     expect(getStore().history.past.length).toBe(before + 1);
     expect(doc().edges[0]!.label).toBe('yes');
-    expect(doc().edges[0]!.labelT).toBe(1);
+    expect(doc().edges[0]!.labelT).toBe(1); // upper clamp
+    A.updateEdge(e, { labelT: -3 });
+    expect(doc().edges[0]!.labelT).toBe(0); // lower clamp
+    A.undo();
     A.undo();
     expect(doc().edges[0]!.label).toBeUndefined();
   });
@@ -555,6 +569,9 @@ describe('connectEdge (M3)', () => {
     expect(doc().edges[0]!.waypoints).toEqual([{ x: 20, y: 20 }]);
     // endpoint move clears (D12)
     A.clearWaypointsOfNodeEndpoints([a]);
+    expect(doc().edges[0]!.waypoints).toBeUndefined();
+    // undo restores the pre-gesture state (no waypoints)
+    A.undo();
     expect(doc().edges[0]!.waypoints).toBeUndefined();
   });
 });

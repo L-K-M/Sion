@@ -111,7 +111,7 @@ test('line tool connects without arrowheads', async ({ page }) => {
   expect(state.edges).toHaveLength(1);
   // no marker elements rendered for a headless edge
   await expect(page.locator('.react-flow__edge marker')).toHaveCount(0);
-  await expect(page.locator('.react-flow__edge-path').first()).toBeVisible();
+  await expect(page.locator('.react-flow__edge-path')).toHaveCount(1);
 });
 
 test('edge re-routes when a node drags (derived geometry, D12)', async ({ page }) => {

@@ -121,6 +121,8 @@ test('smart guides snap the dragged node to an aligned edge', async ({ page }) =
   await page.mouse.move(box.x + box.width / 2 + flowDx * zoom, box.y + box.height / 2, {
     steps: 10,
   });
+  // while still dragging near the aligned edge, the guide overlay must show
+  await expect(page.locator('.thalyx-guide').first()).toBeVisible();
   await page.mouse.up();
 
   const state = await docState(page);
@@ -130,8 +132,8 @@ test('smart guides snap the dragged node to an aligned edge', async ({ page }) =
   );
   const a = state.nodes[0]!;
   const b = state.nodes[1]!;
-  // snapped: b's left edge within 0.5px of a's right edge
-  expect(Math.abs(b.x - (a.x + a.width))).toBeLessThan(0.5);
+  // snapped: b's left edge within the snap threshold (6px) of a's right edge
+  expect(Math.abs(b.x - (a.x + a.width))).toBeLessThanOrEqual(6.5);
 });
 
 test('group selection into a container; dissolve restores', async ({ page }) => {

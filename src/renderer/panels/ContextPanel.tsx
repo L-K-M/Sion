@@ -152,6 +152,7 @@ export const ContextPanel = memo(function ContextPanel() {
             onChange={(v) => {
               for (const e of edges) A.updateEdge(e.id, { style: { ...e.style, line: v } });
             }}
+            title="Line"
           />
         </Row>
         <Row label="Route">
@@ -165,6 +166,7 @@ export const ContextPanel = memo(function ContextPanel() {
             onChange={(v: EdgeKind) => {
               for (const e of edges) A.updateEdge(e.id, { kind: v });
             }}
+            title="Route"
           />
         </Row>
         <Row label="Start">
@@ -174,6 +176,7 @@ export const ContextPanel = memo(function ContextPanel() {
             onChange={(v: ArrowHead) => {
               for (const e of edges) A.updateEdge(e.id, { arrowStart: v });
             }}
+            title="Start arrowhead"
           />
         </Row>
         <Row label="End">
@@ -183,6 +186,7 @@ export const ContextPanel = memo(function ContextPanel() {
             onChange={(v: ArrowHead) => {
               for (const e of edges) A.updateEdge(e.id, { arrowEnd: v });
             }}
+            title="End arrowhead"
           />
         </Row>
         {singleEdge ? (

@@ -172,8 +172,12 @@ export function setNodeLink(id: string, link: string | undefined): void {
       if (!['https:', 'http:', 'mailto:'].includes(scheme)) return; // refused
     } catch {
       safe = `https://${safe}`;
-      // re-validate the synthesized URL
-      if (!/^https:\/\/[^\s]+$/i.test(safe)) return;
+      // re-validate the synthesized URL with the parser
+      try {
+        new URL(safe);
+      } catch {
+        return;
+      }
     }
   }
   tracked((d) => {

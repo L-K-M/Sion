@@ -251,6 +251,8 @@ export function deleteSelection(): void {
 export interface ReIdResult {
   nodes: ThalyxNode[];
   edges: ThalyxEdge[];
+  /** original id → fresh id (for callers that must map positions etc.) */
+  idMap: Map<string, string>;
 }
 
 /** Re-id a set of nodes + intra-set edges with fresh ids (paste/duplicate core). */
@@ -287,7 +289,7 @@ function reIdSubgraph(
       waypoints: e.waypoints?.map((p) => ({ ...p })),
       meta: e.meta ? JSON.parse(JSON.stringify(e.meta)) : undefined,
     }));
-  return { nodes: newNodes, edges: newEdges };
+  return { nodes: newNodes, edges: newEdges, idMap };
 }
 
 /**
@@ -605,6 +607,64 @@ export function connectEdge(source: string, target: string, tool: Tool): string 
     session: { ...s.session, lastEdgeStyle: { arrowEnd, line } },
   }));
   return id;
+}
+
+/**
+ * Alt-drag duplicate (I11): the user alt-dragged the selection — the ORIGINALS
+ * return to their pre-drag positions and fresh duplicates land where the drag
+ * ended. Net effect: one gesture leaves a copy behind. One history entry.
+ */
+export function altDragDuplicate(
+  selectedIds: string[],
+  finalPositions: Map<string, { x: number; y: number }>,
+): void {
+  const state = getStore();
+  const doc = state.doc;
+  const selected = doc.nodes.filter((n) => selectedIds.includes(n.id));
+  if (selected.length === 0) return;
+  const withDescendants: ThalyxNode[] = [];
+  const seen = new Set<string>();
+  for (const n of selected) {
+    for (const m of [n, ...descendantsOf(doc, n.id)]) {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        withDescendants.push(m);
+      }
+    }
+  }
+  const intra = edgesAmong(doc, new Set(withDescendants.map((n) => n.id)));
+  const dup = reIdSubgraph(withDescendants, intra, 0, 0);
+  // place each duplicate at the dragged final position (offset 0 — the user
+  // chose the spot); originals keep their pre-drag coordinates (untouched).
+  for (const orig of withDescendants) {
+    const dupId = dup.idMap.get(orig.id);
+    const dupNode = dup.nodes.find((n) => n.id === dupId);
+    const fin = finalPositions.get(orig.id);
+    if (dupNode && fin) {
+      dupNode.x = fin.x;
+      dupNode.y = fin.y;
+    }
+  }
+  tracked(
+    (dr) => {
+      dr.nodes.push(...dup.nodes);
+      dr.edges.push(...dup.edges);
+    },
+    { selection: { nodeIds: dup.nodes.map((n) => n.id), edgeIds: [] } },
+  );
+}
+
+/** Nudge (§10.2): move the selection by dx/dy (1 px, or 8 with Shift). */
+export function nudgeSelection(dx: number, dy: number): void {
+  tracked((d) => {
+    const sel = getStore().session;
+    for (const n of d.nodes) {
+      if (sel.selection.nodeIds.includes(n.id) && !n.locked) {
+        n.x += dx;
+        n.y += dy;
+      }
+    }
+  });
 }
 
 export function setLastEdgeStyle(style: {

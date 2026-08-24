@@ -67,6 +67,7 @@ test.beforeEach(async ({ page }) => {
 
 test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }) => {
   await placeTwoNodes(page);
+  await page.keyboard.press('Escape'); // deselect — printable keys would start label editing (§10.2)
   await page.keyboard.press('a'); // arrow tool
   const handle = page
     .locator('.react-flow__node')
@@ -85,11 +86,15 @@ test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }
   expect(state.edges).toHaveLength(1);
   expect(state.edges[0]!.source).toBe(state.nodes[0]!.id);
   expect(state.edges[0]!.target).toBe(state.nodes[1]!.id);
-  await expect(page.locator('.react-flow__edge-path').first()).toBeVisible();
+  await expect(page.locator('.react-flow__edge-path')).toHaveCount(1);
+  expect(
+    (await page.locator('.react-flow__edge-path').first().getAttribute('d'))!.length,
+  ).toBeGreaterThan(10);
 });
 
 test('line tool connects without arrowheads', async ({ page }) => {
   await placeTwoNodes(page);
+  await page.keyboard.press('Escape'); // deselect
   await page.keyboard.press('l'); // line tool
   const handle = page
     .locator('.react-flow__node')
@@ -106,7 +111,7 @@ test('line tool connects without arrowheads', async ({ page }) => {
   expect(state.edges).toHaveLength(1);
   // no marker elements rendered for a headless edge
   await expect(page.locator('.react-flow__edge marker')).toHaveCount(0);
-  await expect(page.locator('.react-flow__edge-path').first()).toBeVisible();
+  await expect(page.locator('.react-flow__edge-path')).toHaveCount(1);
 });
 
 test('edge re-routes when a node drags (derived geometry, D12)', async ({ page }) => {

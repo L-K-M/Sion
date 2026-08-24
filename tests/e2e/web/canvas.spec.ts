@@ -189,6 +189,7 @@ test('containers from fixture docs render, move with children, and resize', asyn
 
   // drag the container — the child follows (relative coords unchanged)
   await page.keyboard.press('Shift+1'); // fit view so the container is on screen
+  await page.waitForTimeout(400); // fitView animates over 200ms
   const innerBefore = (await docState(page)).nodes.find((n) => n.id === 'inner')!;
   const groupBox = await page
     .locator('.react-flow__node')
@@ -196,10 +197,15 @@ test('containers from fixture docs render, move with children, and resize', asyn
     .first()
     .boundingBox();
   if (!groupBox) throw new Error('container not visible');
+  // Hold Mod (Control) during the drag — snapping is disabled while held (§11.4),
+  // so the container drag is deterministic.
+  await page.keyboard.down('Control');
   await page.mouse.move(groupBox.x + 20, groupBox.y + 10); // container title area
   await page.mouse.down();
   await page.mouse.move(groupBox.x + 120, groupBox.y + 110, { steps: 6 });
+  await page.waitForTimeout(150);
   await page.mouse.up();
+  await page.keyboard.up('Control');
   const innerAfter = (await docState(page)).nodes.find((n) => n.id === 'inner')!;
   expect(innerAfter.x).toBe(innerBefore.x);
   expect(innerAfter.y).toBe(innerBefore.y);

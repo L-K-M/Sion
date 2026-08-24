@@ -8,9 +8,12 @@ import { shapePath } from '../../../shared/geometry/shapes';
 import type { ThalyxNode } from '../../../shared/model/types';
 import type { ThalyxNodeData } from '../rfSelectors';
 import { colorStyle } from '../../theme/colorStyle';
+import { useStore } from '../../store/store';
+import * as A from '../../store/actions';
+import { LabelTextarea } from '../hooks/useLabelEditing';
 import { ConnectionHandles } from './ConnectionHandles';
 
-export const ShapeNode = memo(function ShapeNode({ data, selected }: NodeProps) {
+export const ShapeNode = memo(function ShapeNode({ data, selected, id }: NodeProps) {
   const node = (data as ThalyxNodeData).node as ThalyxNode;
   const lines = node.label.length > 0 ? node.label.split('\n') : [];
   return (
@@ -48,11 +51,41 @@ export const ShapeNode = memo(function ShapeNode({ data, selected }: NodeProps) 
         />
       </svg>
       <ConnectionHandles />
-      <div className="thalyx-node-label">
-        {lines.map((line, i) => (
-          <div key={i}>{line}</div>
-        ))}
-      </div>
+      <NodeLabel id={id!} label={node.label} fontSize={node.style.fontSize} lines={lines} />
     </div>
   );
 });
+
+function NodeLabel({
+  id,
+  label,
+  fontSize,
+  lines,
+}: {
+  id: string;
+  label: string;
+  fontSize: number;
+  lines: string[];
+}) {
+  const editing = useStore((st) => st.session.editingLabel);
+  if (editing?.kind === 'node' && editing.id === id) {
+    return (
+      <LabelTextarea
+        value={label}
+        fontSize={fontSize}
+        onCommit={(next) => {
+          A.updateNodeLabel(id, next);
+          A.setEditingLabel(null);
+        }}
+        onCancel={() => A.clearSelection()}
+      />
+    );
+  }
+  return (
+    <div className="thalyx-node-label">
+      {lines.map((line, i) => (
+        <div key={i}>{line}</div>
+      ))}
+    </div>
+  );
+}

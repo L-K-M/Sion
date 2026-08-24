@@ -27,6 +27,9 @@ export function installTestHooks(): void {
         return false;
       }
     },
+    getEditing(): string {
+      return JSON.stringify(useStore.getState().session.editingLabel);
+    },
     getDocJson(): string {
       return JSON.stringify(useStore.getState().doc);
     },

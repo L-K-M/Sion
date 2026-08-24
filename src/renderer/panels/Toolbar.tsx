@@ -15,6 +15,7 @@ const TOOLBUTTONS: Array<{ tool: Tool; label: string; title: string; key?: strin
   { tool: 'hand', label: '✋', title: 'Hand (H) — or hold Space', key: 'H' },
   { tool: 'arrow', label: '→', title: 'Arrow connector (A)', key: 'A' },
   { tool: 'line', label: '—', title: 'Line, no arrowheads (L)', key: 'L' },
+  { tool: 'container', label: '▢+', title: 'Container / frame (F)', key: 'F' },
 ];
 
 const SHAPES: Array<{ shape: ShapeKind; label: string; title: string }> = [

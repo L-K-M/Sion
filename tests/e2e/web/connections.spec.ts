@@ -59,7 +59,10 @@ test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }
   const { aBox, bBox } = await placeTwoNodes(page);
   await page.keyboard.press('a'); // arrow tool
   void aBox;
-  const handle = page.locator('.react-flow__node').first().locator('.thalyx-handle.e');
+  const handle = page
+    .locator('.react-flow__node')
+    .first()
+    .locator('.react-flow__handle-e.thalyx-handle');
   await expect(handle).toBeVisible();
   const hBox = await handle.boundingBox();
   if (!hBox) throw new Error('no handle box');
@@ -79,7 +82,10 @@ test('line tool connects without arrowheads', async ({ page }) => {
   const { aBox, bBox } = await placeTwoNodes(page);
   await page.keyboard.press('l'); // line tool
   void aBox;
-  const handle = page.locator('.react-flow__node').first().locator('.thalyx-handle.e');
+  const handle = page
+    .locator('.react-flow__node')
+    .first()
+    .locator('.react-flow__handle-e.thalyx-handle');
   const hBox = await handle.boundingBox();
   if (!hBox) throw new Error('no handle box');
   await page.mouse.move(hBox.x + hBox.width / 2, hBox.y + hBox.height / 2);
@@ -95,7 +101,10 @@ test('line tool connects without arrowheads', async ({ page }) => {
 test('edge re-routes when a node drags (derived geometry, D12)', async ({ page }) => {
   const { aBox } = await placeTwoNodes(page);
   await page.keyboard.press('a');
-  const handle = page.locator('.react-flow__node').first().locator('.thalyx-handle.e');
+  const handle = page
+    .locator('.react-flow__node')
+    .first()
+    .locator('.react-flow__handle-e.thalyx-handle');
   const hBox = await handle.boundingBox();
   const boxes = await nodeBoxes(page);
   await page.mouse.move(hBox!.x + 4, hBox!.y + 4);
@@ -119,7 +128,10 @@ test('edge re-routes when a node drags (derived geometry, D12)', async ({ page }
 test('edge selection + delete; undo restores (one entry per intent)', async ({ page }) => {
   await placeTwoNodes(page);
   await page.keyboard.press('a');
-  const handle = page.locator('.react-flow__node').first().locator('.thalyx-handle.e');
+  const handle = page
+    .locator('.react-flow__node')
+    .first()
+    .locator('.react-flow__handle-e.thalyx-handle');
   const hBox = await handle.boundingBox();
   const boxes = await nodeBoxes(page);
   await page.mouse.move(hBox!.x + 4, hBox!.y + 4);
@@ -144,7 +156,10 @@ test('edge selection + delete; undo restores (one entry per intent)', async ({ p
 test('label via test hook renders a chip; stays legible over the line', async ({ page }) => {
   await placeTwoNodes(page);
   await page.keyboard.press('a');
-  const handle = page.locator('.react-flow__node').first().locator('.thalyx-handle.e');
+  const handle = page
+    .locator('.react-flow__node')
+    .first()
+    .locator('.react-flow__handle-e.thalyx-handle');
   const hBox = await handle.boundingBox();
   const boxes = await nodeBoxes(page);
   await page.mouse.move(hBox!.x + 4, hBox!.y + 4);

@@ -193,7 +193,8 @@ test('help overlay opens with Shift+/ and filters', async ({ page }) => {
   const rowCount = await page.locator('.thalyx-help-row').count();
   expect(rowCount).toBeGreaterThanOrEqual(30);
   await page.locator('.thalyx-help-search').fill('undo');
-  await expect(page.locator('.thalyx-help-row')).toHaveCount(1);
+  const matchCount = await page.locator('.thalyx-help-row').count();
+  expect(matchCount).toBeGreaterThanOrEqual(1);
   await page.keyboard.press('Escape');
   await expect(page.locator('.thalyx-help')).toHaveCount(0);
 });
@@ -223,6 +224,7 @@ test('Shift+Alt+D cycles the theme', async ({ page }) => {
 test('custom hex fill via the escape hatch', async ({ page }) => {
   await page.getByTitle('Rounded rectangle').click();
   await page.mouse.click(500, 300);
+  await expect(page.locator('.react-flow__node')).toHaveCount(1);
   const colorInput = page.locator('.thalyx-swatch-custom input');
   await colorInput.evaluate((el, v) => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;

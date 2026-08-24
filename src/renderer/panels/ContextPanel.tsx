@@ -196,8 +196,9 @@ export const ContextPanel = memo(function ContextPanel() {
               className="thalyx-panel-input"
               defaultValue={singleEdge.label ?? ''}
               onKeyDown={(e) => {
-                if (e.key === 'Enter')
+                if (e.key === 'Enter' && e.currentTarget.value !== (singleEdge.label ?? '')) {
                   A.updateEdge(singleEdge.id, { label: e.currentTarget.value });
+                }
               }}
               onBlur={(e) => {
                 if (e.currentTarget.value !== (singleEdge.label ?? '')) {

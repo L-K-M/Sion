@@ -166,8 +166,20 @@ export function setNodeLink(id: string, link: string | undefined): void {
     if (!n) return;
     n.meta ??= {};
     n.meta.mermaid ??= {};
-    if (link === undefined || link.length === 0) delete n.meta.mermaid.link;
-    else n.meta.mermaid.link = link.slice(0, 2048);
+    if (link === undefined || link.length === 0) {
+      delete n.meta.mermaid.link;
+      return;
+    }
+    // §14.4: only openable schemes are stored (file:, javascript:, etc. refused)
+    let safe = link.slice(0, 2048);
+    try {
+      const scheme = new URL(safe).protocol;
+      if (!['https:', 'http:', 'mailto:'].includes(scheme)) return;
+    } catch {
+      // scheme-less input: treat as a website URL
+      safe = `https://${safe}`;
+    }
+    n.meta.mermaid.link = safe;
   });
 }
 

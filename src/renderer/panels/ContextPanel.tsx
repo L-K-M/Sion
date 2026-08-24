@@ -188,6 +188,7 @@ export const ContextPanel = memo(function ContextPanel() {
         {singleEdge ? (
           <Row label="Label">
             <input
+              key={singleEdge.id}
               className="thalyx-panel-input"
               defaultValue={singleEdge.label ?? ''}
               onKeyDown={(e) => {
@@ -204,7 +205,6 @@ export const ContextPanel = memo(function ContextPanel() {
   }
 
   // ---- node(s) selected ---------------------------------------------------
-  const mixed = new Set(nodes.map((n) => n.kind)).size > 1;
   return (
     <aside className="thalyx-panel" aria-label="Selection properties">
       <div className="thalyx-panel-title">
@@ -240,7 +240,7 @@ export const ContextPanel = memo(function ContextPanel() {
         </div>
       </Row>
 
-      {shapeNodes.length > 0 || mixed ? (
+      {nodes.length > 0 ? (
         <>
           <Row label="Stroke">
             <Segmented
@@ -299,6 +299,7 @@ export const ContextPanel = memo(function ContextPanel() {
           </Row>
           <Row label="Link">
             <input
+              key={singleShape.id}
               className="thalyx-panel-input"
               defaultValue={singleShape.meta?.mermaid?.link ?? ''}
               placeholder="https://…"

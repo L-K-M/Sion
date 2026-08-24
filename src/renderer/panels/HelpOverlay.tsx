@@ -1,7 +1,7 @@
 /**
  * HelpOverlay (PLAN.md §10.2): Shift+/ opens a searchable shortcut sheet.
  */
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store/store';
 import * as A from '../store/actions';
 
@@ -62,6 +62,10 @@ export const HelpOverlay = memo(function HelpOverlay() {
     );
   }, [query]);
 
+  useEffect(() => {
+    if (!open) setQuery('');
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="thalyx-help-backdrop" onClick={() => A.setHelpOpen(false)}>
@@ -70,6 +74,9 @@ export const HelpOverlay = memo(function HelpOverlay() {
         role="dialog"
         aria-label="Keyboard shortcuts"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') A.setHelpOpen(false);
+        }}
       >
         <div className="thalyx-help-head">
           <input

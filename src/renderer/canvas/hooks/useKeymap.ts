@@ -170,13 +170,6 @@ export function useKeymap(): void {
         return;
       }
 
-      // Q: toggle quick-connect chevrons
-      if (e.code === 'KeyQ' && !mod && !e.altKey && !e.shiftKey) {
-        e.preventDefault();
-        A.toggleChevrons();
-        return;
-      }
-
       if (mod || e.altKey || e.shiftKey) return;
 
       // --- Type-to-edit precedence (printable char, single node selected) ---
@@ -226,6 +219,7 @@ export function useKeymap(): void {
         KeyF: () => A.setTool('container' as Tool),
         Digit8: () => A.setTool('container' as Tool),
         KeyH: () => A.setTool('hand' as Tool),
+        KeyQ: () => A.toggleChevrons(),
       };
       const action = toolKeys[e.code];
       if (action) {

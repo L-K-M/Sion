@@ -322,8 +322,6 @@ export function Canvas() {
         edgeTypes={edgeTypes}
         onConnect={onConnect}
         connectionRadius={32}
-        fitView
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
       >
         {doc.canvas.grid ? (
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--grid)" />

@@ -575,3 +575,41 @@ describe('connectEdge (M3)', () => {
     expect(doc().edges[0]!.waypoints).toBeUndefined();
   });
 });
+
+describe('M4a: nudge + alt-drag duplicate', () => {
+  it('nudge moves the selection by the delta', () => {
+    const a = A.addNode({ label: 'A', x: 0, y: 0 });
+    A.addNode({ label: 'B', x: 500, y: 500 });
+    A.setSelection([a]);
+    A.nudgeSelection(8, -1);
+    const nodes = doc().nodes;
+    expect(nodes.find((n) => n.label === 'A')).toMatchObject({ x: 8, y: -1 });
+    expect(nodes.find((n) => n.label === 'B')).toMatchObject({ x: 500, y: 500 });
+  });
+
+  it('alt-drag duplicate: originals restored, copies at final positions, one entry', () => {
+    const a = A.addNode({ label: 'A', x: 100, y: 100 });
+    const b = A.addNode({ label: 'B', x: 400, y: 100 });
+    A.addEdge({ source: a, target: b });
+    A.setSelection([a]);
+    const before = getStore().history.past.length;
+
+    const final = new Map([[a, { x: 260, y: 240 }]]);
+    A.altDragDuplicate([a], final);
+    // restore originals (as the canvas does after alt-drop)
+    A.setNodesPosition([a], () => ({ x: 100, y: 100 }));
+
+    const nodes = doc().nodes;
+    expect(nodes).toHaveLength(3);
+    // original back at start
+    expect(nodes.find((n) => n.id === a)).toMatchObject({ x: 100, y: 100 });
+    // copy at final position with a fresh id
+    const copy = nodes.find((n) => n.id !== a && n.label === 'A')!;
+    expect(copy).toMatchObject({ x: 260, y: 240 });
+    // edge NOT duplicated (intra-selection only — b was not selected)
+    expect(doc().edges).toHaveLength(1);
+    expect(getStore().history.past.length).toBeGreaterThanOrEqual(before + 1);
+    // copy is selected
+    expect(getStore().session.selection.nodeIds).toEqual([copy.id]);
+  });
+});

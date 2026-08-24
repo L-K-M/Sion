@@ -8,6 +8,41 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M4a — Editing UX floor, part 1: text / duplicate / guides (PLAN.md §17 M4, split per the plan)
+
+Added:
+
+- **Inline label editing (I10)** — `LabelTextarea` rendered inside shape/text
+  nodes when `session.editingLabel` targets them: double-click / Enter opens;
+  Enter commits, Esc commits + deselects, blur commits; `isComposing` guarded
+  (IME-safe); multi-line via newline.
+- **Type-to-edit precedence (§10.2)** — printable chars (incl. Shift+letter
+  capitals) on a single selected node start editing with that char and
+  suppress single-key tool bindings; Shift+digit zoom chords and Shift+/
+  still match on `e.code` first; tool keys work with empty/edge selections and
+  after Esc.
+- **Duplicate (I11)** — `Mod+D` (`duplicateSelection`) and **alt-drag**:
+  originals return to their pre-drag positions while fresh re-ided copies
+  land where the drag ended (one user intent; implemented via
+  `altDragDuplicate` + position restore on drag-stop).
+- **Smart guides + snapping (§11.4)** — full `computeSnap` engine (edge/center
+  candidates capped at nearest 40, 6/zoom threshold, equal-spacing gap chips
+  labeled with px values, 8-px grid lattice, Mod disables everything, smart
+  guides win over grid) wired into node drags: transient snapped positions +
+  `session.guides` rendered by the `GuideLines` overlay (ViewportPortal).
+- **Nudge** — Arrow / Shift+Arrow moves the selection 1/8 px.
+- **Z-order keys** — `Mod+[`/`Mod+]`/`Mod+Shift+[`/`Mod+Shift+]`.
+- **Containers** — `F`/`8` tool (toolbar button + click-place) and
+  `Mod+G`/`Mod+Shift+G` group/dissolve on the selection.
+- Full §10.2 keymap skeleton (tools V/R/O/D/A/L/T/F/H with digit aliases,
+  undo/redo, delete, zoom chords, Enter/Esc) in `useKeymap`; chevrons/grow/
+  layout chords land with M4c.
+- Tests: `computeSnap` table-driven suite (thresholds, zoom scaling, gap
+  chips, grid, precedence, disableAll), action tests for nudge and
+  alt-drag-duplicate semantics, and the `editing-ux.spec.ts` web e2e (label
+  editing undo, type-to-edit precedence, Esc+tool-keys, Mod+D duplicate,
+  guide snapping position assertion, group/dissolve, F tool).
+
 ### M3 — Connections (PLAN.md §17 M3)
 
 Added:

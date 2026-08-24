@@ -6,11 +6,15 @@ import { NodeResizer, type NodeProps } from '@xyflow/react';
 import type { ThalyxNode } from '../../../shared/model/types';
 import type { ThalyxNodeData } from '../rfSelectors';
 import { colorStyle } from '../../theme/colorStyle';
+import { useStore } from '../../store/store';
+import * as A from '../../store/actions';
+import { LabelTextarea } from '../hooks/useLabelEditing';
 import { ConnectionHandles } from './ConnectionHandles';
 
-export const TextNode = memo(function TextNode({ data, selected }: NodeProps) {
+export const TextNode = memo(function TextNode({ data, selected, id }: NodeProps) {
   const node = (data as ThalyxNodeData).node as ThalyxNode;
   const lines = node.label.length > 0 ? node.label.split('\n') : [];
+  const editing = useStore((st) => st.session.editingLabel);
   return (
     <div
       className="thalyx-text-node"
@@ -30,11 +34,20 @@ export const TextNode = memo(function TextNode({ data, selected }: NodeProps) {
         handleClassName="thalyx-resize-handle"
       />
       <ConnectionHandles />
-      <div className="thalyx-node-label">
-        {lines.map((line, i) => (
-          <div key={i}>{line}</div>
-        ))}
-      </div>
+      {editing?.kind === 'node' && editing.id === id ? (
+        <LabelTextarea
+          value={node.label}
+          fontSize={node.style.fontSize}
+          onCommit={(next) => A.updateNodeLabel(id, next)}
+          onCancel={() => A.clearSelection()}
+        />
+      ) : (
+        <div className="thalyx-node-label">
+          {lines.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 });

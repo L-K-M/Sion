@@ -10,6 +10,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import {
   Background,
+  ConnectionMode,
   BackgroundVariant,
   ReactFlow,
   useReactFlow,
@@ -182,6 +183,7 @@ export function Canvas() {
         nodesConnectable={
           session.tool === 'select' || session.tool === 'arrow' || session.tool === 'line'
         }
+        connectionMode={ConnectionMode.Loose}
         edgesFocusable
         edgeTypes={edgeTypes}
         onConnect={onConnect}

@@ -30,7 +30,7 @@ import { ContainerNode } from './nodes/ContainerNode';
 import { EmptyCanvasHint } from './overlays/EmptyCanvasHint';
 import { GuideLines } from './overlays/GuideLines';
 import { computeSnap, type Bounds } from '../../../src/shared/snap/snap';
-import { absolutePosition } from '../../../src/shared/model/queries';
+import { absolutePosition, descendantsOf } from '../../../src/shared/model/queries';
 import { ThalyxEdgeComponent } from './edges/ThalyxEdge';
 
 const nodeTypes: NodeTypes = {
@@ -119,8 +119,18 @@ export function Canvas() {
             width: draggedNode.width,
             height: draggedNode.height,
           };
+          // Statics exclude the dragged nodes AND their descendants (they move
+          // with a dragged container) — snapping against your own children is
+          // meaningless (§11.4).
+          const moved = new Set<string>();
+          for (const id of draggedIds) {
+            const n = byId.get(id);
+            if (!n) continue;
+            moved.add(id);
+            for (const desc of descendantsOf(state.doc, id)) moved.add(desc.id);
+          }
           const statics = state.doc.nodes
-            .filter((n) => !draggedIds.has(n.id) && !n.hidden)
+            .filter((n) => !moved.has(n.id) && !n.hidden)
             .map((n) => {
               const p = absolutePosition(state.doc, n);
               return { x: p.x, y: p.y, width: n.width, height: n.height } satisfies Bounds;

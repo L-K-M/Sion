@@ -86,7 +86,10 @@ test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }
   expect(state.edges).toHaveLength(1);
   expect(state.edges[0]!.source).toBe(state.nodes[0]!.id);
   expect(state.edges[0]!.target).toBe(state.nodes[1]!.id);
-  await expect(page.locator('.react-flow__edge-path').first()).toBeVisible();
+  await expect(page.locator('.react-flow__edge-path')).toHaveCount(1);
+  expect(
+    (await page.locator('.react-flow__edge-path').first().getAttribute('d'))!.length,
+  ).toBeGreaterThan(10);
 });
 
 test('line tool connects without arrowheads', async ({ page }) => {

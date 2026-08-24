@@ -124,6 +124,10 @@ test('smart guides snap the dragged node to an aligned edge', async ({ page }) =
   await page.mouse.up();
 
   const state = await docState(page);
+  console.log(
+    '[guide-diag] final positions:',
+    JSON.stringify(state.nodes.map((n) => ({ x: n.x, y: n.y }))),
+  );
   const a = state.nodes[0]!;
   const b = state.nodes[1]!;
   // snapped: b's left edge within 0.5px of a's right edge

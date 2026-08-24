@@ -41,10 +41,11 @@ test('canvas panel shows grid/theme/direction when nothing is selected', async (
   await expect(panel).toBeVisible();
   await expect(panel.getByText('Canvas')).toBeVisible();
   await expect(panel.getByRole('radiogroup', { name: 'Grid' })).toBeVisible();
-  // grid toggle round-trips into the doc
+  // grid toggle round-trips into the doc (assert the flip, not just any value)
+  const gridBefore = (await docState(page)).canvas.grid;
   await panel.getByRole('radiogroup', { name: 'Grid' }).getByRole('radio', { name: 'On' }).click();
   const state = await docState(page);
-  expect(state.canvas.grid).toBe(true);
+  expect(state.canvas.grid).toBe(!gridBefore);
 });
 
 test('node selection shows fill palette; applying a token updates the doc', async ({ page }) => {

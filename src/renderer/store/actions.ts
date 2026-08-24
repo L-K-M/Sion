@@ -161,23 +161,29 @@ export function setNodeShape(id: string, shape: ShapeKind): void {
 
 /** Set/clear a node's mermaid link (§10.3 context panel). */
 export function setNodeLink(id: string, link: string | undefined): void {
+  // Normalize/validate BEFORE touching the doc (§14.4): empty clears,
+  // http/https/mailto pass through, anything else is refused — a no-change
+  // call then produces a no-op draft and no history entry.
+  let safe: string | null = null;
+  if (link !== undefined && link.length > 0) {
+    safe = link.slice(0, 2048);
+    try {
+      const scheme = new URL(safe).protocol;
+      if (!['https:', 'http:', 'mailto:'].includes(scheme)) return; // refused
+    } catch {
+      safe = `https://${safe}`; // scheme-less input: treat as a website URL
+    }
+  }
   tracked((d) => {
     const n = d.nodes.find((x) => x.id === id);
     if (!n) return;
+    const current = n.meta?.mermaid?.link;
+    if (current === (safe ?? undefined)) return; // no-op
     n.meta ??= {};
     n.meta.mermaid ??= {};
-    if (link === undefined || link.length === 0) {
+    if (safe === null) {
       delete n.meta.mermaid.link;
       return;
-    }
-    // §14.4: only openable schemes are stored (file:, javascript:, etc. refused)
-    let safe = link.slice(0, 2048);
-    try {
-      const scheme = new URL(safe).protocol;
-      if (!['https:', 'http:', 'mailto:'].includes(scheme)) return;
-    } catch {
-      // scheme-less input: treat as a website URL
-      safe = `https://${safe}`;
     }
     n.meta.mermaid.link = safe;
   });

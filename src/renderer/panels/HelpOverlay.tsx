@@ -72,6 +72,7 @@ export const HelpOverlay = memo(function HelpOverlay() {
       <div
         className="thalyx-help"
         role="dialog"
+        aria-modal="true"
         aria-label="Keyboard shortcuts"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
@@ -82,6 +83,7 @@ export const HelpOverlay = memo(function HelpOverlay() {
           <input
             autoFocus
             className="thalyx-help-search"
+            aria-label="Search shortcuts"
             placeholder="Search shortcuts…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

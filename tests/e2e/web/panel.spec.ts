@@ -172,11 +172,13 @@ test('edge selection shows connector controls; line style round-trips', async ({
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   await expect(page.locator('.react-flow__edge-path')).toHaveCount(1);
 
-  // click the edge's invisible hit path to select
-  await page
-    .locator('.thalyx-edge-hit')
-    .first()
-    .click({ force: true, position: { x: 20, y: 5 } });
+  // select the edge through the dev hook (real pointer selection is covered
+  // by connections.spec; this test targets the panel)
+  await page.evaluate(() => {
+    (
+      globalThis as unknown as { __thalyxTest: { selectEdge(id: string): void } }
+    ).__thalyxTest.selectEdge('e1');
+  });
   const panel = page.locator('.thalyx-panel');
   await expect(panel.locator('.thalyx-panel-title')).toHaveText('Connector');
   await panel.locator('[role="radiogroup"]').first().getByRole('radio').nth(1).click();

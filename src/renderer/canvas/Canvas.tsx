@@ -99,6 +99,19 @@ export function Canvas() {
         y: c.position!.y,
       }));
       for (const p of positions) movedIds.current.add(p.id);
+      if (
+        typeof console !== 'undefined' &&
+        (globalThis as unknown as Record<string, unknown>).__THALYX_TRACE_DRAG__
+      ) {
+        console.log(
+          '[drag-frame]',
+          JSON.stringify(positions),
+          'dragging:',
+          dragging,
+          'stop:',
+          changes.some((ch) => ch.type === 'position' && ch.dragging === false),
+        );
+      }
 
       // Smart guides (§11.4): compute the snap for guide rendering on every
       // drag frame, but APPLY the delta only on the final frame (settle-on-

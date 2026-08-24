@@ -113,6 +113,9 @@ test('smart guides snap the dragged node to an aligned edge', async ({ page }) =
     const m = t.match(/scale\(([\d.]+)\)/);
     return m ? Number(m[1]) : 1;
   });
+  await page.evaluate(
+    () => ((globalThis as unknown as Record<string, unknown>).__THALYX_TRACE_DRAG__ = true),
+  );
   const flowDx = a0.x + a0.width + 2 - b0.x; // land 2 flow px past a's right edge
   const box = await page.locator('.react-flow__node').nth(1).boundingBox();
   if (!box) throw new Error('no second node box');

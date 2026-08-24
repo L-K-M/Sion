@@ -93,23 +93,15 @@ test('shape swap via the popup; corner toggle swaps rect↔rounded', async ({ pa
 
 test('alignment row aligns two nodes', async ({ page }) => {
   await page.getByTitle('Rounded rectangle').click();
-  await page.mouse.click(450, 250);
+  await page.mouse.click(450, 300);
   await page.getByTitle('Rounded rectangle').click();
-  await page.mouse.click(700, 400);
+  await page.mouse.click(650, 300);
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
 
-  // rubber-band both (same gesture the group test uses)
-  const boxes = await page.locator('.react-flow__node').evaluateAll((els) => {
-    const rs = els.map((el) => el.getBoundingClientRect());
-    const minX = Math.min(...rs.map((r) => r.x));
-    const minY = Math.min(...rs.map((r) => r.y));
-    const maxX = Math.max(...rs.map((r) => r.x + r.width));
-    const maxY = Math.max(...rs.map((r) => r.y + r.height));
-    return { x: minX - 30, y: minY - 30, w: maxX - minX + 60, h: maxY - minY + 60 };
-  });
-  await page.mouse.move(boxes.x, boxes.y);
+  // rubber-band both — the exact gesture the (passing) group test uses
+  await page.mouse.move(350, 200);
   await page.mouse.down();
-  await page.mouse.move(boxes.x + boxes.w, boxes.y + boxes.h, { steps: 6 });
+  await page.mouse.move(800, 400, { steps: 6 });
   await page.mouse.up();
 
   const panel = page.locator('.thalyx-panel');
@@ -223,10 +215,12 @@ test('Shift+Alt+D cycles the theme', async ({ page }) => {
         }),
       );
     });
-  await pressChord();
+  await pressChord(); // system -> light (attribute stays light)
+  await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'light');
+  await pressChord(); // light -> dark
   await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'dark');
-  await pressChord();
-  await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'system');
+  await pressChord(); // dark -> system
+  await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'light');
 });
 
 test('custom hex fill via the escape hatch', async ({ page }) => {

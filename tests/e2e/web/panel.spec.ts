@@ -102,12 +102,12 @@ test('alignment row aligns two nodes', async ({ page }) => {
   const boxes = await page.locator('.react-flow__node').evaluateAll((els) =>
     els.map((el) => {
       const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y };
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
     }),
   );
-  await page.mouse.click(boxes[0]!.x + 5, boxes[0]!.y + 5);
+  await page.mouse.click(boxes[0]!.x + boxes[0]!.width / 2, boxes[0]!.y + boxes[0]!.height / 2);
   await page.keyboard.down('Shift');
-  await page.mouse.click(boxes[1]!.x + 5, boxes[1]!.y + 5);
+  await page.mouse.click(boxes[1]!.x + boxes[1]!.width / 2, boxes[1]!.y + boxes[1]!.height / 2);
   await page.keyboard.up('Shift');
 
   const panel = page.locator('.thalyx-panel');
@@ -209,10 +209,18 @@ test('help overlay opens with Shift+/ and filters', async ({ page }) => {
 
 test('Shift+Alt+D cycles the theme', async ({ page }) => {
   await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'light');
-  await page.keyboard.press('Shift+Alt+d');
+  await page.keyboard.down('Shift');
+  await page.keyboard.down('Alt');
+  await page.keyboard.press('d');
+  await page.keyboard.up('Alt');
+  await page.keyboard.up('Shift');
   await page.waitForTimeout(150);
   await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'dark');
-  await page.keyboard.press('Shift+Alt+d');
+  await page.keyboard.down('Shift');
+  await page.keyboard.down('Alt');
+  await page.keyboard.press('d');
+  await page.keyboard.up('Alt');
+  await page.keyboard.up('Shift');
   await expect(page.locator('.thalyx-root')).toHaveAttribute('data-theme', 'system');
 });
 
@@ -221,7 +229,8 @@ test('custom hex fill via the escape hatch', async ({ page }) => {
   await page.mouse.click(500, 300);
   const colorInput = page.locator('.thalyx-swatch-custom input');
   await colorInput.evaluate((el, v) => {
-    (el as HTMLInputElement).value = v;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(el, v);
     el.dispatchEvent(new Event('input', { bubbles: true }));
   }, '#12ab34');
   const state = await docState(page);

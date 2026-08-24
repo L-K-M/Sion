@@ -8,6 +8,8 @@ import { expect, test, type Page } from '@playwright/test';
 const BASE = '/?testHooks=1';
 
 async function docState(page: Page): Promise<{
+  edges: Array<{ id: string; style: { line: string } }>;
+  canvas: { grid: boolean };
   nodes: Array<{
     id: string;
     label: string;
@@ -41,13 +43,7 @@ test('canvas panel shows grid/theme/direction when nothing is selected', async (
   await expect(panel.getByRole('radiogroup', { name: 'Grid' })).toBeVisible();
   // grid toggle round-trips into the doc
   await panel.getByRole('radiogroup', { name: 'Grid' }).getByRole('radio', { name: 'On' }).click();
-  const state = await page.evaluate(() =>
-    JSON.parse(
-      (
-        globalThis as unknown as { __thalyxTest: { getDocJson(): string } }
-      ).__thalyxTest.getDocJson(),
-    ),
-  );
+  const state = await docState(page);
   expect(state.canvas.grid).toBe(true);
 });
 
@@ -182,14 +178,8 @@ test('edge selection shows connector controls; line style round-trips', async ({
   const panel = page.locator('.thalyx-panel');
   await expect(panel.locator('.thalyx-panel-title')).toHaveText('Connector');
   await panel.locator('[role="radiogroup"]').first().getByRole('radio').nth(1).click();
-  const state = await page.evaluate(() =>
-    JSON.parse(
-      (
-        globalThis as unknown as { __thalyxTest: { getDocJson(): string } }
-      ).__thalyxTest.getDocJson(),
-    ),
-  );
-  expect(state.edges[0].style.line).toBe('dashed');
+  const state = await docState(page);
+  expect(state.edges[0]!.style.line).toBe('dashed');
 });
 
 test('help overlay opens with Shift+/ and filters', async ({ page }) => {

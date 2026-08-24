@@ -134,8 +134,8 @@ export const ContextPanel = memo(function ContextPanel() {
 
   // ---- edge(s) selected --------------------------------------------------
   if (edges.length > 0 && nodes.length === 0) {
-    const line = singleEdge?.style.line ?? 'solid';
-    const kind = singleEdge?.kind ?? 'elbow';
+    const line = edges[0]?.style.line ?? 'solid';
+    const kind = edges[0]?.kind ?? 'elbow';
     return (
       <aside className="thalyx-panel" aria-label="Connector properties">
         <div className="thalyx-panel-title">
@@ -169,7 +169,7 @@ export const ContextPanel = memo(function ContextPanel() {
         </Row>
         <Row label="Start">
           <Segmented
-            value={singleEdge?.arrowStart ?? 'none'}
+            value={edges[0]?.arrowStart ?? 'none'}
             options={ARROW_HEADS.map((h: ArrowHead) => ({ value: h, label: arrowLabel(h) }))}
             onChange={(v: ArrowHead) => {
               for (const e of edges) A.updateEdge(e.id, { arrowStart: v });
@@ -178,7 +178,7 @@ export const ContextPanel = memo(function ContextPanel() {
         </Row>
         <Row label="End">
           <Segmented
-            value={singleEdge?.arrowEnd ?? 'arrow'}
+            value={edges[0]?.arrowEnd ?? 'arrow'}
             options={ARROW_HEADS.map((h: ArrowHead) => ({ value: h, label: arrowLabel(h) }))}
             onChange={(v: ArrowHead) => {
               for (const e of edges) A.updateEdge(e.id, { arrowEnd: v });
@@ -195,7 +195,11 @@ export const ContextPanel = memo(function ContextPanel() {
                 if (e.key === 'Enter')
                   A.updateEdge(singleEdge.id, { label: e.currentTarget.value });
               }}
-              onBlur={(e) => A.updateEdge(singleEdge.id, { label: e.currentTarget.value })}
+              onBlur={(e) => {
+                if (e.currentTarget.value !== (singleEdge.label ?? '')) {
+                  A.updateEdge(singleEdge.id, { label: e.currentTarget.value });
+                }
+              }}
               placeholder="edge label"
             />
           </Row>
@@ -304,9 +308,18 @@ export const ContextPanel = memo(function ContextPanel() {
               defaultValue={singleShape.meta?.mermaid?.link ?? ''}
               placeholder="https://…"
               onKeyDown={(e) => {
-                if (e.key === 'Enter') setNodeLink(singleShape.id, e.currentTarget.value);
+                if (
+                  e.key === 'Enter' &&
+                  e.currentTarget.value !== (singleShape.meta?.mermaid?.link ?? '')
+                ) {
+                  setNodeLink(singleShape.id, e.currentTarget.value);
+                }
               }}
-              onBlur={(e) => setNodeLink(singleShape.id, e.currentTarget.value)}
+              onBlur={(e) => {
+                if (e.currentTarget.value !== (singleShape.meta?.mermaid?.link ?? '')) {
+                  setNodeLink(singleShape.id, e.currentTarget.value);
+                }
+              }}
             />
           </Row>
         </>

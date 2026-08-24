@@ -8,9 +8,6 @@ import { resetStore, getStore } from '../../../src/renderer/store/store';
 import * as A from '../../../src/renderer/store/actions';
 import type { ThalyxNodeData } from '../../../src/renderer/canvas/rfSelectors';
 
-// minimal RF context stubs so Handle/NodeResizer don't crash outside ReactFlow
-import React from 'react';
-
 describe('ShapeNode label editing (jsdom)', () => {
   it('mounts the label editor when session.editingLabel targets the node', async () => {
     resetStore();
@@ -25,7 +22,20 @@ describe('ShapeNode label editing (jsdom)', () => {
       root.render(
         <ReactFlowProvider>
           <div data-nodeid="n1">
-            <ShapeNode id="n1" selected={false} data={{ node } as ThalyxNodeData} />
+            <ShapeNode
+              id="n1"
+              type="shape"
+              selected={false}
+              dragging={false}
+              draggable
+              selectable
+              deletable
+              zIndex={0}
+              isConnectable
+              positionAbsoluteX={0}
+              positionAbsoluteY={0}
+              data={{ node } as ThalyxNodeData}
+            />
           </div>
         </ReactFlowProvider>,
       );

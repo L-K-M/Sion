@@ -107,7 +107,9 @@ test('smart guides snap the dragged node to an aligned edge', async ({ page }) =
   const a0 = state0.nodes[0]!;
   const b0 = state0.nodes[1]!;
   const zoom = await page.evaluate(() => {
-    const t = document.querySelector('.react-flow__viewport')?.style.transform ?? '';
+    const t =
+      (document.querySelector('.react-flow__viewport') as HTMLElement | null)?.style.transform ??
+      '';
     const m = t.match(/scale\(([\d.]+)\)/);
     return m ? Number(m[1]) : 1;
   });

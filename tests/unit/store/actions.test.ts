@@ -596,6 +596,8 @@ describe('M4a: nudge + alt-drag duplicate', () => {
 
     const final = new Map([[a, { x: 260, y: 240 }]]);
     A.altDragDuplicate([a], final);
+    // exactly ONE entry for the duplicate itself…
+    expect(getStore().history.past.length).toBe(before + 1);
     // restore originals (as the canvas does after alt-drop)
     A.setNodesPosition([a], () => ({ x: 100, y: 100 }));
 
@@ -606,8 +608,11 @@ describe('M4a: nudge + alt-drag duplicate', () => {
     // copy at final position with a fresh id
     const copy = nodes.find((n) => n.id !== a && n.label === 'A')!;
     expect(copy).toMatchObject({ x: 260, y: 240 });
-    // edge NOT duplicated (intra-selection only — b was not selected)
+    // edge NOT duplicated (intra-selection only — b was not selected) —
+    // and it still connects the ORIGINAL nodes
     expect(doc().edges).toHaveLength(1);
+    expect(doc().edges[0]!.source).toBe(a);
+    expect(doc().edges[0]!.target).toBe(b);
     expect(getStore().history.past.length).toBeGreaterThanOrEqual(before + 1);
     // copy is selected
     expect(getStore().session.selection.nodeIds).toEqual([copy.id]);

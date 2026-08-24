@@ -35,7 +35,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.react-flow')).toBeVisible();
 });
 
-test('double-click opens the label editor; Enter commits (one undo entry)', async ({ page }) => {
+test('double-click opens the label editor; Enter commits and Mod+Z reverts', async ({ page }) => {
   await page.getByTitle('Rounded rectangle').click();
   await page.mouse.click(500, 300);
   await expect(page.locator('.react-flow__node')).toHaveCount(1);
@@ -54,7 +54,7 @@ test('double-click opens the label editor; Enter commits (one undo entry)', asyn
   expect(undone.nodes[0]!.label).toBe(before.nodes[0]!.label);
 });
 
-test('type-to-edit precedence: a printable char on a selected node starts editing', async ({
+test('type-to-edit: a printable char on a selected node edits instead of switching tools', async ({
   page,
 }) => {
   await page.getByTitle('Rounded rectangle').click();
@@ -111,7 +111,8 @@ test('smart guides snap the dragged node to an aligned edge', async ({ page }) =
       (document.querySelector('.react-flow__viewport') as HTMLElement | null)?.style.transform ??
       '';
     const m = t.match(/scale\(([\d.]+)\)/);
-    return m ? Number(m[1]) : 1;
+    if (!m) throw new Error('cannot parse viewport transform: ' + t);
+    return Number(m[1]);
   });
   await page.evaluate(
     () => ((globalThis as unknown as Record<string, unknown>).__THALYX_TRACE_DRAG__ = true),
@@ -155,7 +156,16 @@ test('group selection into a container; dissolve restores', async ({ page }) => 
   await page.mouse.down();
   await page.mouse.move(800, 400, { steps: 6 });
   await page.mouse.up();
-  // both selected? group via keyboard
+  // both nodes must be selected before grouping (rubber-band sanity)
+  const selState = await page.evaluate(() => {
+    const doc = JSON.parse(
+      (
+        globalThis as unknown as { __thalyxTest: { getDocJson(): string } }
+      ).__thalyxTest.getDocJson(),
+    );
+    return doc.nodes.map((n: { id: string }) => n.id);
+  });
+  expect(selState).toHaveLength(2);
   await page.keyboard.press('ControlOrMeta+g');
   const grouped = await docState(page);
   expect(grouped.nodes).toHaveLength(3);

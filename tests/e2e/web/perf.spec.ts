@@ -84,7 +84,7 @@ test.describe.serial('perf spike (§11.7)', () => {
     // Wall time is informational on loaded CI runners (the fps floor above is
     // the anti-regression guard).
     console.log(`[perf] drag wall-time guard: ${latency} ms (informational)`);
-    expect(latency).toBeLessThan(30_000);
+    expect(latency).toBeLessThan(process.env.CI ? 30_000 : 5_000);
   });
 
   test('1000-node doc with edges: drag reroute fps', async ({ page }) => {

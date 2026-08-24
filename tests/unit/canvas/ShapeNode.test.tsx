@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import { ShapeNode } from '../../../src/renderer/canvas/nodes/ShapeNode';
@@ -8,7 +8,12 @@ import { resetStore, getStore } from '../../../src/renderer/store/store';
 import * as A from '../../../src/renderer/store/actions';
 import type { ThalyxNodeData } from '../../../src/renderer/canvas/rfSelectors';
 
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
 describe('ShapeNode label editing (jsdom)', () => {
+  afterEach(() => {
+    resetStore();
+  });
   it('mounts the label editor when session.editingLabel targets the node', async () => {
     resetStore();
     const node = newNode({ id: 'n1', label: 'Hello', shape: 'rounded', x: 0, y: 0 });

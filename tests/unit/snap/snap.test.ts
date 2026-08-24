@@ -29,7 +29,8 @@ describe('smart-guide engine (§11.4)', () => {
     expect(near.dx).toBe(-3);
     const res2 = computeSnap(B(2, 0), [B(0, 0)], { grid: false, zoom: 1 });
     expect(res2.dx).toBe(-2); // left-to-left
-    expect(res2.guides[0]!.position).toBe(0);
+    const xGuide = res2.guides.find((g) => g.axis === 'x')!;
+    expect(xGuide.position).toBe(0);
   });
 
   it('vertical align: centers match', () => {
@@ -37,6 +38,15 @@ describe('smart-guide engine (§11.4)', () => {
     // dragged center y=33 vs static center y=30 → dy=-3 within threshold
     expect(res.dy).toBe(-3);
     expect(res.dx).toBe(0);
+  });
+
+  it('exactly-at-threshold deltas still snap (inclusive edge)', () => {
+    const res = computeSnap(B(106, 0), [B(0, 0)], { grid: false, zoom: 1 });
+    // distance exactly 6 → snaps
+    expect(res.dx).toBe(-6);
+    const beyond = computeSnap(B(107, 0), [B(0, 0)], { grid: false, zoom: 1 });
+    // distance 7 → no snap
+    expect(beyond.dx).toBe(0);
   });
 
   it('threshold scales with zoom', () => {

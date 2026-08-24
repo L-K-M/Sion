@@ -164,8 +164,9 @@ export function useKeymap(): void {
       // Shift+Alt+D: cycle theme (Alt chord → e.code matching, §10.2)
       if (e.altKey && e.shiftKey && !mod && e.code === 'KeyD') {
         e.preventDefault();
+        const cycle = ['system', 'light', 'dark'] as const;
         const current = useStore.getState().session.theme;
-        const next = current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system';
+        const next = cycle[(cycle.indexOf(current) + 1) % cycle.length]!;
         A.setTheme(next);
         return;
       }

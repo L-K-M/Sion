@@ -165,13 +165,15 @@ export function setNodeLink(id: string, link: string | undefined): void {
   // http/https/mailto pass through, anything else is refused — a no-change
   // call then produces a no-op draft and no history entry.
   let safe: string | null = null;
-  if (link !== undefined && link.length > 0) {
-    safe = link.slice(0, 2048);
+  if (link !== undefined && link.trim().length > 0) {
+    safe = link.trim().slice(0, 2048);
     try {
       const scheme = new URL(safe).protocol;
       if (!['https:', 'http:', 'mailto:'].includes(scheme)) return; // refused
     } catch {
-      safe = `https://${safe}`; // scheme-less input: treat as a website URL
+      safe = `https://${safe}`;
+      // re-validate the synthesized URL
+      if (!/^https:\/\/[^\s]+$/i.test(safe)) return;
     }
   }
   tracked((d) => {
@@ -183,6 +185,9 @@ export function setNodeLink(id: string, link: string | undefined): void {
     n.meta.mermaid ??= {};
     if (safe === null) {
       delete n.meta.mermaid.link;
+      // prune empty meta objects so the model stays clean
+      if (Object.keys(n.meta.mermaid).length === 0) delete n.meta.mermaid;
+      if (n.meta && Object.keys(n.meta).length === 0) delete n.meta;
       return;
     }
     n.meta.mermaid.link = safe;

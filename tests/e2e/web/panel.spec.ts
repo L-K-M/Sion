@@ -65,7 +65,7 @@ test('node selection shows fill palette; applying a token updates the doc', asyn
   expect(state2.nodes[0]!.style.strokeWidth).toBe(4);
 
   // font size
-  await panel.getByTitle('XL', { exact: false }).first().click();
+  await panel.getByTitle('XL', { exact: true }).click();
   const state3 = await docState(page);
   expect(state3.nodes[0]!.style.fontSize).toBe(24);
 });
@@ -178,7 +178,7 @@ test('edge selection shows connector controls; line style round-trips', async ({
   });
   const panel = page.locator('.thalyx-panel');
   await expect(panel.locator('.thalyx-panel-title')).toHaveText('Connector');
-  await panel.locator('[role="radiogroup"]').first().getByRole('radio').nth(1).click();
+  await panel.getByRole('radiogroup', { name: 'Line' }).getByRole('radio', { name: '– –' }).click();
   const state = await docState(page);
   expect(state.edges[0]!.style.line).toBe('dashed');
 });

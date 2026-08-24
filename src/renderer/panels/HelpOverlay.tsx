@@ -66,6 +66,17 @@ export const HelpOverlay = memo(function HelpOverlay() {
     if (!open) setQuery('');
   }, [open]);
 
+  // Escape closes from anywhere while the overlay is open (global listener —
+  // the dialog-level handler needs focus inside the dialog).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') A.setHelpOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="thalyx-help-backdrop" onClick={() => A.setHelpOpen(false)}>

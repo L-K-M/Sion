@@ -237,6 +237,11 @@ export const ContextPanel = memo(function ContextPanel() {
           <label className="thalyx-swatch thalyx-swatch-custom" title="Custom (hex)">
             <input
               type="color"
+              value={
+                /^#[0-9a-fA-F]{6}$/.test(nodes[0]?.style.fill ?? '')
+                  ? nodes[0]!.style.fill
+                  : '#888888'
+              }
               onChange={(e) => onFill(e.target.value)}
               aria-label="Custom fill color"
             />
@@ -312,12 +317,12 @@ export const ContextPanel = memo(function ContextPanel() {
                   e.key === 'Enter' &&
                   e.currentTarget.value !== (singleShape.meta?.mermaid?.link ?? '')
                 ) {
-                  setNodeLink(singleShape.id, e.currentTarget.value);
+                  A.setNodeLink(singleShape.id, e.currentTarget.value);
                 }
               }}
               onBlur={(e) => {
                 if (e.currentTarget.value !== (singleShape.meta?.mermaid?.link ?? '')) {
-                  setNodeLink(singleShape.id, e.currentTarget.value);
+                  A.setNodeLink(singleShape.id, e.currentTarget.value);
                 }
               }}
             />
@@ -379,12 +384,4 @@ function arrowLabel(h: ArrowHead): string {
     case 'cross':
       return '✕';
   }
-}
-
-function setNodeLink(id: string, url: string): void {
-  const trimmed = url.trim();
-  // A.setNodeMeta isn't in the M1 catalog — route through updateNodesStyle-
-  // adjacent action surface: store link in meta via a small dedicated action
-  // added for M4b.
-  A.setNodeLink(id, trimmed.length > 0 ? trimmed : undefined);
 }

@@ -24,8 +24,8 @@ Measured from the built renderer (`npm run build` + `vite preview`).
 
 | Environment | 1000-node pan fps | 1000-node drag gesture | 2000-node pan fps | M3 edge-reroute drag fps |
 |---|---|---|---|---|
-| CI `ubuntu-latest` (headless Chromium, software GL) — [M2 run](https://github.com/L-K-M/Thalyx/actions/runs/32667795720) | **60.3** | 772 ms (whole-gesture wall time, 5 pointer steps — see note) | **60.3** | TBD (fill from M3 CI run) |
-| CI `macos-latest` (headless Chromium) — same run | **50.8** | 577 ms (same metric) | **54.7** | TBD |
+| CI `ubuntu-latest` (headless Chromium, software GL) — [M2 run](https://github.com/L-K-M/Thalyx/actions/runs/32667795720) | **60.3** | 772 ms (whole-gesture wall time, 5 pointer steps — see note) | **60.3** | **60.3** ([M3 run](https://github.com/L-K-M/Thalyx/actions/runs/32687550918)) |
+| CI `macos-latest` (headless Chromium) — same run | **50.8** | 577 ms (same metric) | **54.7** | **47.3** |
 | Dev-class machine (manual, per §11.7) | pending | pending | pending | pending |
 
 > CI runners render with software GL — their numbers are a *floor /

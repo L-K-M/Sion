@@ -123,6 +123,7 @@ test('smart guides snap the dragged node to an aligned edge', async ({ page }) =
   });
   // while still dragging near the aligned edge, the guide overlay must show
   await expect(page.locator('.thalyx-guide').first()).toBeVisible();
+  await page.waitForTimeout(150); // let the final pointermove land before release
   await page.mouse.up();
 
   const state = await docState(page);

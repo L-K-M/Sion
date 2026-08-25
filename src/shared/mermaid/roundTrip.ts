@@ -12,6 +12,8 @@ interface RoundNode {
   parentId: string | undefined;
   link: string | undefined;
   dir: string | undefined; // containers
+  fill: string;
+  strokeWidth: number;
 }
 interface RoundEdge {
   source: string;
@@ -40,6 +42,8 @@ export function semanticModel(doc: ThalyxDoc): {
         : undefined,
       link: n.meta?.mermaid?.link,
       dir: n.meta?.mermaid?.dir,
+      fill: n.style.fill,
+      strokeWidth: n.style.strokeWidth,
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
   const edges: RoundEdge[] = doc.edges
@@ -91,7 +95,9 @@ export function semanticallyEqual(a: ThalyxDoc, b: ThalyxDoc): { equal: boolean;
       x.shape !== y.shape ||
       x.parentId !== y.parentId ||
       x.link !== y.link ||
-      x.dir !== y.dir
+      x.dir !== y.dir ||
+      x.fill !== y.fill ||
+      x.strokeWidth !== y.strokeWidth
     ) {
       return {
         equal: false,

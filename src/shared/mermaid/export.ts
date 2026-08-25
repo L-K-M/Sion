@@ -88,7 +88,11 @@ function idFor(ctx: ExportCtx, node: ThalyxNode): string {
 }
 
 function emitLabel(node: ThalyxNode, id: string): string | null {
-  if (node.kind !== 'shape') return null;
+  if (node.kind !== 'shape') {
+    // text/mermaid nodes are never skip-eligible — they need declarations
+    // (mermaid islands are handled by the caller's notice, not here)
+    return node.kind === 'text' ? (node.label ?? '') : null;
+  }
   const label = node.label ?? '';
   // Skip condition: label == id, plain rect, and appears in an edge — the
   // caller checks edge membership; we signal plainness here.

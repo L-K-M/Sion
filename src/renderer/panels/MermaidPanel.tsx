@@ -16,7 +16,11 @@ export const MermaidPanel = memo(function MermaidPanel() {
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setText(''); // no stale export while hidden
+      setIslandNotice(null);
+      return;
+    }
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       const out = exportMermaid(doc);
@@ -31,13 +35,12 @@ export const MermaidPanel = memo(function MermaidPanel() {
     };
   }, [open, doc]);
 
+  const singleIsland = doc.nodes.length === 1 && doc.nodes[0]!.kind === 'mermaid';
   const headline = useMemo(() => {
     // single-island doc: the island's own source (§9.4)
-    if (doc.nodes.length === 1 && doc.nodes[0]!.kind === 'mermaid') {
-      return doc.nodes[0]!.mermaidSource ?? '';
-    }
+    if (singleIsland) return doc.nodes[0]!.mermaidSource ?? '';
     return text;
-  }, [doc, text]);
+  }, [doc, text, singleIsland]);
 
   if (!open) return null;
 
@@ -66,7 +69,7 @@ export const MermaidPanel = memo(function MermaidPanel() {
           </button>
         </div>
       </div>
-      {islandNotice !== null ? (
+      {islandNotice !== null && !singleIsland ? (
         <div className="thalyx-mermaid-notice" role="status">
           {islandNotice} mermaid island{islandNotice > 1 ? 's' : ''} not included
         </div>

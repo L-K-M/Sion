@@ -8,7 +8,14 @@ import { expect, test, type Page } from '@playwright/test';
 const BASE = '/?testHooks=1';
 
 async function docState(page: Page): Promise<{
-  nodes: Array<{ id: string; label: string; kind: string; x: number; y: number }>;
+  nodes: Array<{
+    id: string;
+    label: string;
+    kind: string;
+    x: number;
+    y: number;
+    parentId?: string;
+  }>;
   edges: Array<{ source: string; target: string; label?: string }>;
 }> {
   return await page.evaluate(() => {
@@ -58,6 +65,7 @@ async function patchDoc(page: Page, src: string): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto(BASE);
   await expect(page.locator('.react-flow')).toBeVisible();
@@ -88,12 +96,15 @@ test('byte-stable export: live view identical after id assignment (fixpoint)', a
   expect(second).toBe(first);
 });
 
-test('Copy as Mermaid: Mod+Shift+C then panel shows the same text', async ({ page }) => {
+test('Copy as Mermaid: Mod+Shift+C writes the export to the clipboard', async ({ page }) => {
   await patchDoc(page, DEMO_PATCH);
-  await page.keyboard.press('ControlOrMeta+Shift+c');
   await page.keyboard.press('ControlOrMeta+Shift+m');
   await expect(page.locator('.thalyx-mermaid-panel')).toBeVisible();
-  await expect(page.locator('.thalyx-mermaid-text')).toContainText('Valid?');
+  const displayed = await page.locator('.thalyx-mermaid-text').innerText();
+  await page.keyboard.press('ControlOrMeta+Shift+m'); // close (live text unselected)
+  await page.keyboard.press('ControlOrMeta+Shift+c');
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clip).toBe(displayed);
 });
 
 test('direction dropdown switches the header (action, one undo)', async ({ page }) => {
@@ -147,4 +158,8 @@ test('M4 demo graph round-trips: export re-imports semantically identical', asyn
   expect(labels).toEqual(
     ['Auth', 'Dashboard', 'Log out', 'Login form', 'Show error', 'Start', 'Valid?'].sort(),
   );
+  // containment round-trips: Login form inside Auth
+  const container = after.nodes.find((n) => n.kind === 'container');
+  const login = after.nodes.find((n) => n.label === 'Login form');
+  expect(login?.parentId).toBe(container?.id);
 });

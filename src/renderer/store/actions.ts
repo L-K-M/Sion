@@ -1084,13 +1084,6 @@ export function updateNodeMermaidSource(id: string, source: string): void {
   });
 }
 
-/**
- * ensureMermaidIds (§8.3): applies idAssignments returned by exportMermaid —
- * the ONE deliberate exception to history tracking: idempotent bookkeeping
- * metadata, a fixpoint after one pass, triggered by merely VIEWING the
- * Mermaid panel. NEVER pollutes undo. (This is the only untracked doc
- * mutation in the app.)
- */
 export function setMermaidPanelOpen(open: boolean): void {
   setStore((s) => ({ session: { ...s.session, mermaidPanelOpen: open } }));
 }
@@ -1115,6 +1108,13 @@ export async function copyAsMermaid(): Promise<string | null> {
   return out.text;
 }
 
+/**
+ * ensureMermaidIds (§8.3): applies idAssignments returned by exportMermaid —
+ * the ONE deliberate exception to history tracking: idempotent bookkeeping
+ * metadata, a fixpoint after one pass, triggered by merely VIEWING the
+ * Mermaid panel. NEVER pollutes undo. (This is the only untracked doc
+ * mutation in the app.)
+ */
 export function ensureMermaidIds(idAssignments: Record<string, string>): void {
   if (Object.keys(idAssignments).length === 0) return; // fixpoint — nothing to do
   setStore((s) => ({

@@ -10,10 +10,11 @@ import { useStore } from '../../store/store';
 import * as A from '../../store/actions';
 import { absolutePosition } from '../../../shared/model/queries';
 
-// 16px out: clears the 10px connection Handle that sits ON the edge
-// (flush chevrons would be un-clickable under the handle) while staying
-// close enough that there is no meaningful pane gap to cross.
-const CHEVRON_OFFSET = 16;
+// Flush with the node edge: the pointer travels node → chevron with NO
+// pane pixels between, so hover tracking never drops the node. The chevron
+// (portal renders above nodes, z-index 20) also overlays the connection
+// handle cleanly — its pointerdown wins.
+const CHEVRON_OFFSET = 0;
 
 export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
   const chevronsEnabled = useStore((s) => s.session.chevronsEnabled);

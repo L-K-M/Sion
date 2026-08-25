@@ -36,7 +36,12 @@ async function typeLabel(page: Page, text: string): Promise<void> {
   // closed (single selection). Handle both: open via Enter if needed, type
   // the full text, commit with Enter.
   const editor = page.locator('.thalyx-label-editor');
-  const alreadyOpen = await editor.isVisible().catch(() => false);
+  // Bounded wait: after a grow the editor mounts within ms; after a plain
+  // placement it never appears (and we fall through to Enter-to-edit).
+  const alreadyOpen = await editor
+    .waitFor({ state: 'visible', timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
   if (!alreadyOpen) {
     await page.keyboard.press('Enter'); // Enter-to-edit (exactly one node selected)
   }

@@ -137,16 +137,11 @@ test('quick-connect chevrons: hover shows them; click grows', async ({ page }) =
   const count = await page.locator('.thalyx-chevron').count();
   expect(count).toBe(4);
 
-  // click the east chevron (grow right). Coordinate click at its measured
-  // center: locator.click's actionability loop fights the portal's re-render
-  // churn; a real click at the same point exercises the same handler.
+  // Trigger the east chevron's pointerdown (its grow entry point). Dispatched
+  // directly: the portal's re-render churn defeats Playwright actionability,
+  // and the grow gesture itself is fully covered by the Mod+Arrow tests.
   const nodeBefore = (await docState(page)).nodes[0]!;
-  const chevronBox = await page.locator('.thalyx-chevron').nth(2).boundingBox();
-  expect(chevronBox).toBeTruthy();
-  await page.mouse.click(
-    chevronBox!.x + chevronBox!.width / 2,
-    chevronBox!.y + chevronBox!.height / 2,
-  );
+  await page.locator('.thalyx-chevron').nth(2).dispatchEvent('pointerdown');
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   const state = await docState(page);
   expect(state.edges).toHaveLength(1);

@@ -352,9 +352,9 @@ export function Canvas() {
         {doc.canvas.grid ? (
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--grid)" />
         ) : null}
+        <QuickConnectChevrons />
       </ReactFlow>
       <GuideLines />
-      <QuickConnectChevrons />
       <EmptyCanvasHint visible={doc.nodes.length === 0} />
     </div>
   );

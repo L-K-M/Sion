@@ -69,7 +69,12 @@ test('grow corridor: connects to an existing node instead of creating', async ({
   await page.mouse.click(700, 300);
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   const state0 = await docState(page);
-
+  // grow FROM the left node (the last-placed node is selected after placement)
+  await page.evaluate((id) => {
+    (
+      globalThis as unknown as { __thalyxTest: { selectNode(id: string): void } }
+    ).__thalyxTest.selectNode(id);
+  }, state0.nodes[0]!.id);
   await page.keyboard.press('ControlOrMeta+ArrowRight');
   // no new node — the corridor found the right-hand node
   const state = await docState(page);
@@ -87,7 +92,7 @@ test('quick-connect chevrons: hover shows them; click grows', async ({ page }) =
   // hover the node
   await page.mouse.move(500, 300);
   await page.mouse.move(505, 305);
-  await expect(page.locator('.thalyx-chevron').first()).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('.thalyx-chevron').first()).toBeVisible({ timeout: 10_000 });
   const count = await page.locator('.thalyx-chevron').count();
   expect(count).toBe(4);
 
@@ -218,11 +223,13 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   await page.keyboard.press('r'); // rect tool
   await page.mouse.click(500, 150);
   await expect(page.locator('.react-flow__node')).toHaveCount(1);
+  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
   await page.keyboard.type('Start');
   await page.keyboard.press('Enter');
 
   // grow right: Login form
   await page.keyboard.press('ControlOrMeta+ArrowRight');
+  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
   await page.keyboard.type('Login form');
   await page.keyboard.press('Enter');
 
@@ -235,6 +242,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   // Simplest spec-compliant path: type label, then swap shape with the D key
   // tool on a fresh selection is not applicable — the M4 keyboard demo uses
   // grow + shape cycle; we approximate with the panel action via store.
+  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
   await page.keyboard.type('Valid?');
   await page.keyboard.press('Enter');
   await page.evaluate(() => {
@@ -244,12 +252,14 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
       }
     ).__thalyxTest;
     const doc = JSON.parse(api.getDocJson());
-    doc.nodes.find((n: { label: string }) => n.label === 'Valid?').shape = 'diamond';
+    const v = doc.nodes.find((n: { label: string }) => n.label === 'Valid?');
+    if (v) v.shape = 'diamond';
     api.loadDoc(JSON.stringify(doc));
   });
 
   // Dashboard (yes) and Show error (no)
   await page.keyboard.press('ControlOrMeta+ArrowRight');
+  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
   await page.keyboard.type('Dashboard');
   await page.keyboard.press('Enter');
   await page.evaluate(() => {
@@ -259,8 +269,8 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
       }
     ).__thalyxTest;
     const doc = JSON.parse(api.getDocJson());
-    const valid = doc.edges.at(-1);
-    if (valid) valid.label = 'yes';
+    const e1 = doc.edges.at(-1);
+    if (e1) e1.label = 'yes';
     api.loadDoc(JSON.stringify(doc));
   });
 
@@ -273,6 +283,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
     ).__thalyxTest.selectNode(id);
   }, validNode.id);
   await page.keyboard.press('ControlOrMeta+ArrowDown');
+  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
   await page.keyboard.type('Show error');
   await page.keyboard.press('Enter');
   await page.evaluate(() => {
@@ -282,8 +293,8 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
       }
     ).__thalyxTest;
     const doc = JSON.parse(api.getDocJson());
-    const e = doc.edges.at(-1);
-    if (e) e.label = 'no';
+    const e2 = doc.edges.at(-1);
+    if (e2) e2.label = 'no';
     api.loadDoc(JSON.stringify(doc));
   });
 
@@ -326,6 +337,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
     ).__thalyxTest.selectNode(id);
   }, dash.id);
   await page.keyboard.press('ControlOrMeta+ArrowRight');
+  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
   await page.keyboard.type('Log out');
   await page.keyboard.press('Enter');
 

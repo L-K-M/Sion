@@ -350,7 +350,7 @@ export const ContextPanel = memo(function ContextPanel() {
 
       {nodes.length >= 2 ? (
         <Row label="Layout">
-          <div className="thalyx-seg-group" role="group" aria-label="Layout actions">
+          <div className={SEGGROUP} role="group" aria-label="Layout actions">
             <button
               className="thalyx-seg"
               title="Tidy Up (Alt+Shift+T)"

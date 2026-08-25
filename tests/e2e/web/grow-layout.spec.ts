@@ -141,6 +141,8 @@ test('quick-connect chevrons: hover shows them; click grows', async ({ page }) =
   // directly: the portal's re-render churn defeats Playwright actionability,
   // and the grow gesture itself is fully covered by the Mod+Arrow tests.
   const nodeBefore = (await docState(page)).nodes[0]!;
+  // retriable count (chevrons mount async after hover)
+  await expect(page.locator('.thalyx-chevron')).toHaveCount(4);
   await page.locator('.thalyx-chevron').nth(2).dispatchEvent('pointerdown');
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   const state = await docState(page);
@@ -213,7 +215,7 @@ test('Alt+Shift+L auto-layouts the whole doc', async ({ page }) => {
   // seed edges surgically (patchDoc preserves selection/session)
   await patchDoc(
     page,
-    "var ns = d.nodes; var a = ns[0], c = ns[2], b = ns[1]; function mk(id, src, tgt){ return { id: id, source: src, target: tgt, sourceAnchor: 'auto', targetAnchor: 'auto', kind: 'elbow', arrowStart: 'none', arrowEnd: 'arrow', style: { line: 'solid', stroke: 'ink', rounded: true } }; } d.edges.push(mk('le1', a.id, c.id), mk('le2', c.id, b.id));",
+    "var ns = d.nodes; var a = ns[0], b = ns[1], c = ns[2]; function mk(id, src, tgt){ return { id: id, source: src, target: tgt, sourceAnchor: 'auto', targetAnchor: 'auto', kind: 'elbow', arrowStart: 'none', arrowEnd: 'arrow', style: { line: 'solid', stroke: 'ink', rounded: true } }; } d.edges.push(mk('le1', a.id, c.id), mk('le2', c.id, b.id));",
   );
   await expect(page.locator('.react-flow__edge-path')).toHaveCount(2);
 
@@ -226,6 +228,11 @@ test('Alt+Shift+L auto-layouts the whole doc', async ({ page }) => {
   const state = await docState(page);
   const ys = state.nodes.map((n) => n.y).sort((a, b) => a - b);
   expect(ys[1]! - ys[0]!).toBeGreaterThanOrEqual(58);
+  expect(ys[2]! - ys[1]!).toBeGreaterThanOrEqual(58);
+  // layout actually moved nodes off their seeded coordinates
+  const seeded = [100, 500, 300];
+  const moved = state.nodes.some((n, i) => Math.abs(n.y - (seeded[i] ?? -1)) > 8);
+  expect(moved).toBe(true);
 });
 
 test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }) => {
@@ -256,7 +263,10 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
     "const v = d.nodes.find(function(n){return n.label==='Valid?';}); if (v) v.shape = 'diamond';",
   );
 
-  // Dashboard (yes)
+  // Dashboard (yes) — grow from Valid? (re-selected via the hook; label
+  // commits keep the node selected already, this is belt-and-braces)
+  const beforeDash = await docState(page);
+  await selectNode(page, beforeDash.nodes.find((n) => n.label === 'Valid?')!.id);
   await page.keyboard.press('ControlOrMeta+ArrowRight');
   await typeLabel(page, 'Dashboard');
   console.log(

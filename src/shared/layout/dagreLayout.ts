@@ -77,7 +77,21 @@ export function dagreLayout(
 
   for (const n of doc.nodes) {
     if (n.parentId && containerIds.has(n.parentId) && g.hasNode(n.parentId) && g.hasNode(n.id)) {
-      g.setParent(n.id, n.parentId);
+      // Defensive: dagre throws if setParent would create a cycle — verify
+      // the ancestor chain first (restore breaks cycles on load, but a
+      // transient in-memory mutation could still produce one).
+      let cursor: string | undefined = n.parentId;
+      let cyclic = false;
+      let steps = 0;
+      while (cursor !== undefined && steps < 1000) {
+        if (cursor === n.id) {
+          cyclic = true;
+          break;
+        }
+        cursor = doc.nodes.find((x) => x.id === cursor)?.parentId;
+        steps += 1;
+      }
+      if (!cyclic) g.setParent(n.id, n.parentId);
     }
   }
 

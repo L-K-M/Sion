@@ -65,7 +65,7 @@ export function useKeymap(): void {
             A.reorderZ(e.shiftKey ? 'front' : 'forward');
             return;
           case 'KeyA':
-            if (useStore.getState().session.editingLabel === null) {
+            if (useStore.getState().session.editingLabel === null && !e.repeat) {
               e.preventDefault();
               A.selectAll();
             }
@@ -123,7 +123,8 @@ export function useKeymap(): void {
         mod &&
         !e.altKey &&
         !e.shiftKey &&
-        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) &&
+        !e.repeat
       ) {
         const sel = useStore.getState().session;
         if (sel.editingLabel === null && sel.selection.nodeIds.length === 1) {

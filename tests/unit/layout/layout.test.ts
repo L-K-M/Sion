@@ -14,10 +14,28 @@ function doc(): ThalyxDoc {
   return d;
 }
 
+const W = 160;
+const H = 64;
+const RANKSEP = 60;
+const EPS = 1;
+
 describe('dagreLayout (§11.5)', () => {
+  it('handles a parentId cycle without throwing (defensive)', () => {
+    const d = newDoc();
+    d.nodes.push(
+      newNode({ id: 'p', kind: 'container', x: 0, y: 0, width: 300, height: 200 }),
+      newNode({ id: 'q', kind: 'container', x: 0, y: 0, width: 300, height: 200 }),
+    );
+    const p = d.nodes.find((n) => n.id === 'p')!;
+    const q = d.nodes.find((n) => n.id === 'q')!;
+    p.parentId = 'q';
+    q.parentId = 'p';
+    expect(() => dagreLayout(d, null, { rankdir: 'TB' })).not.toThrow();
+  });
+
   it('lays out a chain top-down with rank separation', () => {
     const d = doc();
-    const positions = dagreLayout(d, null, { rankdir: 'TB', ranksep: 60 });
+    const positions = dagreLayout(d, null, { rankdir: 'TB', ranksep: RANKSEP });
     expect(positions.size).toBe(3);
     const a = positions.get('a')!;
     const b = positions.get('b')!;
@@ -28,13 +46,13 @@ describe('dagreLayout (§11.5)', () => {
       expect(Number.isFinite(p.y)).toBe(true);
     }
     // a → b are on consecutive ranks (b below a by ≥ ranksep)
-    expect(b.y).toBeGreaterThanOrEqual(a.y + 60 - 1);
+    expect(b.y).toBeGreaterThanOrEqual(a.y + RANKSEP - EPS);
     expect(c.y).toBeGreaterThanOrEqual(b.y + 60 - 1);
   });
 
   it('LR direction goes left to right', () => {
     const d = doc();
-    const positions = dagreLayout(d, null, { rankdir: 'LR', ranksep: 60 });
+    const positions = dagreLayout(d, null, { rankdir: 'LR', ranksep: RANKSEP });
     const a = positions.get('a')!;
     const b = positions.get('b')!;
     expect(b.x).toBeGreaterThanOrEqual(a.x + 60 - 1);
@@ -65,8 +83,8 @@ describe('dagreLayout (§11.5)', () => {
     const x2p = positions.get('x2')!;
     expect(x1p.x).toBeGreaterThanOrEqual(0);
     expect(x1p.y).toBeGreaterThanOrEqual(0);
-    expect(x2p.x + 160).toBeLessThanOrEqual(600 + 1);
-    expect(x2p.y + 64).toBeLessThanOrEqual(400 + 1);
+    expect(x2p.x + W).toBeLessThanOrEqual(600 + EPS);
+    expect(x2p.y + H).toBeLessThanOrEqual(400 + EPS);
     // the container is placed by dagre too (finite, on-canvas)
     expect(Number.isFinite(gp.x)).toBe(true);
     expect(Number.isFinite(gp.y)).toBe(true);
@@ -87,7 +105,7 @@ describe('dagreLayout (§11.5)', () => {
     const positions = dagreLayout(d, null, { rankdir: 'TB', ranksep: 60 });
     const a = positions.get('a')!;
     const b = positions.get('b')!;
-    expect(b.y).toBeGreaterThanOrEqual(a.y + 120 - 2);
+    expect(b.y).toBeGreaterThanOrEqual(a.y + RANKSEP * 2 - 2);
   });
 });
 

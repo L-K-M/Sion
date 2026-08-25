@@ -379,8 +379,10 @@ export function autoLayout(directionOverride?: 'TB' | 'BT' | 'LR' | 'RL'): void 
   const state = getStore();
   const sel = state.session.selection.nodeIds;
   const direction = directionOverride ?? state.doc.meta.mermaid?.direction ?? 'TB';
+  // Whole-doc layout only when NOTHING is selected; a partial selection
+  // (even 1 node) lays out its subgraph (§11.5).
   const positions =
-    sel.length >= 2
+    sel.length > 0
       ? layoutSubset(state.doc, sel, { rankdir: direction })
       : layoutAll(state.doc, { rankdir: direction });
   tracked((d) => {
@@ -398,7 +400,7 @@ export function autoLayout(directionOverride?: 'TB' | 'BT' | 'LR' | 'RL'): void 
 export function tidyUpSelection(): void {
   const state = getStore();
   const sel = state.session.selection.nodeIds;
-  const nodes = state.doc.nodes.filter((n) => sel.includes(n.id) && !n.locked);
+  const nodes = state.doc.nodes.filter((n) => sel.includes(n.id) && !n.locked && !n.hidden);
   if (nodes.length < 2) return;
   const { positions } = tidyUp(state.doc, nodes);
   tracked((d) => {
@@ -966,7 +968,10 @@ export function selectAll(): void {
   setStore((s) => ({
     session: {
       ...s.session,
-      selection: { nodeIds: doc.nodes.map((n) => n.id), edgeIds: doc.edges.map((e) => e.id) },
+      selection: {
+        nodeIds: doc.nodes.filter((n) => !n.hidden).map((n) => n.id),
+        edgeIds: doc.edges.filter((e) => !e.hidden).map((e) => e.id),
+      },
     },
   }));
 }

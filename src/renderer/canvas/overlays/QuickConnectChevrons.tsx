@@ -59,6 +59,7 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
   useEffect(() => {
     const el = document.querySelector('.thalyx-canvas-root');
     if (!el) return;
+    const cancel = () => setPointerDown(false);
     const down = (e: Event) => {
       const target = e.target as HTMLElement | null;
       // A potential node DRAG starts on a node — not on overlay buttons
@@ -68,9 +69,15 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
     const up = () => setPointerDown(false);
     el.addEventListener('pointerdown', down);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('pointerout', (e: Event) => {
+      // pointer leaving the window entirely clears hover
+      if (!(e as PointerEvent).relatedTarget) setHoveredId(null);
+    });
     return () => {
       el.removeEventListener('pointerdown', down);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
     };
   }, []);
   if (!hoveredId || !chevronsEnabled || tool !== 'select' || editing || pointerDown) return null;
@@ -109,8 +116,15 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
           }}
           title={`Grow ${c.dir === 'n' ? 'up' : c.dir === 's' ? 'down' : c.dir === 'e' ? 'right' : 'left'}`}
           onPointerDown={(e) => {
+            if (e.button !== 0) return; // primary only
             e.stopPropagation();
             A.growConnectedNode(node.id, c.dir, { grid: doc.canvas.grid });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              A.growConnectedNode(node.id, c.dir, { grid: doc.canvas.grid });
+            }
           }}
         >
           {c.glyph}

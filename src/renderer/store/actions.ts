@@ -10,10 +10,12 @@
  */
 import { produce } from 'immer';
 import {
+  newDoc as newDocFactory,
   newEdge as newEdgeFactory,
   newId,
   newNode as newNodeFactory,
 } from '../../shared/model/create';
+import { importMermaid } from '../../shared/mermaid/import';
 import { layoutAll, layoutSubset } from '../../shared/layout/dagreLayout';
 import { tidyUp } from '../../shared/layout/tidy';
 import {
@@ -1016,6 +1018,69 @@ export function setGuides(guides: GuideLine[]): void {
 export function applyDocPatch(patch: (doc: ThalyxDoc) => void): void {
   tracked((d) => {
     patch(d);
+  });
+}
+
+/**
+ * importMermaidAsNew (§9.3 step 5): one history entry; replaces the document
+ * content with the import (native flowchart → dagre layout; other types → a
+ * mermaid island). Selects the result; the caller zooms to fit.
+ */
+export async function importMermaidAsNew(text: string, parse: ParseMermaidFn): Promise<boolean> {
+  const result = await importMermaid(text, parse);
+  if (result.kind === 'error') return false;
+  if (result.kind === 'island') {
+    const node = newNodeFactory({
+      kind: 'mermaid',
+      x: 0,
+      y: 0,
+      width: 480,
+      height: 360,
+      label: '',
+      mermaidSource: text,
+    });
+    tracked(
+      (d) => {
+        d.nodes = [node];
+        d.edges = [];
+        d.meta.mermaid = { direction: 'TB', sourceText: text };
+      },
+      { selection: { nodeIds: [node.id], edgeIds: [] } },
+    );
+    return true;
+  }
+  // flowchart: seed positions (import gives parentId-relative coords; dagre
+  // re-places everything)
+  const positions = layoutAll(
+    { ...newDocFactory(), nodes: result.nodes, edges: result.edges } as never,
+    { rankdir: result.meta.direction },
+  );
+  tracked(
+    (d) => {
+      d.nodes = result.nodes.map((n) => {
+        const p = positions.get(n.id);
+        return p ? { ...n, x: p.x, y: p.y } : n;
+      });
+      d.edges = result.edges;
+      d.meta.mermaid = {
+        direction: result.meta.direction,
+        ...(result.meta.frontmatter ? { frontmatter: result.meta.frontmatter } : {}),
+        ...(result.meta.classDefs ? { classDefs: result.meta.classDefs } : {}),
+        sourceText: result.meta.sourceText,
+      };
+    },
+    { selection: { nodeIds: result.nodes.map((n) => n.id), edgeIds: [] } },
+  );
+  return true;
+}
+
+export type ParseMermaidFn = import('../../shared/mermaid/import').ParseFn;
+
+/** Replace an island's mermaid source (§9.8 dialog Apply). One entry. */
+export function updateNodeMermaidSource(id: string, source: string): void {
+  tracked((d) => {
+    const n = d.nodes.find((x) => x.id === id);
+    if (n && n.kind === 'mermaid') n.mermaidSource = source.slice(0, 1_000_000);
   });
 }
 

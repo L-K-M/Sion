@@ -8,6 +8,64 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M5 — Mermaid import (PLAN.md §17 M5)
+
+Added:
+
+- **`src/shared/mermaid/tables.ts` (§9.2)** — ground-truth tables: vertex
+  type→ShapeKind (+ `@{shape:}` alt names), the two orthogonal import
+  lookups (edge.type→heads, edge.stroke→line/hidden), the 21-entry emit
+  table + `~~~`, `canonicalizeHeads` (degrade rule), `extendBody` (minlen
+  middle-char rule), the id blocklist, and the FULL sequence LINETYPE table
+  (0–34) + PLACEMENT.
+- **`src/shared/mermaid/entities.ts`** — `decodeMermaidLabel` (placeholder
+  decode → EXACTLY ONE entity pass → `<br>`→newline; verified raw
+  `ﬂ°quot¶ß` forms) and `encodeLabel` (order-sensitive escaping:
+  `#`→`#35;` then `&`→`#38;` then `"`→`#quot;` then newline→`<br>`;
+  always quoted).
+- **`src/shared/mermaid/detect.ts`** — `isProbablyMermaid` prefilter
+  (frontmatter + `%%` skipping, keyword headers).
+- **`src/shared/mermaid/import.ts` (§9.3)** — `importMermaid(text, parse)` →
+  flowchart nodes/edges/meta (subgraphs topologically parent-first via
+  nesting depth, vertices with classDef-composed styles, edges with
+  heads/line/minlen/user-id meta, frontmatter preserved, TD→TB) |
+  island {diagramType, source} | error {message, line/col}. Awaited
+  ParseFn (the renderer supplies the D9 runtime; tests the jsdom shim).
+- **Renderer runtime (§9.1, D10)** — `src/renderer/mermaid/runtime.ts`
+  (htmlLabels always off; parse-first D9 sequence; error positions from
+  `hash.loc`).
+- **`importMermaidAsNew` action** — one history entry; island or
+  dagre-laid-out flowchart (direction from the parsed doc); selects the
+  result. `updateNodeMermaidSource` for the island editor.
+- **`MermaidIslandNode` (§9.8)** — `mermaid.render` → DOMPurify
+  (svg profile, foreignObject forbidden) → injected; placeholder/error
+  states; Enter opens the modal editor (textarea + Apply/Cancel) which
+  updates the source in one entry.
+- **Paste import (§9.7)** — `usePasteImport`: mermaid-looking paste →
+  import + fit + toast ("Imported Mermaid — ⌘Z to undo" + "Paste as text
+  instead" escape hatch); garbage → text node; plain text → text node at
+  the viewport center.
+- **Corpus (§15.1 import half)** — 12 fixtures (all 21 arrow bodies +
+  minlen extensions, every shape bracket, `#quot;`/`&`/`&lt;`/`<br>`/unicode/
+  backtick labels, nested subgraphs with `direction`, classDef/style/
+  linkStyle/click/tooltips, `~~~`, `e@-->` ids, `@{shape: cyl}`,
+  frontmatter, sequence island) + shim; 30 new unit tests incl. the
+  mermaid-upgrade-gate version assertion (D16).
+- e2e `mermaid-import.spec.ts`: native import (3 nodes, 2 edges, ranks
+  separated, diamond mapped, one-undo), island render, garbage→text,
+  escape hatch, island editor Apply, 50-node import.
+
+Changed / deviations from PLAN.md (§19.6–7):
+
+- `mermaid 11.17.0` exact-pinned and `dompurify ^3.4.14` added (both
+  §5-listed; dompurify's Apache-2.0 arm elected per D17); ledger
+  regenerated (130 bundled runtime deps — mermaid's tree).
+- `@types/jsdom` dev-dep added for the shim's types.
+- Import-ground-truth deltas recorded: mermaid decodes `&lt;` itself in db
+  text when the source contains it literally (the plan's `#38;lt;` flow
+  is the export side); `click` hrefs are URL-normalized (trailing slash).
+  Both asserted per observation, not per assumption.
+
 ### M4c — Editing UX floor, part 3: chevrons / grow / layout-actions (PLAN.md §17 M4, final part)
 
 Added:

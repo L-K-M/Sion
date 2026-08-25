@@ -52,6 +52,7 @@ export interface NewNodeInit {
   locked?: boolean;
   hidden?: boolean;
   mermaidSource?: string;
+  meta?: ThalyxNode['meta'];
 }
 
 export function newNode(init: NewNodeInit = {}): ThalyxNode {
@@ -69,6 +70,7 @@ export function newNode(init: NewNodeInit = {}): ThalyxNode {
     ...(init.locked !== undefined ? { locked: init.locked } : {}),
     ...(init.hidden !== undefined ? { hidden: init.hidden } : {}),
     ...(init.mermaidSource !== undefined ? { mermaidSource: init.mermaidSource } : {}),
+    ...(init.meta !== undefined ? { meta: JSON.parse(JSON.stringify(init.meta)) } : {}),
   };
   if (kind === 'shape') {
     node.shape = init.shape ?? DEFAULT_SHAPE;
@@ -93,6 +95,7 @@ export interface NewEdgeInit {
   hidden?: boolean;
   waypoints?: { x: number; y: number }[];
   style?: Partial<ThalyxEdge['style']>;
+  meta?: ThalyxEdge['meta'];
 }
 
 export function newEdge(init: NewEdgeInit): ThalyxEdge {
@@ -110,6 +113,7 @@ export function newEdge(init: NewEdgeInit): ThalyxEdge {
     ...(init.hidden !== undefined ? { hidden: init.hidden } : {}),
     ...(init.waypoints !== undefined ? { waypoints: init.waypoints } : {}),
     style: { line: 'solid', stroke: 'ink', rounded: true, ...init.style },
+    ...(init.meta !== undefined ? { meta: JSON.parse(JSON.stringify(init.meta)) } : {}),
   };
 }
 

@@ -41,13 +41,12 @@ function Segmented<T extends string | number>({
   title?: string;
 }) {
   return (
-    <div className={SEGGROUP} role="radiogroup" aria-label={title}>
+    <div className={SEGGROUP} role="group" aria-label={title}>
       {options.map((o) => (
         <button
           key={String(o.value)}
           className={SEG}
-          role="radio"
-          aria-checked={o.value === value}
+          aria-pressed={o.value === value}
           title={o.title ?? o.label}
           onClick={() => onChange(o.value)}
         >
@@ -192,7 +191,7 @@ export const ContextPanel = memo(function ContextPanel() {
         {singleEdge ? (
           <Row label="Label">
             <input
-              key={singleEdge.id}
+              key={`${singleEdge.id}:${singleEdge.label ?? ''}`}
               className="thalyx-panel-input"
               defaultValue={singleEdge.label ?? ''}
               onKeyDown={(e) => {
@@ -227,15 +226,14 @@ export const ContextPanel = memo(function ContextPanel() {
       </div>
 
       <Row label="Fill">
-        <div className="thalyx-palette" role="radiogroup" aria-label="Fill color">
+        <div className="thalyx-palette" role="group" aria-label="Fill color">
           {PALETTE_TOKENS.map((t) => (
             <button
               key={t}
               className={`thalyx-swatch${nodes[0]?.style.fill === t ? ' is-active' : ''}`}
               style={{ background: `var(--${t}-fill)` }}
               title={t}
-              role="radio"
-              aria-checked={nodes[0]?.style.fill === t}
+              aria-pressed={nodes[0]?.style.fill === t}
               onClick={() => onFill(t)}
             />
           ))}
@@ -265,6 +263,7 @@ export const ContextPanel = memo(function ContextPanel() {
                 { value: 4, label: '■', title: 'Bold' },
               ]}
               onChange={onStrokeWidth}
+              title="Stroke width"
             />
           </Row>
           <Row label="Font">
@@ -277,6 +276,7 @@ export const ContextPanel = memo(function ContextPanel() {
                 { value: 24, label: 'XL' },
               ]}
               onChange={onFontSize}
+              title="Font size"
             />
           </Row>
         </>
@@ -313,7 +313,7 @@ export const ContextPanel = memo(function ContextPanel() {
           </Row>
           <Row label="Link">
             <input
-              key={singleShape.id}
+              key={`${singleShape.id}:${singleShape.meta?.mermaid?.link ?? ''}`}
               className="thalyx-panel-input"
               defaultValue={singleShape.meta?.mermaid?.link ?? ''}
               placeholder="https://…"

@@ -46,7 +46,7 @@ test('canvas panel shows grid/theme/direction when nothing is selected', async (
   const target = gridBefore ? 'Off' : 'On';
   await panel
     .getByRole('radiogroup', { name: 'Grid' })
-    .getByRole('radio', { name: target })
+    .getByRole('button', { name: target })
     .click();
   const state = await docState(page);
   expect(state.canvas.grid).toBe(!gridBefore);
@@ -182,7 +182,10 @@ test('edge selection shows connector controls; line style round-trips', async ({
   });
   const panel = page.locator('.thalyx-panel');
   await expect(panel.locator('.thalyx-panel-title')).toHaveText('Connector');
-  await panel.getByRole('radiogroup', { name: 'Line' }).getByRole('radio', { name: '– –' }).click();
+  await panel
+    .getByRole('radiogroup', { name: 'Line' })
+    .getByRole('button', { name: '– –' })
+    .click();
   const state = await docState(page);
   expect(state.edges[0]!.style.line).toBe('dashed');
 });

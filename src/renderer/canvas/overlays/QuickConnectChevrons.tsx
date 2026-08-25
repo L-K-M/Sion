@@ -10,11 +10,10 @@ import { useStore } from '../../store/store';
 import * as A from '../../store/actions';
 import { absolutePosition } from '../../../shared/model/queries';
 
-// Flush with the node edge: the pointer travels node → chevron with NO
-// pane pixels between, so hover tracking never drops the node. The chevron
-// (portal renders above nodes, z-index 20) also overlays the connection
-// handle cleanly — its pointerdown wins.
-const CHEVRON_OFFSET = 0;
+// 16px out: clears the 10px connection Handle that sits ON the edge (a
+// flush chevron would be un-clickable — the handle consumes pointerdown).
+// Hover tracking tolerates the pane gap (see the listeners below).
+const CHEVRON_OFFSET = 16;
 
 export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
   const chevronsEnabled = useStore((s) => s.session.chevronsEnabled);
@@ -33,28 +32,24 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
     }
     const el = document.querySelector('.thalyx-canvas-root') as HTMLElement | null;
     if (!el) return;
+    // Hover model: entering a node sets hover; entering a chevron or empty
+    // pane KEEPS it (no flicker while reaching for a chevron); hover clears
+    // only when the pointer enters a DIFFERENT node or leaves the canvas.
     const onOver = (e: Event) => {
       const target = e.target as HTMLElement | null;
-      // Moving onto one of the chevrons must NOT clear the hover they belong to.
-      if (target?.closest?.('.thalyx-chevron')) return;
       const nodeEl = target?.closest?.('.react-flow__node');
-      const id = nodeEl?.getAttribute('data-id') ?? null;
-      setHoveredId(id);
+      if (nodeEl) {
+        const id = nodeEl.getAttribute('data-id');
+        if (id) setHoveredId(id);
+      }
+      // pane/chevron targets: keep the current hover
     };
-    const onOut = (e: Event) => {
-      const me = e as MouseEvent;
-      const target = me.relatedTarget as HTMLElement | null;
-      if (!target) return; // leaving the window entirely — handler below clears
-      // Keep hover while the pointer moves onto a chevron (it belongs to the
-      // hovered node) — only clear when leaving toward other canvas content.
-      if (target.closest?.('.thalyx-chevron')) return;
-      if (!target.closest?.('.react-flow__node')) setHoveredId(null);
-    };
+    const onLeave = () => setHoveredId(null);
     el.addEventListener('mouseover', onOver);
-    el.addEventListener('mouseout', onOut);
+    el.addEventListener('mouseleave', onLeave);
     return () => {
       el.removeEventListener('mouseover', onOver);
-      el.removeEventListener('mouseout', onOut);
+      el.removeEventListener('mouseleave', onLeave);
     };
   }, [chevronsEnabled, tool, editing]);
 

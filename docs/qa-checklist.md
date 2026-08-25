@@ -37,6 +37,11 @@ Per-release manual pass. Checked on Ubuntu LTS (X11 + Wayland) and macOS.
 - [ ] Login-flow demo (7 nodes, 6 edges incl. Auth container) built in < 90 s
       with keyboard + mouse
 
+## M6 manual checks
+
+- [ ] M4 demo export renders correctly on mermaid.live (paste the panel text)
+- [ ] Copy as Mermaid (Mod+Shift+C) → paste into mermaid.live → identical graph
+
 ## Platform notes
 
 - [ ] Wayland: `ELECTRON_OZONE_PLATFORM_HINT=auto` (set in main); text crispness

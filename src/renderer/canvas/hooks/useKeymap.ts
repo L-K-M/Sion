@@ -36,6 +36,16 @@ export function useKeymap(): void {
       if (isTypingTarget(e)) return; // the label editor handles its own keys
 
       // --- Mod chords -----------------------------------------------------
+      if (mod && e.shiftKey && !e.altKey && e.code === 'KeyM') {
+        e.preventDefault();
+        A.setMermaidPanelOpen(!useStore.getState().session.mermaidPanelOpen);
+        return;
+      }
+      if (mod && e.shiftKey && !e.altKey && e.code === 'KeyC') {
+        e.preventDefault();
+        void A.copyAsMermaid();
+        return;
+      }
       if (mod && !e.altKey) {
         switch (e.code) {
           case 'KeyZ':

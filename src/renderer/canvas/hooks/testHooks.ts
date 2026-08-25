@@ -19,6 +19,21 @@ export function installTestHooks(): void {
   const optedIn = new URLSearchParams(window.location.search).has('testHooks');
   if (!import.meta.env.DEV && !optedIn) return;
   (window as unknown as Record<string, unknown>).__thalyxTest = {
+    // patchDoc receives PATCH SOURCE (Playwright cannot serialize function
+    // arguments across the boundary) — compiled here, inside the page.
+    patchDoc(patchSrc: string): void {
+      // Arbitrary code execution — same availability gate as the hook set
+      // itself: dev server, or an explicit ?testHooks=1 opt-in on a built app
+      // (§15.2 web-mode testing). Never reachable in a normal packaged launch.
+      if (!import.meta.env.DEV && !new URLSearchParams(window.location.search).has('testHooks')) {
+        throw new Error('patchDoc is dev/test-only');
+      }
+      // eslint-disable-next-line no-new-func
+      const patch = new Function('d', patchSrc) as (d: unknown) => void;
+      A.applyDocPatch((d) => {
+        patch(d);
+      });
+    },
     loadDoc(json: string): boolean {
       try {
         resetStore(parseDoc(json));
@@ -27,6 +42,14 @@ export function installTestHooks(): void {
         console.error('[thalyxTest] loadDoc failed', err);
         return false;
       }
+    },
+    selectNode(id: string): void {
+      A.setSelection([id], []);
+    },
+    addNodeToSelection(id: string, reset: boolean): void {
+      const s = useStore.getState().session.selection;
+      const nodes = reset ? [id] : [...new Set([...s.nodeIds, id])];
+      A.setSelection(nodes, []);
     },
     selectEdge(id: string): void {
       A.setSelection([], [id]);

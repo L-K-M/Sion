@@ -64,8 +64,15 @@ export function useKeymap(): void {
             e.preventDefault();
             A.reorderZ(e.shiftKey ? 'front' : 'forward');
             return;
+          case 'KeyA':
+            if (useStore.getState().session.editingLabel === null && !e.repeat) {
+              e.preventDefault();
+              A.selectAll();
+            }
+            return;
         }
-        return;
+        // Other Mod chords fall through (e.g. Mod+Arrow grow below); the
+        // bare-tool section re-guards on `mod`.
       }
 
       // --- Delete ----------------------------------------------------------
@@ -110,7 +117,51 @@ export function useKeymap(): void {
         }
       }
 
-      // --- Arrow keys: nudge / grow is M4c ----------------------------------
+      // --- Mod+Arrow: grow (§11.6) — gated while a label editor is open so
+      // macOS caret navigation stays intact (§10.1 delta 1)
+      if (
+        mod &&
+        !e.altKey &&
+        !e.shiftKey &&
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) &&
+        !e.repeat
+      ) {
+        const sel = useStore.getState().session;
+        if (sel.editingLabel === null && sel.selection.nodeIds.length === 1) {
+          e.preventDefault();
+          const dir =
+            e.code === 'ArrowUp'
+              ? 'n'
+              : e.code === 'ArrowDown'
+                ? 's'
+                : e.code === 'ArrowRight'
+                  ? 'e'
+                  : 'w';
+          A.growConnectedNode(sel.selection.nodeIds[0]!, dir, {
+            grid: useStore.getState().doc.canvas.grid,
+          });
+          return;
+        }
+        return;
+      }
+
+      // --- Alt+Shift chords for layout (§10.2: Alt chords match on e.code);
+      // inert while a label editor is open (it owns the keyboard) ---
+      if (
+        e.altKey &&
+        e.shiftKey &&
+        !mod &&
+        useStore.getState().session.editingLabel === null &&
+        (e.code === 'KeyT' || e.code === 'KeyL') &&
+        !e.repeat
+      ) {
+        e.preventDefault();
+        if (e.code === 'KeyT') A.tidyUpSelection();
+        else A.autoLayout();
+        return;
+      }
+
+      // --- Arrow keys: nudge ---
       if (
         e.code === 'ArrowUp' ||
         e.code === 'ArrowDown' ||

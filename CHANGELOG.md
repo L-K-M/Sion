@@ -8,6 +8,36 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M4c — Editing UX floor, part 3: chevrons / grow / layout-actions (PLAN.md §17 M4, final part)
+
+Added:
+
+- **`src/shared/layout/dagreLayout.ts` (§11.5, D3)** — `@dagrejs/dagre ^3.1.1`
+  added (MIT, §5-listed; ledger regenerated): compound+multigraph, default
+  edge labels, minlen from `meta.mermaid.minlen`, containers as clusters with
+  member-derived sizes, container-endpoint edges skipped (cluster-edge
+  limitation per plan), centers→top-left with parent-relative conversion.
+- **`src/shared/layout/tidy.ts`** — Tidy Up: row/column/grid inference from
+  the current arrangement, 24 px gaps, dominant-axis alignment.
+- **Actions** — `autoLayout` (selection's subgraph or whole doc, direction
+  from `meta.mermaid.direction`, one history entry), `tidyUpSelection`,
+  `growConnectedNode` (§11.6: 48 px corridor — connect to an existing node or
+  create with inherited style/size + last-used edge style; one entry; select
+  + open label editor).
+- **`QuickConnectChevrons` (§11.6)** — ViewportPortal overlay: 4 chevrons on
+  the hovered node (select tool, zoom ≥ 40%, Q toggle, hidden while editing);
+  click = grow in that direction.
+- **Keymap completion** — `Mod+Arrow` grow (gated while a label editor is
+  open), `Alt+Shift+T` / `Alt+Shift+L` layout chords (e.code matching).
+- **ContextPanel** — Tidy + Auto buttons in the ≥2-nodes row.
+- **Tests** — 8 layout unit cases (chain ranks, LR, containered-doc acceptance
+  incl. children-in-bounds, subset-only, minlen spacing; tidy row/column/grid
+  with 24 px gaps); `grow-layout.spec.ts` e2e (grow ± corridor connect, one
+  undo entry, chevrons + Q toggle, Alt+Shift+T gaps, Alt+Shift+L ranks, and
+  the full M4 login-flow acceptance demo). `docs/qa-checklist.md` draft
+  (I1–I18 + §10.2 + demo timing) per §15.3.
+- Dev hooks: `selectNode` / `addNodeToSelection` for e2e selection driving.
+
 ### M4b — Editing UX floor, part 2: panel / palette / keymap (PLAN.md §17 M4, split per the plan)
 
 Added:

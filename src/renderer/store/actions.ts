@@ -9,7 +9,13 @@
  * tidyUp, ensureMermaidIds) arrive with milestones M4–M8 per the plan.
  */
 import { produce } from 'immer';
-import { newEdge, newId, newNode } from '../../shared/model/create';
+import {
+  newEdge as newEdgeFactory,
+  newId,
+  newNode as newNodeFactory,
+} from '../../shared/model/create';
+import { layoutAll, layoutSubset } from '../../shared/layout/dagreLayout';
+import { tidyUp } from '../../shared/layout/tidy';
 import {
   absolutePosition,
   boundsOfNodes,
@@ -126,8 +132,8 @@ function clampLabel(label: string): string {
   return label.slice(0, LABEL_MAX);
 }
 
-export function addNode(init: Parameters<typeof newNode>[0]): string {
-  const node = newNode(init);
+export function addNode(init: Parameters<typeof newNodeFactory>[0]): string {
+  const node = newNodeFactory(init);
   tracked(
     (d) => {
       d.nodes.push(node);
@@ -363,7 +369,155 @@ export function duplicateSelection(): void {
   );
 }
 
-/** Paste explicit clipboard content (same rules as duplicate). */
+/**
+ * Auto-layout (§11.5): one shot, one history entry. Lays out the selection's
+ * connected subgraph, or the whole document when nothing is selected.
+ * Direction from doc.meta unless overridden.
+ */
+export function autoLayout(directionOverride?: 'TB' | 'BT' | 'LR' | 'RL'): void {
+  const state = getStore();
+  const sel = state.session.selection.nodeIds;
+  const direction = directionOverride ?? state.doc.meta.mermaid?.direction ?? 'TB';
+  // Whole-doc layout only when NOTHING is selected; a partial selection
+  // (even 1 node) lays out its subgraph (§11.5).
+  const positions =
+    sel.length > 0
+      ? layoutSubset(state.doc, sel, { rankdir: direction })
+      : layoutAll(state.doc, { rankdir: direction });
+  if (positions.size === 0) return; // empty canvas: no no-op undo entry
+  tracked((d) => {
+    for (const n of d.nodes) {
+      const p = positions.get(n.id);
+      if (p && !n.locked) {
+        n.x = p.x;
+        n.y = p.y;
+      }
+    }
+  });
+}
+
+/** Tidy Up (§11.5): even distribution of the selected unconnected shapes. */
+export function tidyUpSelection(): void {
+  const state = getStore();
+  const sel = state.session.selection.nodeIds;
+  const nodes = state.doc.nodes.filter((n) => sel.includes(n.id) && !n.locked && !n.hidden);
+  if (nodes.length < 2) return;
+  const { positions } = tidyUp(state.doc, nodes);
+  tracked((d) => {
+    for (const n of d.nodes) {
+      const p = positions.get(n.id);
+      if (p) {
+        n.x = p.x;
+        n.y = p.y;
+      }
+    }
+  });
+}
+
+/**
+ * Grow gesture (§11.6): create a connected node in `dir` from the source —
+ * new node inherits style/size, edge inherits the last-used edge style,
+ * gap 48 px (snapped to grid when on). ONE history entry; select + open the
+ * label editor. If a node already sits within the corridor, connect to it
+ * instead (draw.io rule).
+ */
+export function growConnectedNode(
+  sourceId: string,
+  dir: 'n' | 's' | 'e' | 'w',
+  opts: { shape?: ShapeKind; grid?: boolean } = {},
+): string | null {
+  const state = getStore();
+  const doc = state.doc;
+  const source = doc.nodes.find((n) => n.id === sourceId);
+  if (!source || source.kind === 'mermaid') return null;
+  const sAbs = absolutePosition(doc, source);
+  const GAP = 48;
+
+  const sourceRect = { x: sAbs.x, y: sAbs.y, w: source.width, h: source.height };
+  let best: { id: string; dist: number } | null = null;
+  for (const n of doc.nodes) {
+    if (n.id === sourceId || n.hidden || n.kind === 'mermaid' || n.kind === 'container') continue;
+    const abs = absolutePosition(doc, n);
+    const r = { x: abs.x, y: abs.y, w: n.width, h: n.height };
+    const gapAlong =
+      dir === 'e'
+        ? r.x - (sourceRect.x + sourceRect.w)
+        : dir === 'w'
+          ? sourceRect.x - (r.x + r.w)
+          : dir === 's'
+            ? r.y - (sourceRect.y + sourceRect.h)
+            : sourceRect.y - (r.y + r.h);
+    // corridor reach: the new node we would create occupies GAP + width;
+    // accept an existing node up to that reach along the direction
+    const reach = (dir === 'e' || dir === 'w' ? source.width : source.height) + GAP * 1.5;
+    if (gapAlong < -8 || gapAlong > reach) continue;
+    const overlapPerp =
+      dir === 'e' || dir === 'w'
+        ? Math.min(sourceRect.y + sourceRect.h, r.y + r.h) - Math.max(sourceRect.y, r.y)
+        : Math.min(sourceRect.x + sourceRect.w, r.x + r.w) - Math.max(sourceRect.x, r.x);
+    if (overlapPerp <= 0) continue;
+    if (!best || gapAlong < best.dist) best = { id: n.id, dist: gapAlong };
+  }
+
+  if (best) {
+    // draw.io rule: the corridor connects — but never duplicates an edge
+    const exists = doc.edges.some(
+      (e) =>
+        !e.hidden &&
+        ((e.source === sourceId && e.target === best!.id) ||
+          (e.source === best!.id && e.target === sourceId)),
+    );
+    if (!exists) connectEdge(sourceId, best.id, 'arrow');
+    setStore((s) => ({
+      session: { ...s.session, selection: { nodeIds: [best!.id], edgeIds: [] } },
+    }));
+    return best.id;
+  }
+
+  // create a new node in the direction
+  let nx = sAbs.x;
+  let ny = sAbs.y;
+  if (dir === 'e') nx = sourceRect.x + sourceRect.w + GAP;
+  if (dir === 'w') nx = sourceRect.x - GAP - source.width;
+  if (dir === 's') ny = sourceRect.y + sourceRect.h + GAP;
+  if (dir === 'n') ny = sourceRect.y - GAP - source.height;
+  if (opts.grid) {
+    nx = Math.round(nx / 8) * 8;
+    ny = Math.round(ny / 8) * 8;
+  }
+  const shape = opts.shape ?? (source.kind === 'shape' ? (source.shape ?? 'rounded') : 'rounded');
+  const grown = newNodeFactory({
+    kind: 'shape',
+    shape,
+    x: nx,
+    y: ny,
+    width: source.width,
+    height: source.height,
+    style: { ...source.style },
+  });
+  const session = getStore().session;
+  const arrowEnd = session.lastEdgeStyle.arrowEnd;
+  const line = session.lastEdgeStyle.line;
+  const edge = newEdgeFactory({
+    source: sourceId,
+    target: grown.id,
+    arrowStart: 'none',
+    arrowEnd,
+    style: { line },
+  });
+  tracked(
+    (d) => {
+      d.nodes.push(grown);
+      d.edges.push(edge);
+    },
+    {
+      selection: { nodeIds: [grown.id], edgeIds: [] },
+      editingLabel: { kind: 'node', id: grown.id },
+    },
+  );
+  return grown.id;
+}
+
 export function pasteInternal(nodes: ThalyxNode[], edges: ThalyxEdge[]): void {
   if (nodes.length === 0) return;
   const pasted = reIdSubgraph(nodes, edges, 16, 16);
@@ -513,7 +667,7 @@ export function groupIntoContainer(label = ''): void {
   const parents = new Set(members.map((m) => m.parentId ?? null));
   const containerParent = parents.size === 1 ? [...parents][0] : null;
 
-  const container = newNode({
+  const container = newNodeFactory({
     kind: 'container',
     label,
     x: 0,
@@ -623,7 +777,7 @@ export function addEdge(init: AddEdgeInit): string {
   if (source.kind === 'mermaid' || target.kind === 'mermaid') {
     throw new Error('addEdge: mermaid islands cannot participate in edges');
   }
-  const edge = newEdge(init);
+  const edge = newEdgeFactory(init);
   tracked(
     (d) => {
       d.edges.push(edge);
@@ -808,6 +962,20 @@ export function addToSelection(nodeIds: string[], edgeIds: string[] = []): void 
   }));
 }
 
+/** Select all nodes and edges (§10.2 Mod+A). */
+export function selectAll(): void {
+  const doc = getStore().doc;
+  setStore((s) => ({
+    session: {
+      ...s.session,
+      selection: {
+        nodeIds: doc.nodes.filter((n) => !n.hidden).map((n) => n.id),
+        edgeIds: doc.edges.filter((e) => !e.hidden).map((e) => e.id),
+      },
+    },
+  }));
+}
+
 export function clearSelection(): void {
   setStore((s) => ({ session: { ...s.session, selection: { nodeIds: [], edgeIds: [] } } }));
 }
@@ -838,6 +1006,17 @@ export function setTheme(theme: SessionState['theme']): void {
 
 export function setGuides(guides: GuideLine[]): void {
   setStore((s) => ({ session: { ...s.session, guides } }));
+}
+
+/**
+ * TEST-ONLY (e2e hooks): apply a surgical patch to the current doc — unlike
+ * loadDoc/resetStore it preserves the session (selection, editor state), so
+ * specs can tweak a label/shape mid-flow without killing gestures.
+ */
+export function applyDocPatch(patch: (doc: ThalyxDoc) => void): void {
+  tracked((d) => {
+    patch(d);
+  });
 }
 
 export function setHelpOpen(open: boolean): void {

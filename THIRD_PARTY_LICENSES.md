@@ -11,6 +11,8 @@ available in each package's directory inside `node_modules/`.
 
 | Package | License(s) |
 |---|---|
+| @dagrejs/dagre@3.1.1 | MIT |
+| @dagrejs/graphlib@4.0.5 | MIT |
 | @types/d3-color@3.1.3 | MIT |
 | @types/d3-drag@3.0.7 | MIT |
 | @types/d3-interpolate@3.0.4 | MIT |

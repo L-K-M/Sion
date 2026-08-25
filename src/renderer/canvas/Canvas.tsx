@@ -29,6 +29,7 @@ import { TextNode } from './nodes/TextNode';
 import { ContainerNode } from './nodes/ContainerNode';
 import { EmptyCanvasHint } from './overlays/EmptyCanvasHint';
 import { GuideLines } from './overlays/GuideLines';
+import { QuickConnectChevrons } from './overlays/QuickConnectChevrons';
 import { computeSnap, type Bounds } from '../../../src/shared/snap/snap';
 import { absolutePosition, descendantsOf } from '../../../src/shared/model/queries';
 import { ThalyxEdgeComponent } from './edges/ThalyxEdge';
@@ -351,6 +352,7 @@ export function Canvas() {
         {doc.canvas.grid ? (
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--grid)" />
         ) : null}
+        <QuickConnectChevrons />
       </ReactFlow>
       <GuideLines />
       <EmptyCanvasHint visible={doc.nodes.length === 0} />

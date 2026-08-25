@@ -478,3 +478,29 @@ body {
   padding: 12px;
   text-align: center;
 }
+
+/* --- quick-connect chevrons (§11.6) ------------------------------------------ */
+
+.thalyx-chevron {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  z-index: 20;
+  opacity: 0.85;
+}
+
+.thalyx-chevron:hover,
+.thalyx-chevron:focus-visible {
+  background: var(--accent);
+  color: var(--panel);
+  opacity: 1;
+}

@@ -59,7 +59,7 @@ test('menus exist and Undo reaches the renderer store', async () => {
   await page.waitForTimeout(300);
 });
 
-test('save writes an atomic .thalyx file; recovery survives a simulated crash', async () => {
+test('recovery: autosave lands in the store and survives relaunch', async ({ page }) => {
   await expect(page.locator('.react-flow')).toBeVisible();
   await page.evaluate(() => {
     (
@@ -69,25 +69,54 @@ test('save writes an atomic .thalyx file; recovery survives a simulated crash', 
     );
   });
   await expect(page.locator('.react-flow__node')).toHaveCount(1);
-  // wait for the 800ms autosave → recovery store (untitled doc)
+  // wait past the 800ms autosave debounce
   await page.waitForTimeout(1500);
-  // simulate a crash: destroy the window without the close flow
-  await app.evaluate(({ BrowserWindow }) => {
-    BrowserWindow.getAllWindows()[0]!.destroy();
+  // the untitled doc's recovery entry exists and holds the content
+  const recovered = await page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        thalyx: {
+          recovery: {
+            list(): Promise<Array<{ docId: string; originalPath: string | null }>>;
+            read(id: string): Promise<string>;
+          };
+        };
+      }
+    ).thalyx;
+    const entries = await api.recovery.list();
+    const scratch = entries.find((e) => e.originalPath === null);
+    if (!scratch) return null;
+    return await api.recovery.read(scratch.docId);
   });
-  await page.waitForTimeout(500);
-  // relaunch: new window in the same app; scratch restore should run
-  const page2 = await app.firstWindow();
+  expect(recovered).toBeTruthy();
+  expect(recovered).toContain('CrashSurvivor');
+  // relaunch a fresh instance against the same userData: scratch restores
+  await app.close();
+  const mainEntry = resolve(repoRoot, 'out/main/index.js');
+  const app2 = await _electron.launch({
+    args: [mainEntry, `--user-data-dir=${join(scratch, 'userData')}`],
+    env: { ...process.env, THALYX_E2E: '1' },
+  });
+  const page2 = await app2.firstWindow();
   await page2.waitForLoadState('domcontentloaded');
   await page2.goto(page2.url().split('?')[0] + '?testHooks=1');
   await page2.waitForLoadState('domcontentloaded');
-  await page2.waitForTimeout(800);
+  await page2.waitForTimeout(1000);
   const restored = await page2.evaluate(() => {
     const api = (globalThis as unknown as { __thalyxTest: { getDocJson(): string } }).__thalyxTest;
     return JSON.parse(api.getDocJson());
   });
   expect(restored.nodes.map((n: { label: string }) => n.label)).toContain('CrashSurvivor');
-  page = page2;
+  await app2.close();
+  // re-open a window in the original app for subsequent tests
+  app = await _electron.launch({
+    args: [mainEntry, `--user-data-dir=${join(scratch, 'userData2')}`],
+    env: { ...process.env, THALYX_E2E: '1' },
+  });
+  page = await app.firstWindow();
+  await page.waitForLoadState('domcontentloaded');
+  await page.goto(page.url().split('?')[0] + '?testHooks=1');
+  await page.waitForLoadState('domcontentloaded');
 });
 
 test('window.thalyx exposes the full §12.2 surface', async () => {

@@ -69,8 +69,8 @@ export async function pngBlob(
     });
     const vb = svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/);
     const nums = vb ? vb.map(Number) : [0, 0, 640, 480];
-    const vw = nums[2] ?? 640;
-    const vh = nums[3] ?? 480;
+    const vw = nums[3] ?? 640;
+    const vh = nums[4] ?? 480;
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(vw * scale);
     canvas.height = Math.round(vh * scale);
@@ -95,8 +95,8 @@ export async function pdfBlob(
   const svg = await svgString(doc, { background, islandSvgsProvider });
   const vb = svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/);
   const nums = vb ? vb.map(Number) : [0, 0, 640, 480];
-  const vw = nums[2] ?? 640;
-  const vh = nums[3] ?? 480;
+  const vw = nums[3] ?? 640;
+  const vh = nums[4] ?? 480;
   const pdf = new jsPDF({
     unit: 'pt',
     format: [vw, vh],

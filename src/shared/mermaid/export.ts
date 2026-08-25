@@ -176,7 +176,9 @@ export function exportMermaid(
     for (const node of nodes) {
       const id = idFor(ctx, node);
       if (node.kind === 'container') {
-        const title = encodeLabel(node.label ?? '');
+        // same empty-label rule as nodes: A[""] is a parse error — emit a space
+        const rawTitle = node.label ?? '';
+        const title = encodeLabel(rawTitle.length === 0 ? ' ' : rawTitle);
         lines.push(`${indent}subgraph ${id}[${title}]`);
         if (node.meta?.mermaid?.dir) {
           lines.push(`${indent}  direction ${node.meta.mermaid.dir}`);

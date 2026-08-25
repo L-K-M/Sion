@@ -238,3 +238,17 @@ describe('mermaid export + round-trip (§15.1 export half)', () => {
     }
   });
 });
+
+describe('export edge cases (§9.4)', () => {
+  it('empty container titles emit a quoted space (not a parse error)', async () => {
+    const doc = newDoc();
+    doc.nodes.push(
+      newNode({ id: 'g', kind: 'container', label: '', x: 0, y: 0, width: 300, height: 200 }),
+    );
+    doc.nodes.push(newNode({ id: 'a', label: 'A', parentId: 'g', x: 10, y: 10 }));
+    const out = exportMermaid(doc);
+    expect(out.text).toContain('subgraph g[" "]');
+    const reparsed = await importMermaid(out.text, shimParse);
+    expect(reparsed.kind).toBe('flowchart');
+  });
+});

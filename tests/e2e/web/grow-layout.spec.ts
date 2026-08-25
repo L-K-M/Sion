@@ -137,9 +137,16 @@ test('quick-connect chevrons: hover shows them; click grows', async ({ page }) =
   const count = await page.locator('.thalyx-chevron').count();
   expect(count).toBe(4);
 
-  // click the east chevron (grow right)
+  // click the east chevron (grow right). Coordinate click at its measured
+  // center: locator.click's actionability loop fights the portal's re-render
+  // churn; a real click at the same point exercises the same handler.
   const nodeBefore = (await docState(page)).nodes[0]!;
-  await page.locator('.thalyx-chevron').nth(2).click();
+  const chevronBox = await page.locator('.thalyx-chevron').nth(2).boundingBox();
+  expect(chevronBox).toBeTruthy();
+  await page.mouse.click(
+    chevronBox!.x + chevronBox!.width / 2,
+    chevronBox!.y + chevronBox!.height / 2,
+  );
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   const state = await docState(page);
   expect(state.edges).toHaveLength(1);

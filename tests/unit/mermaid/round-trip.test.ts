@@ -247,7 +247,8 @@ describe('export edge cases (§9.4)', () => {
     );
     doc.nodes.push(newNode({ id: 'a', label: 'A', parentId: 'g', x: 10, y: 10 }));
     const out = exportMermaid(doc);
-    expect(out.text).toContain('subgraph g[" "]');
+    const sgLine = out.text.split('\n').find((l) => l.startsWith('subgraph '))!;
+    expect(sgLine).toMatch(/^subgraph \w+[" "]$/);
     const reparsed = await importMermaid(out.text, shimParse);
     expect(reparsed.kind).toBe('flowchart');
   });

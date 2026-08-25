@@ -40,14 +40,11 @@ test('canvas panel shows grid/theme/direction when nothing is selected', async (
   const panel = page.locator('.thalyx-panel');
   await expect(panel).toBeVisible();
   await expect(panel.getByText('Canvas')).toBeVisible();
-  await expect(panel.getByRole('radiogroup', { name: 'Grid' })).toBeVisible();
+  await expect(panel.getByRole('group', { name: 'Grid' })).toBeVisible();
   // grid toggle round-trips into the doc (assert the flip, not just any value)
   const gridBefore = (await docState(page)).canvas.grid;
   const target = gridBefore ? 'Off' : 'On';
-  await panel
-    .getByRole('radiogroup', { name: 'Grid' })
-    .getByRole('button', { name: target })
-    .click();
+  await panel.getByRole('group', { name: 'Grid' }).getByRole('button', { name: target }).click();
   const state = await docState(page);
   expect(state.canvas.grid).toBe(!gridBefore);
 });
@@ -182,10 +179,7 @@ test('edge selection shows connector controls; line style round-trips', async ({
   });
   const panel = page.locator('.thalyx-panel');
   await expect(panel.locator('.thalyx-panel-title')).toHaveText('Connector');
-  await panel
-    .getByRole('radiogroup', { name: 'Line' })
-    .getByRole('button', { name: '– –' })
-    .click();
+  await panel.getByRole('group', { name: 'Line' }).getByRole('button', { name: '– –' }).click();
   const state = await docState(page);
   expect(state.edges[0]!.style.line).toBe('dashed');
 });

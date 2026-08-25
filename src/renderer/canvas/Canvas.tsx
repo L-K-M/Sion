@@ -27,9 +27,11 @@ import { toReactFlowEdges, toReactFlowNodes } from './rfSelectors';
 import { ShapeNode } from './nodes/ShapeNode';
 import { TextNode } from './nodes/TextNode';
 import { ContainerNode } from './nodes/ContainerNode';
+import { MermaidIslandNode } from './nodes/MermaidIslandNode';
 import { EmptyCanvasHint } from './overlays/EmptyCanvasHint';
 import { GuideLines } from './overlays/GuideLines';
 import { QuickConnectChevrons } from './overlays/QuickConnectChevrons';
+import { usePasteImport } from './hooks/usePasteImport';
 import { computeSnap, type Bounds } from '../../../src/shared/snap/snap';
 import { absolutePosition, descendantsOf } from '../../../src/shared/model/queries';
 import { ThalyxEdgeComponent } from './edges/ThalyxEdge';
@@ -38,7 +40,7 @@ const nodeTypes: NodeTypes = {
   shape: ShapeNode,
   text: TextNode,
   container: ContainerNode,
-  // 'mermaid' island node type lands with M5.
+  mermaid: MermaidIslandNode,
 };
 
 const edgeTypes = { thalyx: ThalyxEdgeComponent };
@@ -50,6 +52,7 @@ export function Canvas() {
   // rebuild the node/edge arrays (§11.1 perf doctrine).
   const selection = useStore((s) => s.session.selection);
   const rfInstance = useReactFlow();
+  const { toast } = usePasteImport();
   const rootRef = useRef<HTMLDivElement>(null);
   const gestureActive = useRef(false);
   const movedIds = useRef<Set<string>>(new Set());
@@ -355,6 +358,12 @@ export function Canvas() {
         <QuickConnectChevrons />
       </ReactFlow>
       <GuideLines />
+      {toast ? (
+        <div className="thalyx-toast" role="status" aria-live="polite">
+          <span>{toast.message}</span>
+          <button onClick={toast.onTextInstead}>Paste as text instead</button>
+        </div>
+      ) : null}
       <EmptyCanvasHint visible={doc.nodes.length === 0} />
     </div>
   );

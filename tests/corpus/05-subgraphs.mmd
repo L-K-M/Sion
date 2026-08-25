@@ -1,0 +1,13 @@
+flowchart TB
+  subgraph SG1 [Auth]
+    direction LR
+    A[Login] --> B{Valid?}
+    B -- no --> C[Error]
+  end
+  subgraph Outer
+    subgraph Inner
+      D[Deep]
+    end
+    E[Also]
+  end
+  B -- yes --> D

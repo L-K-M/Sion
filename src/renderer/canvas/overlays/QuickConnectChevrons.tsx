@@ -42,11 +42,13 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
       setHoveredId(id);
     };
     const onOut = (e: Event) => {
-      const target = e.target as HTMLElement | null;
+      const me = e as MouseEvent;
+      const target = me.relatedTarget as HTMLElement | null;
+      if (!target) return; // leaving the window entirely — handler below clears
       // Keep hover while the pointer moves onto a chevron (it belongs to the
       // hovered node) — only clear when leaving toward other canvas content.
-      if (target?.closest?.('.thalyx-chevron')) return;
-      if (!target?.closest?.('.react-flow__node')) setHoveredId(null);
+      if (target.closest?.('.thalyx-chevron')) return;
+      if (!target.closest?.('.react-flow__node')) setHoveredId(null);
     };
     el.addEventListener('mouseover', onOver);
     el.addEventListener('mouseout', onOut);
@@ -56,7 +58,22 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
     };
   }, [chevronsEnabled, tool, editing]);
 
-  if (!hoveredId || !chevronsEnabled || tool !== 'select' || editing) return null;
+  // RF's store doesn't expose a drag flag; track it via pointer events on the
+  // canvas root (a mousedown on a node starts a potential drag).
+  const [pointerDown, setPointerDown] = useState(false);
+  useEffect(() => {
+    const el = document.querySelector('.thalyx-canvas-root');
+    if (!el) return;
+    const down = () => setPointerDown(true);
+    const up = () => setPointerDown(false);
+    el.addEventListener('pointerdown', down);
+    window.addEventListener('pointerup', up);
+    return () => {
+      el.removeEventListener('pointerdown', down);
+      window.removeEventListener('pointerup', up);
+    };
+  }, []);
+  if (!hoveredId || !chevronsEnabled || tool !== 'select' || editing || pointerDown) return null;
   if (zoom < 0.4) return null;
 
   const node = doc.nodes.find((n) => n.id === hoveredId);

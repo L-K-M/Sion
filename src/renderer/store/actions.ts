@@ -445,7 +445,10 @@ export function growConnectedNode(
           : dir === 's'
             ? r.y - (sourceRect.y + sourceRect.h)
             : sourceRect.y - (r.y + r.h);
-    if (gapAlong < -8 || gapAlong > GAP * 1.5) continue;
+    // corridor reach: the new node we would create occupies GAP + width;
+    // accept an existing node up to that reach along the direction
+    const reach = (dir === 'e' || dir === 'w' ? source.width : source.height) + GAP * 1.5;
+    if (gapAlong < -8 || gapAlong > reach) continue;
     const overlapPerp =
       dir === 'e' || dir === 'w'
         ? Math.min(sourceRect.y + sourceRect.h, r.y + r.h) - Math.max(sourceRect.y, r.y)

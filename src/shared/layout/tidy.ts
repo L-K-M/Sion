@@ -49,15 +49,18 @@ export function tidyUp(doc: ThalyxDoc, nodes: ThalyxNode[]): TidyResult {
     // already wider than tall → row; else column
     if (span >= maxH || widthSum / Math.max(1, heightAvg) > 1) {
       layoutRow(row, positions);
+      convertToStorageFrames(doc, nodes, positions);
       return { positions };
     }
     layoutColumn(row, positions);
+    convertToStorageFrames(doc, nodes, positions);
     return { positions };
   }
 
   // One node per row → a column
   if (rows.every((r) => r.length === 1)) {
     layoutColumn(rows.flat(), positions);
+    convertToStorageFrames(doc, nodes, positions);
     return { positions };
   }
 

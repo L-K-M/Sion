@@ -498,7 +498,8 @@ body {
   opacity: 0.85;
 }
 
-.thalyx-chevron:hover {
+.thalyx-chevron:hover,
+.thalyx-chevron:focus-visible {
   background: var(--accent);
   color: var(--panel);
   opacity: 1;

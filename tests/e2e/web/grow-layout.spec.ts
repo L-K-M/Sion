@@ -22,6 +22,11 @@ async function docState(page: Page): Promise<{
   }>;
   edges: Array<{ id: string; source: string; target: string; label?: string }>;
 }> {
+  const api = await page.evaluate(
+    () => (globalThis as unknown as { __thalyxTest?: unknown }).__thalyxTest,
+  );
+  if (!api)
+    throw new Error('__thalyxTest hooks missing — was the app built with ?testHooks=1 support?');
   return await page.evaluate(() =>
     JSON.parse(
       (
@@ -117,10 +122,13 @@ test('quick-connect chevrons: hover shows them; click grows', async ({ page }) =
   expect(count).toBe(4);
 
   // click the east chevron (grow right)
+  const nodeBefore = (await docState(page)).nodes[0]!;
   await page.locator('.thalyx-chevron').nth(2).click();
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   const state = await docState(page);
   expect(state.edges).toHaveLength(1);
+  const grown = state.nodes.find((n) => n.id !== nodeBefore.id)!;
+  expect(grown.x).toBe(nodeBefore.x + nodeBefore.width + 48); // east
 });
 
 test('Q toggles the chevrons off', async ({ page }) => {
@@ -340,12 +348,13 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
 
   // final edge Dashboard → Log out (grow from Dashboard, label it)
   const after = await docState(page);
-  const dash = after.nodes.find((n) => n.label === 'Dashboard')!;
+  const dash = after.nodes.find((n) => n.label === 'Dashboard');
+  expect(dash, 'Dashboard node must exist before the final grow').toBeDefined();
   await page.evaluate((id) => {
     (
       globalThis as unknown as { __thalyxTest: { selectNode(id: string): void } }
     ).__thalyxTest.selectNode(id);
-  }, dash.id);
+  }, dash!.id);
   await page.keyboard.press('ControlOrMeta+ArrowRight');
   await typeLabel(page, 'Log out');
 
@@ -353,6 +362,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   // (the canonical diagram's 6th edge — Show error → Login form — is the
   // known back-edge; corridor grows connect, they don't add loops)
   const final = await docState(page);
+  // (5 grow edges; the diagram's 6th — the back-edge — is out of scope here)
   expect(final.nodes).toHaveLength(7);
   expect(final.edges).toHaveLength(5);
   const container = final.nodes.find((n) => n.kind === 'container');

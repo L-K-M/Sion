@@ -26,8 +26,9 @@ const DEFAULT_OPTS: Required<LayoutOptions> = {
 /**
  * Compute new positions for the (subset of) nodes in `doc`.
  * Returns a Map nodeId → {x, y} in the SAME coordinate frame each node
- * currently uses (parent-relative for children). Nodes not in `subset`
- * are treated as fixed anchors (still laid out around, but not moved).
+ * currently uses (parent-relative for children). In subset mode the graph is
+ * restricted to the subset plus its ancestor containers; nodes outside the
+ * subset are not moved (their positions are not returned).
  */
 export function dagreLayout(
   doc: ThalyxDoc,
@@ -71,13 +72,11 @@ export function dagreLayout(
     if (subset && !include.has(n.id)) continue;
     const abs = absolutePosition(doc, n);
     g.setNode(n.id, { width: n.width, height: n.height });
-    // store absolute position for the container-extent computation below
-    g.node(n.id).absX = abs.x;
-    g.node(n.id).absY = abs.y;
+    void abs;
   }
 
   for (const n of doc.nodes) {
-    if (n.parentId && containerIds.has(n.parentId) && g.hasNode(n.parentId)) {
+    if (n.parentId && containerIds.has(n.parentId) && g.hasNode(n.parentId) && g.hasNode(n.id)) {
       g.setParent(n.id, n.parentId);
     }
   }

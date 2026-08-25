@@ -122,6 +122,7 @@ export function useKeymap(): void {
       if (
         mod &&
         !e.altKey &&
+        !e.shiftKey &&
         ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)
       ) {
         const sel = useStore.getState().session;
@@ -150,7 +151,8 @@ export function useKeymap(): void {
         e.shiftKey &&
         !mod &&
         useStore.getState().session.editingLabel === null &&
-        (e.code === 'KeyT' || e.code === 'KeyL')
+        (e.code === 'KeyT' || e.code === 'KeyL') &&
+        !e.repeat
       ) {
         e.preventDefault();
         if (e.code === 'KeyT') A.tidyUpSelection();

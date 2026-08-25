@@ -39,7 +39,8 @@ export function usePasteImport(): { toast: { message: string; onTextInstead: () 
         let ok: boolean;
         try {
           ok = await A.importMermaidAsNew(text, parseMermaid);
-        } catch {
+        } catch (err) {
+          console.error('[mermaid] import failed, pasting as text:', err);
           ok = false; // runtime failure — degrade to a text node
         }
         if (ok) {

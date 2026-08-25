@@ -159,10 +159,13 @@ export async function importMermaid(text: string, parse: ParseFn): Promise<Impor
   const subgraphDepth = (id: string): number => {
     let depth = 0;
     let cursor: string | undefined = id;
+    const seen = new Set<string>([id]); // cyclic parent maps (corrupt docs)
     while (cursor !== undefined) {
       const sg = subgraphById.get(cursor);
       if (!sg) break;
       cursor = nodeToSubgraph.get(sg.id); // outer container (if any)
+      if (cursor !== undefined && seen.has(cursor)) break;
+      if (cursor !== undefined) seen.add(cursor);
       depth += 1;
     }
     return depth;

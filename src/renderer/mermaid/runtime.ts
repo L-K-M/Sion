@@ -50,13 +50,31 @@ export async function parseMermaid(text: string): Promise<ParseResult> {
     }
     return { ok: false, error: { message: 'Invalid mermaid text' } };
   }
-  const diagram = await mermaid.mermaidAPI.getDiagramFromText(text);
-  return {
-    ok: true,
-    diagramType: diagram.type,
-    config: res.config ?? {},
-    db: diagram.db,
-  };
+  try {
+    const diagram = await mermaid.mermaidAPI.getDiagramFromText(text);
+    return {
+      ok: true,
+      diagramType: diagram.type,
+      config: res.config ?? {},
+      db: diagram.db,
+    };
+  } catch (e) {
+    // parse() accepted it but lazy diagram init failed — same error contract
+    const err = e as {
+      message?: string;
+      hash?: { loc?: { first_line?: number; first_column?: number }; expected?: string[] };
+    };
+    const loc = err.hash?.loc;
+    return {
+      ok: false,
+      error: {
+        message: String(err.message ?? e),
+        line: loc?.first_line,
+        col: loc?.first_column,
+        expected: err.hash?.expected,
+      },
+    };
+  }
 }
 
 export default mermaid;

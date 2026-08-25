@@ -31,6 +31,8 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
     if (!el) return;
     const onOver = (e: Event) => {
       const target = e.target as HTMLElement | null;
+      // Moving onto one of the chevrons must NOT clear the hover they belong to.
+      if (target?.closest?.('.thalyx-chevron')) return;
       const nodeEl = target?.closest?.('.react-flow__node');
       const id = nodeEl?.getAttribute('data-id') ?? null;
       setHoveredId(id);

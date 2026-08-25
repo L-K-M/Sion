@@ -31,6 +31,15 @@ async function docState(page: Page): Promise<{
   );
 }
 
+async function typeLabel(page: Page, text: string): Promise<void> {
+  // First char either opens the editor (type-to-edit) or lands in the already
+  // open one (grow). Then await the editor and type the remainder.
+  await page.keyboard.press(text[0]!);
+  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
+  if (text.length > 1) await page.keyboard.type(text.slice(1));
+  await page.keyboard.press('Enter');
+}
+
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto(BASE);
@@ -66,7 +75,8 @@ test('grow corridor: connects to an existing node instead of creating', async ({
   await page.getByTitle('Rounded rectangle').click();
   await page.mouse.click(400, 300);
   await page.getByTitle('Rounded rectangle').click();
-  await page.mouse.click(700, 300);
+  // 60px gap to the first node's right edge — inside the grow corridor
+  await page.mouse.click(620, 300);
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   const state0 = await docState(page);
   // grow FROM the left node (the last-placed node is selected after placement)
@@ -223,15 +233,11 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   await page.keyboard.press('r'); // rect tool
   await page.mouse.click(500, 150);
   await expect(page.locator('.react-flow__node')).toHaveCount(1);
-  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
-  await page.keyboard.type('Start');
-  await page.keyboard.press('Enter');
+  await typeLabel(page, 'Start');
 
   // grow right: Login form
   await page.keyboard.press('ControlOrMeta+ArrowRight');
-  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
-  await page.keyboard.type('Login form');
-  await page.keyboard.press('Enter');
+  await typeLabel(page, 'Login form');
 
   // diamond below it: Valid?
   await page.keyboard.press('ControlOrMeta+ArrowDown');
@@ -242,9 +248,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   // Simplest spec-compliant path: type label, then swap shape with the D key
   // tool on a fresh selection is not applicable — the M4 keyboard demo uses
   // grow + shape cycle; we approximate with the panel action via store.
-  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
-  await page.keyboard.type('Valid?');
-  await page.keyboard.press('Enter');
+  await typeLabel(page, 'Valid?');
   await page.evaluate(() => {
     const api = (
       globalThis as unknown as {
@@ -259,9 +263,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
 
   // Dashboard (yes) and Show error (no)
   await page.keyboard.press('ControlOrMeta+ArrowRight');
-  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
-  await page.keyboard.type('Dashboard');
-  await page.keyboard.press('Enter');
+  await typeLabel(page, 'Dashboard');
   await page.evaluate(() => {
     const api = (
       globalThis as unknown as {
@@ -283,9 +285,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
     ).__thalyxTest.selectNode(id);
   }, validNode.id);
   await page.keyboard.press('ControlOrMeta+ArrowDown');
-  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
-  await page.keyboard.type('Show error');
-  await page.keyboard.press('Enter');
+  await typeLabel(page, 'Show error');
   await page.evaluate(() => {
     const api = (
       globalThis as unknown as {
@@ -337,9 +337,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
     ).__thalyxTest.selectNode(id);
   }, dash.id);
   await page.keyboard.press('ControlOrMeta+ArrowRight');
-  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
-  await page.keyboard.type('Log out');
-  await page.keyboard.press('Enter');
+  await typeLabel(page, 'Log out');
 
   // verify the demo: 7 nodes incl. container; 5 grow gestures → 5 edges
   // (the canonical diagram's 6th edge — Show error → Login form — is the

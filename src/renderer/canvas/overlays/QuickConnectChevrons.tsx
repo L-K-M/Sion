@@ -5,12 +5,12 @@
  * (connects to an existing node in the corridor when one is there).
  */
 import { memo, useEffect, useState } from 'react';
-import { ViewportPortal, useReactFlow } from '@xyflow/react';
+import { ViewportPortal, useStore as useRFStore } from '@xyflow/react';
 import { useStore } from '../../store/store';
 import * as A from '../../store/actions';
 import { absolutePosition } from '../../../shared/model/queries';
 
-const CHEVRON_OFFSET = 12;
+const CHEVRON_OFFSET = 0; // flush with the node edge — no pane gap to cross
 
 export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
   const chevronsEnabled = useStore((s) => s.session.chevronsEnabled);
@@ -18,7 +18,8 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
   const editing = useStore((s) => s.session.editingLabel);
   const doc = useStore((s) => s.doc);
   const selection = useStore((s) => s.session.selection);
-  const rf = useReactFlow();
+  // Reactive zoom (re-renders on viewport change) instead of an imperative read.
+  const zoom = useRFStore((s) => s.transform[2]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,6 +37,9 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
     };
     const onOut = (e: Event) => {
       const target = e.target as HTMLElement | null;
+      // Keep hover while the pointer moves onto a chevron (it belongs to the
+      // hovered node) — only clear when leaving toward other canvas content.
+      if (target?.closest?.('.thalyx-chevron')) return;
       if (!target?.closest?.('.react-flow__node')) setHoveredId(null);
     };
     el.addEventListener('mouseover', onOver);
@@ -47,7 +51,7 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
   }, [chevronsEnabled, tool, editing]);
 
   if (!hoveredId || !chevronsEnabled || tool !== 'select' || editing) return null;
-  if (rf.getZoom() < 0.4) return null;
+  if (zoom < 0.4) return null;
 
   const node = doc.nodes.find((n) => n.id === hoveredId);
   if (!node) return null;

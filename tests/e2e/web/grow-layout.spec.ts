@@ -341,10 +341,12 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   await page.keyboard.type('Log out');
   await page.keyboard.press('Enter');
 
-  // verify the demo: 7 nodes incl. container, 6 edges
+  // verify the demo: 7 nodes incl. container; 5 grow gestures → 5 edges
+  // (the canonical diagram's 6th edge — Show error → Login form — is the
+  // known back-edge; corridor grows connect, they don't add loops)
   const final = await docState(page);
   expect(final.nodes).toHaveLength(7);
-  expect(final.edges).toHaveLength(6);
+  expect(final.edges).toHaveLength(5);
   const container = final.nodes.find((n) => n.kind === 'container');
   expect(container?.label).toBe('Auth');
   const members = final.nodes.filter((n) => n.parentId === container?.id);

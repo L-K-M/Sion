@@ -133,13 +133,6 @@ export function layoutSubset(
   options?: LayoutOptions,
 ): Map<string, { x: number; y: number }> {
   const subset = new Set(nodeIds);
-  for (const id of nodeIds) {
-    const node = doc.nodes.find((n) => n.id === id);
-    if (!node) continue;
-    // include edges-connected neighbors so the subset lays out coherently?
-    // §11.5: selection's connected subgraph — include only selected + their
-    // intra-selection edges; neighbors stay as fixed anchors.
-  }
   return dagreLayout(doc, subset, options);
 }
 

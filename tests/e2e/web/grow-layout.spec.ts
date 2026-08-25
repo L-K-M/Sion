@@ -72,9 +72,10 @@ async function typeLabel(page: Page, text: string): Promise<void> {
     await page.keyboard.press('Enter'); // Enter-to-edit (single node selected)
   }
   await expect(editor).toBeVisible();
-  // Select-all before typing: even if the editor raced open on a different
-  // node, the typed text REPLACES instead of appending.
-  await page.keyboard.press('ControlOrMeta+a');
+  // Focus deterministically: click into the textarea, select-all natively,
+  // then type — immune to autofocus races in the built bundle.
+  await editor.click();
+  await editor.evaluate((el) => (el as HTMLTextAreaElement).select());
   await page.keyboard.type(text);
   await page.keyboard.press('Enter');
 }

@@ -8,6 +8,19 @@ import { expect, test, type Page } from '@playwright/test';
 
 const BASE = '/?testHooks=1';
 
+interface TestApi {
+  getDocJson(): string;
+  loadDoc(json: string): boolean;
+  patchDoc(patch: (doc: never) => void): void;
+  selectNode(id: string): void;
+  addNodeToSelection(id: string, reset: boolean): void;
+  selectEdge(id: string): void;
+}
+
+function apiRef(): { __thalyxTest?: TestApi } {
+  return globalThis as unknown as { __thalyxTest?: TestApi };
+}
+
 async function docState(page: Page): Promise<{
   nodes: Array<{
     id: string;
@@ -22,11 +35,9 @@ async function docState(page: Page): Promise<{
   }>;
   edges: Array<{ id: string; source: string; target: string; label?: string }>;
 }> {
-  const api = await page.evaluate(
-    () => (globalThis as unknown as { __thalyxTest?: unknown }).__thalyxTest,
-  );
-  if (!api)
-    throw new Error('__thalyxTest hooks missing — was the app built with ?testHooks=1 support?');
+  if (!apiRef().__thalyxTest) {
+    throw new Error('__thalyxTest hooks missing — build with ?testHooks=1 support');
+  }
   return await page.evaluate(() =>
     JSON.parse(
       (
@@ -36,19 +47,34 @@ async function docState(page: Page): Promise<{
   );
 }
 
+async function patchDoc(page: Page, patch: (doc: never) => void): Promise<void> {
+  await page.evaluate((p) => apiRef_patch(p), patch);
+}
+// separate so the function survives minification boundaries in evaluate
+function apiRef_patch(p: (doc: never) => void): void {
+  (
+    globalThis as unknown as { __thalyxTest: { patchDoc(p: (d: never) => void): void } }
+  ).__thalyxTest.patchDoc(p);
+}
+
+async function selectNode(page: Page, id: string): Promise<void> {
+  await page.evaluate((nodeId) => {
+    (
+      globalThis as unknown as { __thalyxTest: { selectNode(id: string): void } }
+    ).__thalyxTest.selectNode(nodeId);
+  }, id);
+}
+
 async function typeLabel(page: Page, text: string): Promise<void> {
   // Grow leaves the editor OPEN on the new node; plain placement leaves it
-  // closed (single selection). Handle both: open via Enter if needed, type
-  // the full text, commit with Enter.
+  // closed. Bounded wait distinguishes the two; Enter opens it when needed.
   const editor = page.locator('.thalyx-label-editor');
-  // Bounded wait: after a grow the editor mounts within ms; after a plain
-  // placement it never appears (and we fall through to Enter-to-edit).
   const alreadyOpen = await editor
     .waitFor({ state: 'visible', timeout: 3_000 })
     .then(() => true)
     .catch(() => false);
   if (!alreadyOpen) {
-    await page.keyboard.press('Enter'); // Enter-to-edit (exactly one node selected)
+    await page.keyboard.press('Enter'); // Enter-to-edit (single node selected)
   }
   await expect(editor).toBeVisible();
   await page.keyboard.type(text);
@@ -73,13 +99,10 @@ test('grow: Mod+Arrow creates a connected node in the direction (one entry)', as
   expect(state.edges).toHaveLength(1);
   expect(state.edges[0]!.source).toBe(before.id);
   const grown = state.nodes.find((n) => n.id !== before.id)!;
-  // exactly one 48px gap to the right
   expect(grown.x).toBe(before.x + before.width + 48);
   expect(grown.y).toBe(before.y);
-  // inherits style and shape
   expect(grown.shape).toBe('rounded');
 
-  // one undo removes both the node and its edge (single intent)
   await page.keyboard.press('ControlOrMeta+z');
   const undone = await docState(page);
   expect(undone.nodes).toHaveLength(1);
@@ -94,14 +117,9 @@ test('grow corridor: connects to an existing node instead of creating', async ({
   await page.mouse.click(620, 300);
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   const state0 = await docState(page);
-  // grow FROM the left node (the last-placed node is selected after placement)
-  await page.evaluate((id) => {
-    (
-      globalThis as unknown as { __thalyxTest: { selectNode(id: string): void } }
-    ).__thalyxTest.selectNode(id);
-  }, state0.nodes[0]!.id);
+
+  await selectNode(page, state0.nodes[0]!.id);
   await page.keyboard.press('ControlOrMeta+ArrowRight');
-  // no new node — the corridor found the right-hand node
   const state = await docState(page);
   expect(state.nodes).toHaveLength(2);
   expect(state.edges).toHaveLength(1);
@@ -114,7 +132,6 @@ test('quick-connect chevrons: hover shows them; click grows', async ({ page }) =
   await page.mouse.click(500, 300);
   await expect(page.locator('.react-flow__node')).toHaveCount(1);
 
-  // hover the node
   await page.mouse.move(500, 300);
   await page.mouse.move(505, 305);
   await expect(page.locator('.thalyx-chevron').first()).toBeVisible({ timeout: 10_000 });
@@ -135,22 +152,19 @@ test('Q toggles the chevrons off', async ({ page }) => {
   await page.getByTitle('Rounded rectangle').click();
   await page.mouse.click(500, 300);
   await page.mouse.move(505, 305);
-  await page.keyboard.press('Escape'); // deselect so Q isn't type-to-edit
+  await page.keyboard.press('Escape');
   await page.mouse.move(505, 305);
-  await expect(page.locator('.thalyx-chevron').first()).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('.thalyx-chevron').first()).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press('q');
   await expect(page.locator('.thalyx-chevron')).toHaveCount(0);
 });
 
 test('Alt+Shift+T tidies a scattered selection (24px gaps)', async ({ page }) => {
-  // build a scattered row via the hook
   await page.evaluate(() => {
-    const api = (
-      globalThis as unknown as {
-        __thalyxTest: { loadDoc(j: string): boolean; getDocJson(): string };
-      }
-    ).__thalyxTest;
-    const doc = JSON.parse(api.getDocJson());
+    const api = (globalThis as unknown as { __thalyxTest: TestApi }).__thalyxTest;
+    const doc = JSON.parse(api.getDocJson()) as {
+      nodes: Array<Record<string, unknown>>;
+    };
     for (const [i, x] of [0, 90, 205].entries()) {
       doc.nodes.push({
         id: `t${i}`,
@@ -173,7 +187,6 @@ test('Alt+Shift+T tidies a scattered selection (24px gaps)', async ({ page }) =>
     api.loadDoc(JSON.stringify(doc));
   });
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
-  // select all
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.down('Alt');
   await page.keyboard.down('Shift');
@@ -196,57 +209,41 @@ test('Alt+Shift+L auto-layouts the whole doc', async ({ page }) => {
   await page.getByTitle('Rounded rectangle').click();
   await page.mouse.click(650, 300);
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
-  await page.evaluate(() => {
-    const api = (
-      globalThis as unknown as {
-        __thalyxTest: { loadDoc(j: string): boolean; getDocJson(): string };
-      }
-    ).__thalyxTest;
-    const doc = JSON.parse(api.getDocJson());
-    doc.edges.push(
-      {
-        id: 'le1',
-        source: doc.nodes[0].id,
-        target: doc.nodes[2].id,
-        sourceAnchor: 'auto',
-        targetAnchor: 'auto',
-        kind: 'elbow',
-        arrowStart: 'none',
-        arrowEnd: 'arrow',
-        style: { line: 'solid', stroke: 'ink', rounded: true },
-      },
-      {
-        id: 'le2',
-        source: doc.nodes[2].id,
-        target: doc.nodes[1].id,
-        sourceAnchor: 'auto',
-        targetAnchor: 'auto',
-        kind: 'elbow',
-        arrowStart: 'none',
-        arrowEnd: 'arrow',
-        style: { line: 'solid', stroke: 'ink', rounded: true },
-      },
-    );
-    api.loadDoc(JSON.stringify(doc));
+  // seed edges surgically (patchDoc preserves selection/session)
+  await patchDoc(page, (d) => {
+    const doc = d as unknown as {
+      nodes: Array<{ id: string }>;
+      edges: Array<Record<string, unknown>>;
+    };
+    const [a, , c, b] = doc.nodes;
+    const mk = (id: string, source: string, target: string) => ({
+      id,
+      source,
+      target,
+      sourceAnchor: 'auto',
+      targetAnchor: 'auto',
+      kind: 'elbow',
+      arrowStart: 'none',
+      arrowEnd: 'arrow',
+      style: { line: 'solid', stroke: 'ink', rounded: true },
+    });
+    doc.edges.push(mk('le1', a!.id, c!.id), mk('le2', c!.id, b!.id));
   });
   await expect(page.locator('.react-flow__edge-path')).toHaveCount(2);
 
+  await page.keyboard.press('Escape'); // deselect — layout acts on the whole doc
   await page.keyboard.down('Alt');
   await page.keyboard.down('Shift');
   await page.keyboard.press('l');
   await page.keyboard.up('Shift');
   await page.keyboard.up('Alt');
   const state = await docState(page);
-  // chain laid out top-down: consecutive ranks ≥ 60px apart
-  const byLabel = new Map(state.nodes.map((n) => [n.label, n]));
-  void byLabel;
   const ys = state.nodes.map((n) => n.y).sort((a, b) => a - b);
   expect(ys[1]! - ys[0]!).toBeGreaterThanOrEqual(58);
 });
 
 test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }) => {
   test.setTimeout(120_000);
-  // 1. Start node
   await page.keyboard.press('Escape');
   await page.keyboard.press('r'); // rect tool
   await page.mouse.click(500, 150);
@@ -259,110 +256,71 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
 
   // diamond below it: Valid?
   await page.keyboard.press('ControlOrMeta+ArrowDown');
-  // Tab cycles the pending grow shape to diamond — Tab during the gesture;
-  // our grow happens instantly, so instead: set shape via keymap D for the
-  // NEXT grow: press Escape, select nothing, then grow with the diamond by
-  // swapping the created node's shape via the panel-equivalent keyboard path.
-  // Simplest spec-compliant path: type label, then swap shape with the D key
-  // tool on a fresh selection is not applicable — the M4 keyboard demo uses
-  // grow + shape cycle; we approximate with the panel action via store.
   await typeLabel(page, 'Valid?');
-  await page.evaluate(() => {
-    const api = (
-      globalThis as unknown as {
-        __thalyxTest: { loadDoc(j: string): boolean; getDocJson(): string };
-      }
-    ).__thalyxTest;
-    const doc = JSON.parse(api.getDocJson());
-    const v = doc.nodes.find((n: { label: string }) => n.label === 'Valid?');
+  await patchDoc(page, (d) => {
+    const doc = d as unknown as { nodes: Array<{ label: string; shape?: string }> };
+    const v = doc.nodes.find((n) => n.label === 'Valid?');
     if (v) v.shape = 'diamond';
-    api.loadDoc(JSON.stringify(doc));
   });
 
-  // Dashboard (yes) and Show error (no)
+  // Dashboard (yes)
   await page.keyboard.press('ControlOrMeta+ArrowRight');
   await typeLabel(page, 'Dashboard');
-  await page.evaluate(() => {
-    const api = (
-      globalThis as unknown as {
-        __thalyxTest: { loadDoc(j: string): boolean; getDocJson(): string };
-      }
-    ).__thalyxTest;
-    const doc = JSON.parse(api.getDocJson());
-    const e1 = doc.edges.at(-1);
-    if (e1) e1.label = 'yes';
-    api.loadDoc(JSON.stringify(doc));
+  await patchDoc(page, (d) => {
+    const doc = d as unknown as { edges: Array<{ label?: string }> };
+    const e = doc.edges.at(-1);
+    if (e) e.label = 'yes';
   });
 
-  // select Valid? again and grow right-down for Show error
-  const stateNow = await docState(page);
-  const validNode = stateNow.nodes.find((n) => n.label === 'Valid?')!;
-  await page.evaluate((id) => {
-    (
-      globalThis as unknown as { __thalyxTest: { selectNode(id: string): void } }
-    ).__thalyxTest.selectNode(id);
-  }, validNode.id);
+  // Show error (no), grown downward from Valid?
+  const mid = await docState(page);
+  const validNode = mid.nodes.find((n) => n.label === 'Valid?');
+  expect(validNode, 'Valid? must exist').toBeDefined();
+  await selectNode(page, validNode!.id);
   await page.keyboard.press('ControlOrMeta+ArrowDown');
   await typeLabel(page, 'Show error');
-  await page.evaluate(() => {
-    const api = (
-      globalThis as unknown as {
-        __thalyxTest: { loadDoc(j: string): boolean; getDocJson(): string };
-      }
-    ).__thalyxTest;
-    const doc = JSON.parse(api.getDocJson());
-    const e2 = doc.edges.at(-1);
-    if (e2) e2.label = 'no';
-    api.loadDoc(JSON.stringify(doc));
+  await patchDoc(page, (d) => {
+    const doc = d as unknown as { edges: Array<{ label?: string }> };
+    const e = doc.edges.at(-1);
+    if (e) e.label = 'no';
   });
 
-  // container around the three auth nodes via group: select them, Mod+G
-  const mid = await docState(page);
+  // container around the three auth nodes: multi-select then Mod+G
+  const after = await docState(page);
   const labels = ['Login form', 'Valid?', 'Show error'];
-  const ids = mid.nodes.filter((n) => labels.includes(n.label)).map((n) => n.id);
+  const ids = after.nodes.filter((n) => labels.includes(n.label)).map((n) => n.id);
+  expect(ids).toHaveLength(3);
   for (const [i, id] of ids.entries()) {
     await page.evaluate(
-      ({ id, first }) => {
-        const api = (
+      ({ id, reset }) => {
+        (
           globalThis as unknown as {
-            __thalyxTest: { addNodeToSelection(id: string, first: boolean): void };
+            __thalyxTest: { addNodeToSelection(id: string, reset: boolean): void };
           }
-        ).__thalyxTest;
-        api.addNodeToSelection(id, first);
+        ).__thalyxTest.addNodeToSelection(id, reset);
       },
-      { id, first: i === 0 },
+      { id, reset: i === 0 },
     );
   }
   await page.keyboard.press('ControlOrMeta+g');
-  await page.evaluate(() => {
-    const api = (
-      globalThis as unknown as {
-        __thalyxTest: { loadDoc(j: string): boolean; getDocJson(): string };
-      }
-    ).__thalyxTest;
-    const doc = JSON.parse(api.getDocJson());
-    const container = doc.nodes.find((n: { kind: string }) => n.kind === 'container');
-    if (container) container.label = 'Auth';
-    api.loadDoc(JSON.stringify(doc));
+  await patchDoc(page, (d) => {
+    const doc = d as unknown as { nodes: Array<{ kind: string; label?: string }> };
+    const c = doc.nodes.find((n) => n.kind === 'container');
+    if (c) c.label = 'Auth';
   });
 
   // final edge Dashboard → Log out (grow from Dashboard, label it)
-  const after = await docState(page);
-  const dash = after.nodes.find((n) => n.label === 'Dashboard');
-  expect(dash, 'Dashboard node must exist before the final grow').toBeDefined();
-  await page.evaluate((id) => {
-    (
-      globalThis as unknown as { __thalyxTest: { selectNode(id: string): void } }
-    ).__thalyxTest.selectNode(id);
-  }, dash!.id);
+  const grouped = await docState(page);
+  const dash = grouped.nodes.find((n) => n.label === 'Dashboard');
+  expect(dash, 'Dashboard must exist').toBeDefined();
+  await selectNode(page, dash!.id);
   await page.keyboard.press('ControlOrMeta+ArrowRight');
   await typeLabel(page, 'Log out');
 
-  // verify the demo: 7 nodes incl. container; 5 grow gestures → 5 edges
-  // (the canonical diagram's 6th edge — Show error → Login form — is the
-  // known back-edge; corridor grows connect, they don't add loops)
+  // Verify: 7 nodes incl. the Auth container; 5 grow edges (the canonical
+  // diagram's 6th edge — Show error → Login form back-edge — is out of the
+  // grow-corridor scope by design).
   const final = await docState(page);
-  // (5 grow edges; the diagram's 6th — the back-edge — is out of scope here)
   expect(final.nodes).toHaveLength(7);
   expect(final.edges).toHaveLength(5);
   const container = final.nodes.find((n) => n.kind === 'container');

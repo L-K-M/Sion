@@ -19,6 +19,11 @@ export function installTestHooks(): void {
   const optedIn = new URLSearchParams(window.location.search).has('testHooks');
   if (!import.meta.env.DEV && !optedIn) return;
   (window as unknown as Record<string, unknown>).__thalyxTest = {
+    patchDoc(patch: (doc: never) => void): void {
+      A.applyDocPatch((d) => {
+        patch(d as unknown as never);
+      });
+    },
     loadDoc(json: string): boolean {
       try {
         resetStore(parseDoc(json));

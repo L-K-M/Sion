@@ -1003,6 +1003,17 @@ export function setGuides(guides: GuideLine[]): void {
   setStore((s) => ({ session: { ...s.session, guides } }));
 }
 
+/**
+ * TEST-ONLY (e2e hooks): apply a surgical patch to the current doc — unlike
+ * loadDoc/resetStore it preserves the session (selection, editor state), so
+ * specs can tweak a label/shape mid-flow without killing gestures.
+ */
+export function applyDocPatch(patch: (doc: ThalyxDoc) => void): void {
+  tracked((d) => {
+    patch(d);
+  });
+}
+
 export function setHelpOpen(open: boolean): void {
   setStore((s) => ({ session: { ...s.session, helpOpen: open } }));
 }

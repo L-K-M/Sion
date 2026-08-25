@@ -19,9 +19,13 @@ export function installTestHooks(): void {
   const optedIn = new URLSearchParams(window.location.search).has('testHooks');
   if (!import.meta.env.DEV && !optedIn) return;
   (window as unknown as Record<string, unknown>).__thalyxTest = {
-    patchDoc(patch: (doc: never) => void): void {
+    // patchDoc receives PATCH SOURCE (Playwright cannot serialize function
+    // arguments across the boundary) — compiled here, inside the page.
+    patchDoc(patchSrc: string): void {
+      // eslint-disable-next-line no-new-func
+      const patch = new Function('d', patchSrc) as (d: unknown) => void;
       A.applyDocPatch((d) => {
-        patch(d as unknown as never);
+        patch(d);
       });
     },
     loadDoc(json: string): boolean {

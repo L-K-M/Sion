@@ -11,7 +11,7 @@ const BASE = '/?testHooks=1';
 interface TestApi {
   getDocJson(): string;
   loadDoc(json: string): boolean;
-  patchDoc(patch: (doc: never) => void): void;
+  patchDoc(patchSrc: string): void;
   selectNode(id: string): void;
   addNodeToSelection(id: string, reset: boolean): void;
   selectEdge(id: string): void;
@@ -47,14 +47,16 @@ async function docState(page: Page): Promise<{
   );
 }
 
-async function patchDoc(page: Page, patch: (doc: never) => void): Promise<void> {
-  await page.evaluate((p) => apiRef_patch(p), patch);
-}
-// separate so the function survives minification boundaries in evaluate
-function apiRef_patch(p: (doc: never) => void): void {
-  (
-    globalThis as unknown as { __thalyxTest: { patchDoc(p: (d: never) => void): void } }
-  ).__thalyxTest.patchDoc(p);
+/**
+ * Apply a surgical doc patch in the page. The patch body is passed as SOURCE
+ * (Playwright cannot serialize function arguments across the boundary).
+ */
+async function patchDoc(page: Page, patchSrc: string): Promise<void> {
+  await page.evaluate((src) => {
+    (
+      globalThis as unknown as { __thalyxTest: { patchDoc(src: string): void } }
+    ).__thalyxTest.patchDoc(src);
+  }, patchSrc);
 }
 
 async function selectNode(page: Page, id: string): Promise<void> {
@@ -210,25 +212,10 @@ test('Alt+Shift+L auto-layouts the whole doc', async ({ page }) => {
   await page.mouse.click(650, 300);
   await expect(page.locator('.react-flow__node')).toHaveCount(3);
   // seed edges surgically (patchDoc preserves selection/session)
-  await patchDoc(page, (d) => {
-    const doc = d as unknown as {
-      nodes: Array<{ id: string }>;
-      edges: Array<Record<string, unknown>>;
-    };
-    const [a, , c, b] = doc.nodes;
-    const mk = (id: string, source: string, target: string) => ({
-      id,
-      source,
-      target,
-      sourceAnchor: 'auto',
-      targetAnchor: 'auto',
-      kind: 'elbow',
-      arrowStart: 'none',
-      arrowEnd: 'arrow',
-      style: { line: 'solid', stroke: 'ink', rounded: true },
-    });
-    doc.edges.push(mk('le1', a!.id, c!.id), mk('le2', c!.id, b!.id));
-  });
+  await patchDoc(
+    page,
+    "const doc = d as unknown as { nodes: Array<{ id: string }>; edges: Array<Record<string, unknown>>; }; const [a, , c, b] = doc.nodes; const mk = (id: string, source: string, target: string) => ({ id, source, target, sourceAnchor: 'auto', targetAnchor: 'auto', kind: 'elbow', arrowStart: 'none', arrowEnd: 'arrow', style: { line: 'solid', stroke: 'ink', rounded: true } }); doc.edges.push(mk('le1', a.id, c.id), mk('le2', c.id, b.id));",
+  );
   await expect(page.locator('.react-flow__edge-path')).toHaveCount(2);
 
   await page.keyboard.press('Escape'); // deselect — layout acts on the whole doc
@@ -257,20 +244,18 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   // diamond below it: Valid?
   await page.keyboard.press('ControlOrMeta+ArrowDown');
   await typeLabel(page, 'Valid?');
-  await patchDoc(page, (d) => {
-    const doc = d as unknown as { nodes: Array<{ label: string; shape?: string }> };
-    const v = doc.nodes.find((n) => n.label === 'Valid?');
-    if (v) v.shape = 'diamond';
-  });
+  await patchDoc(
+    page,
+    "const doc = d as unknown as { nodes: Array<{ label: string; shape?: string }> }; const v = doc.nodes.find((n) => n.label === 'Valid?'); if (v) v.shape = 'diamond';",
+  );
 
   // Dashboard (yes)
   await page.keyboard.press('ControlOrMeta+ArrowRight');
   await typeLabel(page, 'Dashboard');
-  await patchDoc(page, (d) => {
-    const doc = d as unknown as { edges: Array<{ label?: string }> };
-    const e = doc.edges.at(-1);
-    if (e) e.label = 'yes';
-  });
+  await patchDoc(
+    page,
+    "const doc = d as unknown as { edges: Array<{ label?: string }> }; const e = doc.edges.at(-1); if (e) e.label = 'yes';",
+  );
 
   // Show error (no), grown downward from Valid?
   const mid = await docState(page);
@@ -279,11 +264,10 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   await selectNode(page, validNode!.id);
   await page.keyboard.press('ControlOrMeta+ArrowDown');
   await typeLabel(page, 'Show error');
-  await patchDoc(page, (d) => {
-    const doc = d as unknown as { edges: Array<{ label?: string }> };
-    const e = doc.edges.at(-1);
-    if (e) e.label = 'no';
-  });
+  await patchDoc(
+    page,
+    "const doc = d as unknown as { edges: Array<{ label?: string }> }; const e = doc.edges.at(-1); if (e) e.label = 'no';",
+  );
 
   // container around the three auth nodes: multi-select then Mod+G
   const after = await docState(page);
@@ -303,11 +287,10 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
     );
   }
   await page.keyboard.press('ControlOrMeta+g');
-  await patchDoc(page, (d) => {
-    const doc = d as unknown as { nodes: Array<{ kind: string; label?: string }> };
-    const c = doc.nodes.find((n) => n.kind === 'container');
-    if (c) c.label = 'Auth';
-  });
+  await patchDoc(
+    page,
+    "const doc = d as unknown as { nodes: Array<{ kind: string; label?: string }> }; const c = doc.nodes.find((n) => n.kind === 'container'); if (c) c.label = 'Auth';",
+  );
 
   // final edge Dashboard → Log out (grow from Dashboard, label it)
   const grouped = await docState(page);

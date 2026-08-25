@@ -26,6 +26,15 @@ test.beforeAll(async () => {
   });
   page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
+  // the built app exposes test hooks only with the explicit opt-in
+  await page.evaluate(() => {
+    if (!location.search.includes('testHooks=1')) {
+      location.replace(location.href.split('#')[0] + '?testHooks=1');
+    }
+  });
+  await page.waitForURL(/testHooks=1/);
+  await page.reload();
+  await page.waitForLoadState('domcontentloaded');
 });
 
 test.afterAll(async () => {
@@ -75,6 +84,14 @@ test('save writes an atomic .thalyx file; recovery survives a simulated crash', 
   await page.waitForTimeout(500);
   // relaunch: new window in the same app; scratch restore should run
   const page2 = await app.firstWindow();
+  await page2.waitForLoadState('domcontentloaded');
+  await page2.evaluate(() => {
+    if (!location.search.includes('testHooks=1')) {
+      location.replace(location.href.split('#')[0] + '?testHooks=1');
+    }
+  });
+  await page2.waitForURL(/testHooks=1/);
+  await page2.reload();
   await page2.waitForLoadState('domcontentloaded');
   await page2.waitForTimeout(800);
   const restored = await page2.evaluate(() => {

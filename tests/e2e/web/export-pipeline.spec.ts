@@ -36,8 +36,12 @@ test('renderDocToSvg: self-contained SVG with escaped text, no foreignObject', a
         globalThis as unknown as { __thalyxTest: { getDocJson(): string } }
       ).__thalyxTest.getDocJson(),
     );
-    const { renderDocToSvg } = await import(/* @vite-ignore */ '__thalyx-svg');
-    return renderDocToSvg(doc, { background: 'light' });
+    const api = (
+      globalThis as unknown as {
+        __thalyxTest: { renderSvg(doc: string, background: string): Promise<string> };
+      }
+    ).__thalyxTest;
+    return await api.renderSvg(JSON.stringify(doc), 'light');
   });
   expect(svg).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
   expect(svg).toContain('Alpha');
@@ -68,10 +72,14 @@ test('renderDocToSvg: transparent background omits the rect; dark uses the dark 
         globalThis as unknown as { __thalyxTest: { getDocJson(): string } }
       ).__thalyxTest.getDocJson(),
     );
-    const { renderDocToSvg } = await import(/* @vite-ignore */ '__thalyx-svg');
+    const api = (
+      globalThis as unknown as {
+        __thalyxTest: { renderSvg(doc: string, background: string): Promise<string> };
+      }
+    ).__thalyxTest;
     return {
-      transparent: renderDocToSvg(doc, { background: 'transparent' }),
-      dark: renderDocToSvg(doc, { background: 'dark' }),
+      transparent: await api.renderSvg(JSON.stringify(doc), 'transparent'),
+      dark: await api.renderSvg(JSON.stringify(doc), 'dark'),
     };
   });
   expect(out.transparent).not.toMatch(/<rect[^>]*fill="#(fff|14161a)"/);
@@ -86,8 +94,15 @@ test('PNG export produces a non-empty image of the right pixel size', async ({ p
         globalThis as unknown as { __thalyxTest: { getDocJson(): string } }
       ).__thalyxTest.getDocJson(),
     );
-    const { pngBlob } = await import(/* @vite-ignore */ '__thalyx-pipeline');
-    const blob = await pngBlob(doc, 1, 'light');
+    const api = (
+      globalThis as unknown as {
+        __thalyxTest: {
+          exportPng(doc: string, scale: 1 | 2, background: string): Promise<Uint8Array>;
+        };
+      }
+    ).__thalyxTest;
+    const bytes = await api.exportPng(JSON.stringify(doc), 1, 'light');
+    const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
     const bmp = await createImageBitmap(blob);
     return { width: bmp.width, height: bmp.height, size: blob.size };
   });
@@ -104,9 +119,12 @@ test('PDF golden smoke: one page with content (svg2pdf)', async ({ page }) => {
         globalThis as unknown as { __thalyxTest: { getDocJson(): string } }
       ).__thalyxTest.getDocJson(),
     );
-    const { pdfBlob } = await import(/* @vite-ignore */ '__thalyx-pipeline');
-    const blob = await pdfBlob(doc, 'light');
-    const buf = new Uint8Array(await blob.arrayBuffer());
+    const api = (
+      globalThis as unknown as {
+        __thalyxTest: { exportPdf(doc: string, background: string): Promise<Uint8Array> };
+      }
+    ).__thalyxTest;
+    const buf = await api.exportPdf(JSON.stringify(doc), 'light');
     // crude page count: count /Type /Page occurrences (not /Pages)
     const text = new TextDecoder('latin1').decode(buf);
     const pageCount = (text.match(/\/Type\s*\/Page[^s]/g) ?? []).length;
@@ -121,13 +139,12 @@ test('PDF golden smoke: one page with content (svg2pdf)', async ({ page }) => {
 test('internal clipboard: thalyx/clipboard JSON + PNG flavors', async ({ page }) => {
   await seedDoc(page);
   const clip = await page.evaluate(async () => {
-    const doc = JSON.parse(
-      (
-        globalThis as unknown as { __thalyxTest: { getDocJson(): string } }
-      ).__thalyxTest.getDocJson(),
-    );
-    const { writeInternalClipboard } = await import(/* @vite-ignore */ '__thalyx-pipeline');
-    await writeInternalClipboard(doc, ['a', 'b'], ['e1']);
+    const api = (
+      globalThis as unknown as {
+        __thalyxTest: { clipboardFlavor(nodeIds: string[], edgeIds: string[]): Promise<void> };
+      }
+    ).__thalyxTest;
+    await api.clipboardFlavor(['a', 'b'], ['e1']);
     const text = await navigator.clipboard.readText();
     const parsed = JSON.parse(text);
     return { type: parsed.type, nodes: parsed.nodes.length };

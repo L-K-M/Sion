@@ -12,6 +12,8 @@
 import { parseDoc } from '../../../shared/files/thalyxFile';
 import { resetStore, useStore } from '../../store/store';
 import * as A from '../../store/actions';
+import { renderDocToSvg } from '../../../shared/export/svg';
+import { pdfBlob, pngBlob, writeInternalClipboard } from '../../export/pipeline';
 
 export function installTestHooks(): void {
   // Dev server, or the built app explicitly opted in via ?testHooks=1
@@ -53,6 +55,26 @@ export function installTestHooks(): void {
     },
     selectEdge(id: string): void {
       A.setSelection([], [id]);
+    },
+    // Export-pipeline functions for the e2e suite (page.evaluate cannot
+    // dynamic-import TS sources from the built bundle)
+    async renderSvg(docJson: string, background: string): Promise<string> {
+      const doc = JSON.parse(docJson) as Parameters<typeof renderDocToSvg>[0];
+      return renderDocToSvg(doc, { background: background as 'light' | 'dark' | 'transparent' });
+    },
+    async exportPng(docJson: string, scale: 1 | 2, background: string): Promise<Uint8Array> {
+      const doc = JSON.parse(docJson) as Parameters<typeof pngBlob>[0];
+      const blob = await pngBlob(doc, scale, background as 'light' | 'dark' | 'transparent');
+      return new Uint8Array(await blob.arrayBuffer());
+    },
+    async exportPdf(docJson: string, background: string): Promise<Uint8Array> {
+      const doc = JSON.parse(docJson) as Parameters<typeof pdfBlob>[0];
+      const blob = await pdfBlob(doc, background as 'light' | 'dark');
+      return new Uint8Array(await blob.arrayBuffer());
+    },
+    async clipboardFlavor(nodeIds: string[], edgeIds: string[]): Promise<void> {
+      const doc = useStore.getState().doc;
+      await writeInternalClipboard(doc, nodeIds, edgeIds);
     },
     getEditing(): string {
       return JSON.stringify(useStore.getState().session.editingLabel);

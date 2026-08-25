@@ -100,6 +100,8 @@ test('Copy as Mermaid: Mod+Shift+C writes the export to the clipboard', async ({
   await patchDoc(page, DEMO_PATCH);
   await page.keyboard.press('ControlOrMeta+Shift+m');
   await expect(page.locator('.thalyx-mermaid-panel')).toBeVisible();
+  // wait for the debounced live export before capturing
+  await expect(page.locator('.thalyx-mermaid-text')).toContainText('flowchart TB');
   const displayed = await page.locator('.thalyx-mermaid-text').innerText();
   await page.keyboard.press('ControlOrMeta+Shift+m'); // close (live text unselected)
   await page.keyboard.press('ControlOrMeta+Shift+c');
@@ -118,6 +120,9 @@ test('direction dropdown switches the header (action, one undo)', async ({ page 
 });
 
 test('island notice counts excluded islands', async ({ page }) => {
+  // mixed doc: flowchart content + one island (a single-island doc shows the
+  // island source instead — suppressed notice per §9.5)
+  await patchDoc(page, DEMO_PATCH);
   await patchDoc(page, ISLAND_PATCH);
   await page.keyboard.press('ControlOrMeta+Shift+m');
   await expect(page.locator('.thalyx-mermaid-notice')).toHaveText('1 mermaid island not included');

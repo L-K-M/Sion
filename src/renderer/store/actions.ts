@@ -369,7 +369,6 @@ export function duplicateSelection(): void {
   );
 }
 
-/** Paste explicit clipboard content (same rules as duplicate). */
 /**
  * Auto-layout (§11.5): one shot, one history entry. Lays out the selection's
  * connected subgraph, or the whole document when nothing is selected.
@@ -385,6 +384,7 @@ export function autoLayout(directionOverride?: 'TB' | 'BT' | 'LR' | 'RL'): void 
     sel.length > 0
       ? layoutSubset(state.doc, sel, { rankdir: direction })
       : layoutAll(state.doc, { rankdir: direction });
+  if (positions.size === 0) return; // empty canvas: no no-op undo entry
   tracked((d) => {
     for (const n of d.nodes) {
       const p = positions.get(n.id);

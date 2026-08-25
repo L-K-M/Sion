@@ -22,6 +22,8 @@ export function installTestHooks(): void {
     // patchDoc receives PATCH SOURCE (Playwright cannot serialize function
     // arguments across the boundary) — compiled here, inside the page.
     patchDoc(patchSrc: string): void {
+      // Arbitrary code execution — never expose in packaged builds.
+      if (!import.meta.env.DEV) throw new Error('patchDoc is dev-only');
       // eslint-disable-next-line no-new-func
       const patch = new Function('d', patchSrc) as (d: unknown) => void;
       A.applyDocPatch((d) => {

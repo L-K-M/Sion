@@ -455,7 +455,14 @@ export function growConnectedNode(
   }
 
   if (best) {
-    connectEdge(sourceId, best.id, 'arrow');
+    // draw.io rule: the corridor connects — but never duplicates an edge
+    const exists = doc.edges.some(
+      (e) =>
+        !e.hidden &&
+        ((e.source === sourceId && e.target === best!.id) ||
+          (e.source === best!.id && e.target === sourceId)),
+    );
+    if (!exists) connectEdge(sourceId, best.id, 'arrow');
     setStore((s) => ({
       session: { ...s.session, selection: { nodeIds: [best!.id], edgeIds: [] } },
     }));

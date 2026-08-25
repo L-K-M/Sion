@@ -21,6 +21,8 @@ export interface TidyResult {
 export function tidyUp(doc: ThalyxDoc, nodes: ThalyxNode[]): TidyResult {
   const positions = new Map<string, { x: number; y: number }>();
   if (nodes.length < 2) return { positions };
+  // The caller stores results in each node's own (parent-relative) frame —
+  // children of containers get their absolute results converted at the end.
 
   const items = nodes.map((n) => ({ n, abs: absolutePosition(doc, n) }));
   const maxH = Math.max(...items.map((i) => i.n.height));
@@ -40,14 +42,12 @@ export function tidyUp(doc: ThalyxDoc, nodes: ThalyxNode[]): TidyResult {
 
   // A single cluster: decide row vs column by the bbox aspect ratio
   if (rows.length === 1 && rows[0]!.length >= 2) {
-    const row = rows[0]!;
+    const row = [...rows[0]!].sort((a, b) => a.abs.x - b.abs.x);
     const widthSum = row.reduce((acc, i) => acc + i.n.width, 0);
+    const heightAvg = row.reduce((acc, i) => acc + i.n.height, 0) / row.length;
     const span = row[row.length - 1]!.abs.x + row[row.length - 1]!.n.width - row[0]!.abs.x;
     // already wider than tall → row; else column
-    if (
-      span >= maxH ||
-      widthSum / Math.max(1, row.reduce((a, i) => a + i.n.height, 0) / row.length) > 1
-    ) {
+    if (span >= maxH || widthSum / Math.max(1, heightAvg) > 1) {
       layoutRow(row, positions);
       return { positions };
     }
@@ -73,7 +73,33 @@ export function tidyUp(doc: ThalyxDoc, nodes: ThalyxNode[]): TidyResult {
     }
     y += rowHeight + TIDY_GAP;
   }
+  convertToStorageFrames(doc, nodes, positions);
   return { positions };
+}
+
+/** Convert absolute positions to each node's parent-relative storage frame. */
+function convertToStorageFrames(
+  doc: ThalyxDoc,
+  nodes: ThalyxNode[],
+  positions: Map<string, { x: number; y: number }>,
+): void {
+  for (const n of nodes) {
+    const p = positions.get(n.id);
+    if (!p || !n.parentId) continue;
+    let ox = 0;
+    let oy = 0;
+    let cursor: string | undefined = n.parentId;
+    let steps = 0;
+    while (cursor !== undefined && steps < 1000) {
+      const c = doc.nodes.find((x) => x.id === cursor);
+      if (!c) break;
+      ox += c.x;
+      oy += c.y;
+      cursor = c.parentId;
+      steps += 1;
+    }
+    positions.set(n.id, { x: p.x - ox, y: p.y - oy });
+  }
 }
 
 function layoutRow(

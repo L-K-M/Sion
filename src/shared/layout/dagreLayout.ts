@@ -45,11 +45,30 @@ export function dagreLayout(
   });
   g.setDefaultEdgeLabel(() => ({}));
 
-  const containers = doc.nodes.filter((n) => n.kind === 'container');
-  const containerIds = new Set(containers.map((c) => c.id));
+  const allContainers = doc.nodes.filter((n) => n.kind === 'container');
+  const containerIds = new Set(allContainers.map((c) => c.id));
+
+  // Subset mode: the graph contains the selected nodes plus exactly the
+  // containers on their parent chains (ancestors) — everything else stays a
+  // fixed, untouched anchor outside the graph (§11.5: selection's connected
+  // subgraph).
+  const include = new Set<string>();
+  if (subset) {
+    for (const id of subset) {
+      include.add(id);
+      let cursor = doc.nodes.find((n) => n.id === id)?.parentId;
+      let steps = 0;
+      while (cursor !== undefined && steps < 1000) {
+        include.add(cursor);
+        cursor = doc.nodes.find((n) => n.id === cursor)?.parentId;
+        steps += 1;
+      }
+    }
+  }
 
   for (const n of doc.nodes) {
     if (n.kind === 'mermaid') continue; // islands don't participate
+    if (subset && !include.has(n.id)) continue;
     const abs = absolutePosition(doc, n);
     g.setNode(n.id, { width: n.width, height: n.height });
     // store absolute position for the container-extent computation below
@@ -64,7 +83,7 @@ export function dagreLayout(
   }
 
   // Containers need sizes for dagre's cluster layout; derive from members.
-  for (const c of containers) {
+  for (const c of allContainers) {
     if (!g.hasNode(c.id)) continue;
     const members = doc.nodes.filter((n) => n.parentId === c.id);
     if (members.length > 0) {

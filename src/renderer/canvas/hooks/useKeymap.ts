@@ -65,8 +65,10 @@ export function useKeymap(): void {
             A.reorderZ(e.shiftKey ? 'front' : 'forward');
             return;
           case 'KeyA':
-            e.preventDefault();
-            A.selectAll();
+            if (useStore.getState().session.editingLabel === null) {
+              e.preventDefault();
+              A.selectAll();
+            }
             return;
         }
         // Other Mod chords fall through (e.g. Mod+Arrow grow below); the
@@ -141,15 +143,18 @@ export function useKeymap(): void {
         return;
       }
 
-      // --- Alt+Shift chords for layout (§10.2: Alt chords match on e.code) ---
-      if (e.altKey && e.shiftKey && !mod && e.code === 'KeyT') {
+      // --- Alt+Shift chords for layout (§10.2: Alt chords match on e.code);
+      // inert while a label editor is open (it owns the keyboard) ---
+      if (
+        e.altKey &&
+        e.shiftKey &&
+        !mod &&
+        useStore.getState().session.editingLabel === null &&
+        (e.code === 'KeyT' || e.code === 'KeyL')
+      ) {
         e.preventDefault();
-        A.tidyUpSelection();
-        return;
-      }
-      if (e.altKey && e.shiftKey && !mod && e.code === 'KeyL') {
-        e.preventDefault();
-        A.autoLayout();
+        if (e.code === 'KeyT') A.tidyUpSelection();
+        else A.autoLayout();
         return;
       }
 

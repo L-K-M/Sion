@@ -17,7 +17,7 @@ function doc(): ThalyxDoc {
 describe('dagreLayout (§11.5)', () => {
   it('lays out a chain top-down with rank separation', () => {
     const d = doc();
-    const positions = dagreLayout(d, null, { rankdir: 'TB' });
+    const positions = dagreLayout(d, null, { rankdir: 'TB', ranksep: 60 });
     expect(positions.size).toBe(3);
     const a = positions.get('a')!;
     const b = positions.get('b')!;
@@ -34,7 +34,7 @@ describe('dagreLayout (§11.5)', () => {
 
   it('LR direction goes left to right', () => {
     const d = doc();
-    const positions = dagreLayout(d, null, { rankdir: 'LR' });
+    const positions = dagreLayout(d, null, { rankdir: 'LR', ranksep: 60 });
     const a = positions.get('a')!;
     const b = positions.get('b')!;
     expect(b.x).toBeGreaterThanOrEqual(a.x + 60 - 1);
@@ -67,7 +67,9 @@ describe('dagreLayout (§11.5)', () => {
     expect(x1p.y).toBeGreaterThanOrEqual(0);
     expect(x2p.x + 160).toBeLessThanOrEqual(600 + 1);
     expect(x2p.y + 64).toBeLessThanOrEqual(400 + 1);
-    void gp;
+    // the container is placed by dagre too (finite, on-canvas)
+    expect(Number.isFinite(gp.x)).toBe(true);
+    expect(Number.isFinite(gp.y)).toBe(true);
   });
 
   it('subset layout only moves the selection', () => {

@@ -91,6 +91,7 @@ export async function pdfBlob(
   islandSvgsProvider?: IslandSvgProvider,
 ): Promise<Blob> {
   const { default: jsPDF } = await import('jspdf');
+  await import('svg2pdf.js'); // registers jsPDF.API.svg
   const svg = await svgString(doc, { background, islandSvgsProvider });
   const vb = svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/);
   const nums = vb ? vb.map(Number) : [0, 0, 640, 480];

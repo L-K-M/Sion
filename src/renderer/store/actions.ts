@@ -950,6 +950,17 @@ export function addToSelection(nodeIds: string[], edgeIds: string[] = []): void 
   }));
 }
 
+/** Select all nodes and edges (§10.2 Mod+A). */
+export function selectAll(): void {
+  const doc = getStore().doc;
+  setStore((s) => ({
+    session: {
+      ...s.session,
+      selection: { nodeIds: doc.nodes.map((n) => n.id), edgeIds: doc.edges.map((e) => e.id) },
+    },
+  }));
+}
+
 export function clearSelection(): void {
   setStore((s) => ({ session: { ...s.session, selection: { nodeIds: [], edgeIds: [] } } }));
 }

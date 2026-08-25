@@ -64,8 +64,13 @@ export function useKeymap(): void {
             e.preventDefault();
             A.reorderZ(e.shiftKey ? 'front' : 'forward');
             return;
+          case 'KeyA':
+            e.preventDefault();
+            A.selectAll();
+            return;
         }
-        return;
+        // Other Mod chords fall through (e.g. Mod+Arrow grow below); the
+        // bare-tool section re-guards on `mod`.
       }
 
       // --- Delete ----------------------------------------------------------

@@ -159,6 +159,45 @@ export function setNodeShape(id: string, shape: ShapeKind): void {
   });
 }
 
+/** Set/clear a node's mermaid link (§10.3 context panel). */
+export function setNodeLink(id: string, link: string | undefined): void {
+  // Normalize/validate BEFORE touching the doc (§14.4): empty clears,
+  // http/https/mailto pass through, anything else is refused — a no-change
+  // call then produces a no-op draft and no history entry.
+  let safe: string | null = null;
+  if (link !== undefined && link.trim().length > 0) {
+    safe = link.trim().slice(0, 2048);
+    try {
+      const scheme = new URL(safe).protocol;
+      if (!['https:', 'http:', 'mailto:'].includes(scheme)) return; // refused
+    } catch {
+      safe = `https://${safe}`;
+      // re-validate the synthesized URL with the parser
+      try {
+        new URL(safe);
+      } catch {
+        return;
+      }
+    }
+  }
+  tracked((d) => {
+    const n = d.nodes.find((x) => x.id === id);
+    if (!n) return;
+    const current = n.meta?.mermaid?.link;
+    if (current === (safe ?? undefined)) return; // no-op
+    n.meta ??= {};
+    n.meta.mermaid ??= {};
+    if (safe === null) {
+      delete n.meta.mermaid.link;
+      // prune empty meta objects so the model stays clean
+      if (Object.keys(n.meta.mermaid).length === 0) delete n.meta.mermaid;
+      if (n.meta && Object.keys(n.meta).length === 0) delete n.meta;
+      return;
+    }
+    n.meta.mermaid.link = safe;
+  });
+}
+
 export function setNodesLocked(ids: string[], locked: boolean): void {
   tracked((d) => {
     for (const n of d.nodes) {
@@ -799,6 +838,15 @@ export function setTheme(theme: SessionState['theme']): void {
 
 export function setGuides(guides: GuideLine[]): void {
   setStore((s) => ({ session: { ...s.session, guides } }));
+}
+
+export function setHelpOpen(open: boolean): void {
+  setStore((s) => ({ session: { ...s.session, helpOpen: open } }));
+}
+
+/** Q toggle (§10.2): quick-connect chevrons visibility. */
+export function toggleChevrons(): void {
+  setStore((s) => ({ session: { ...s.session, chevronsEnabled: !s.session.chevronsEnabled } }));
 }
 
 export function setFilePath(filePath: string | null): void {

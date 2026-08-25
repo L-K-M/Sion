@@ -8,6 +8,31 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M4b — Editing UX floor, part 2: panel / palette / keymap (PLAN.md §17 M4, split per the plan)
+
+Added:
+
+- **ContextPanel (§10.3)** — one floating left-docked panel scoped to the
+  selection: nothing selected → grid/theme/direction; node(s) → fill palette
+  (12 tokens + custom-hex escape hatch), stroke width (3-segment), font size
+  (4-segment), corner sharp/round toggle (rect/rounded only — swaps the
+  ShapeKind per §7.1), shape swap popup (full §7.3 set, toolbar five
+  starred), link field (`setNodeLink` action → `meta.mermaid.link`), lock
+  toggle; ≥2 nodes → alignment row (6 align actions); edge(s) → line style /
+  route kind / arrowheads per end / label field. Segmented controls for ≤5
+  options; nothing nests.
+- **HelpOverlay (Shift+/)** — searchable shortcut sheet (35 bindings,
+  filtered by keys/action/group; Esc closes).
+- **Keymap completion (§10.2)** — `Shift+Alt+D` theme cycle, `Q` chevron
+  toggle, `Shift+/` help (Alt chords matched on `e.code` per the matching
+  rules).
+- Session gains `helpOpen`; actions gain `setHelpOpen`/`toggleChevrons`/
+  `setNodeLink`.
+- e2e `panel.spec.ts`: canvas panel round-trips, palette token + custom hex
+  in the doc, stroke/font segmented controls, shape swap + corner toggle,
+  alignment row, connector controls (dashed round-trip), help overlay search,
+  theme chord.
+
 ### M4a — Editing UX floor, part 1: text / duplicate / guides (PLAN.md §17 M4, split per the plan)
 
 Added:

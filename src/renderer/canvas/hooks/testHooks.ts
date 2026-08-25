@@ -11,6 +11,7 @@
  */
 import { parseDoc } from '../../../shared/files/thalyxFile';
 import { resetStore, useStore } from '../../store/store';
+import * as A from '../../store/actions';
 
 export function installTestHooks(): void {
   // Dev server, or the built app explicitly opted in via ?testHooks=1
@@ -26,6 +27,9 @@ export function installTestHooks(): void {
         console.error('[thalyxTest] loadDoc failed', err);
         return false;
       }
+    },
+    selectEdge(id: string): void {
+      A.setSelection([], [id]);
     },
     getEditing(): string {
       return JSON.stringify(useStore.getState().session.editingLabel);

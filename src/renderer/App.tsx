@@ -4,6 +4,8 @@ import './theme/theme.css';
 import './styles.css';
 import { Canvas } from './canvas/Canvas';
 import { Toolbar } from './panels/Toolbar';
+import { ContextPanel } from './panels/ContextPanel';
+import { HelpOverlay } from './panels/HelpOverlay';
 import { useKeymap } from './canvas/hooks/useKeymap';
 import { useEffectiveTheme } from './theme/useEffectiveTheme';
 import { useEffect } from 'react';
@@ -20,6 +22,8 @@ function Shell() {
     <div className="thalyx-root" data-theme={theme}>
       <Toolbar />
       <Canvas />
+      <ContextPanel />
+      <HelpOverlay />
     </div>
   );
 }

@@ -59,7 +59,7 @@ test('menus exist and Undo reaches the renderer store', async () => {
   await page.waitForTimeout(300);
 });
 
-test('recovery: autosave lands in the store and survives relaunch', async ({ page }) => {
+test('recovery: autosave lands in the store and survives relaunch', async () => {
   await expect(page.locator('.react-flow')).toBeVisible();
   await page.evaluate(() => {
     (

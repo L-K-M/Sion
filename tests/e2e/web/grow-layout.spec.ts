@@ -17,10 +17,6 @@ interface TestApi {
   selectEdge(id: string): void;
 }
 
-function apiRef(): { __thalyxTest?: TestApi } {
-  return globalThis as unknown as { __thalyxTest?: TestApi };
-}
-
 async function docState(page: Page): Promise<{
   nodes: Array<{
     id: string;
@@ -35,16 +31,13 @@ async function docState(page: Page): Promise<{
   }>;
   edges: Array<{ id: string; source: string; target: string; label?: string }>;
 }> {
-  if (!apiRef().__thalyxTest) {
-    throw new Error('__thalyxTest hooks missing — build with ?testHooks=1 support');
-  }
-  return await page.evaluate(() =>
-    JSON.parse(
-      (
-        globalThis as unknown as { __thalyxTest: { getDocJson(): string } }
-      ).__thalyxTest.getDocJson(),
-    ),
-  );
+  return await page.evaluate(() => {
+    const api = (globalThis as unknown as { __thalyxTest?: { getDocJson(): string } }).__thalyxTest;
+    if (!api) {
+      throw new Error('__thalyxTest hooks missing — build with ?testHooks=1 support');
+    }
+    return JSON.parse(api.getDocJson());
+  });
 }
 
 /**
@@ -214,7 +207,7 @@ test('Alt+Shift+L auto-layouts the whole doc', async ({ page }) => {
   // seed edges surgically (patchDoc preserves selection/session)
   await patchDoc(
     page,
-    "const doc = d as unknown as { nodes: Array<{ id: string }>; edges: Array<Record<string, unknown>>; }; const [a, , c, b] = doc.nodes; const mk = (id: string, source: string, target: string) => ({ id, source, target, sourceAnchor: 'auto', targetAnchor: 'auto', kind: 'elbow', arrowStart: 'none', arrowEnd: 'arrow', style: { line: 'solid', stroke: 'ink', rounded: true } }); doc.edges.push(mk('le1', a.id, c.id), mk('le2', c.id, b.id));",
+    "var ns = d.nodes; var a = ns[0], c = ns[2], b = ns[1]; function mk(id, src, tgt){ return { id: id, source: src, target: tgt, sourceAnchor: 'auto', targetAnchor: 'auto', kind: 'elbow', arrowStart: 'none', arrowEnd: 'arrow', style: { line: 'solid', stroke: 'ink', rounded: true } }; } d.edges.push(mk('le1', a.id, c.id), mk('le2', c.id, b.id));",
   );
   await expect(page.locator('.react-flow__edge-path')).toHaveCount(2);
 
@@ -246,16 +239,13 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   await typeLabel(page, 'Valid?');
   await patchDoc(
     page,
-    "const doc = d as unknown as { nodes: Array<{ label: string; shape?: string }> }; const v = doc.nodes.find((n) => n.label === 'Valid?'); if (v) v.shape = 'diamond';",
+    "const v = d.nodes.find(function(n){return n.label==='Valid?';}); if (v) v.shape = 'diamond';",
   );
 
   // Dashboard (yes)
   await page.keyboard.press('ControlOrMeta+ArrowRight');
   await typeLabel(page, 'Dashboard');
-  await patchDoc(
-    page,
-    "const doc = d as unknown as { edges: Array<{ label?: string }> }; const e = doc.edges.at(-1); if (e) e.label = 'yes';",
-  );
+  await patchDoc(page, "var e = d.edges[d.edges.length - 1]; if (e) e.label = 'yes';");
 
   // Show error (no), grown downward from Valid?
   const mid = await docState(page);
@@ -264,10 +254,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   await selectNode(page, validNode!.id);
   await page.keyboard.press('ControlOrMeta+ArrowDown');
   await typeLabel(page, 'Show error');
-  await patchDoc(
-    page,
-    "const doc = d as unknown as { edges: Array<{ label?: string }> }; const e = doc.edges.at(-1); if (e) e.label = 'no';",
-  );
+  await patchDoc(page, "var e = d.edges[d.edges.length - 1]; if (e) e.label = 'no';");
 
   // container around the three auth nodes: multi-select then Mod+G
   const after = await docState(page);
@@ -289,7 +276,7 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   await page.keyboard.press('ControlOrMeta+g');
   await patchDoc(
     page,
-    "const doc = d as unknown as { nodes: Array<{ kind: string; label?: string }> }; const c = doc.nodes.find((n) => n.kind === 'container'); if (c) c.label = 'Auth';",
+    "var c = d.nodes.find(function(n){return n.kind === 'container';}); if (c) c.label = 'Auth';",
   );
 
   // final edge Dashboard → Log out (grow from Dashboard, label it)

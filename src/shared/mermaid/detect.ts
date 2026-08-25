@@ -27,9 +27,11 @@ const KEYWORDS = [
   'packet',
   'radar',
   'treemap',
-  'c4',
   'requirementDiagram',
-  'c4Context',
+  'C4Context',
+  'C4Container',
+  'C4Dynamic',
+  'C4Deployment',
 ];
 
 export function isProbablyMermaid(text: string): boolean {

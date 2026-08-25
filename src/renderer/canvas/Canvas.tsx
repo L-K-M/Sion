@@ -359,7 +359,7 @@ export function Canvas() {
       </ReactFlow>
       <GuideLines />
       {toast ? (
-        <div className="thalyx-toast">
+        <div className="thalyx-toast" role="status" aria-live="polite">
           <span>{toast.message}</span>
           <button onClick={toast.onTextInstead}>Paste as text instead</button>
         </div>

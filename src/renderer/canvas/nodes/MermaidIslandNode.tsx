@@ -24,6 +24,8 @@ export const MermaidIslandNode = memo(function MermaidIslandNode({ data }: { dat
     let cancelled = false;
     (async () => {
       if (!node?.mermaidSource) return;
+      setRendered(null); // stale SVG must not linger during re-render
+      setError(null);
       try {
         const { svg } = await mermaid.render(idRef.current, node.mermaidSource);
         const clean = DOMPurify.sanitize(svg, {
@@ -45,10 +47,7 @@ export const MermaidIslandNode = memo(function MermaidIslandNode({ data }: { dat
 
   if (!node) return null;
   return (
-    <div
-      className="thalyx-island nodrag nopan"
-      style={{ width: '100%', height: '100%', position: 'relative' }}
-    >
+    <div className="thalyx-island" style={{ width: '100%', height: '100%', position: 'relative' }}>
       {rendered ? (
         <div
           className="thalyx-island-svg"

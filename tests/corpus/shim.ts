@@ -40,27 +40,23 @@ export async function shimParse(
     flowchart: { htmlLabels: false },
     theme: 'neutral',
   });
-  const res = await mermaid.parse(text, { suppressErrors: true });
-  if (res === false) {
-    try {
-      await mermaid.parse(text);
-    } catch (e: unknown) {
-      const err = e as {
-        message?: string;
-        hash?: { loc?: { first_line?: number; first_column?: number }; expected?: string[] };
-      };
-      return {
-        ok: false,
-        error: {
-          message: String(err.message ?? e),
-          line: err.hash?.loc?.first_line,
-          col: err.hash?.loc?.first_column,
-          expected: err.hash?.expected,
-        },
-      };
-    }
-    return { ok: false, error: { message: 'Invalid mermaid text' } };
+  try {
+    await mermaid.parse(text); // throws with hash.loc on invalid input
+    const diagram = await mermaid.mermaidAPI.getDiagramFromText(text);
+    return { ok: true, diagramType: diagram.type, db: diagram.db };
+  } catch (e: unknown) {
+    const err = e as {
+      message?: string;
+      hash?: { loc?: { first_line?: number; first_column?: number }; expected?: string[] };
+    };
+    return {
+      ok: false,
+      error: {
+        message: String(err.message ?? e),
+        line: err.hash?.loc?.first_line,
+        col: err.hash?.loc?.first_column,
+        expected: err.hash?.expected,
+      },
+    };
   }
-  const diagram = await mermaid.mermaidAPI.getDiagramFromText(text);
-  return { ok: true, diagramType: diagram.type, db: diagram.db };
 }

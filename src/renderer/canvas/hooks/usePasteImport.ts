@@ -15,9 +15,11 @@ export function usePasteImport(): { toast: { message: string; onTextInstead: () 
   const [toast, setToast] = useState<{ message: string; onTextInstead: () => void } | null>(null);
   const lastPasteRef = useRef<string | null>(null);
 
+  const timeoutRef = useRef<number | null>(null);
   const showToast = useCallback((message: string, onTextInstead: () => void) => {
+    if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
     setToast({ message, onTextInstead });
-    window.setTimeout(() => setToast(null), 6000);
+    timeoutRef.current = window.setTimeout(() => setToast(null), 6000);
   }, []);
 
   useEffect(() => {
@@ -34,7 +36,12 @@ export function usePasteImport(): { toast: { message: string; onTextInstead: () 
 
       if (isProbablyMermaid(text)) {
         e.preventDefault();
-        const ok = await A.importMermaidAsNew(text, parseMermaid);
+        let ok: boolean;
+        try {
+          ok = await A.importMermaidAsNew(text, parseMermaid);
+        } catch {
+          ok = false; // runtime failure — degrade to a text node
+        }
         if (ok) {
           lastPasteRef.current = text;
           void rf.fitView({ padding: 0.2, maxZoom: 1.25, duration: 200 });
@@ -61,7 +68,10 @@ export function usePasteImport(): { toast: { message: string; onTextInstead: () 
       });
     };
     window.addEventListener('paste', onPaste);
-    return () => window.removeEventListener('paste', onPaste);
+    return () => {
+      window.removeEventListener('paste', onPaste);
+      if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+    };
   }, [rf, showToast]);
 
   return { toast };

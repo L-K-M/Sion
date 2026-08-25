@@ -92,6 +92,13 @@ describe('entity decode/encode (§9.2 gotcha)', () => {
     expect(decodeMermaidLabel('line1<BR />line2')).toBe('line1\nline2');
   });
 
+  it('encode order interaction: # escaped before & so entities stay literal', () => {
+    // '#' first means an encoded '#38;' is never re-escaped by the & pass
+    const encoded = encodeLabel('a & b');
+    expect(encoded).not.toContain('&&');
+    expect(decodeMermaidLabel('a ﬂ°°38¶ß b')).toBe('a & b');
+  });
+
   it('encodeLabel escapes in the verified order', () => {
     expect(encodeLabel('AT&T')).toBe('"AT#38;T"');
     expect(encodeLabel('say "hi"')).toBe('"say #quot;hi#quot;"');

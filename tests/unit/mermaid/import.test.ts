@@ -180,10 +180,10 @@ describe('mermaid import corpus (§15.1 import half)', () => {
   });
 
   it('mermaid upgrade gate: pin is exactly 11.17.0 (D16)', async () => {
-    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+    const pkg = JSON.parse(readFileSync(join(__dirname, '../../../package.json'), 'utf8'));
     expect(pkg.dependencies.mermaid).toBe('11.17.0');
     const mermaidPkg = JSON.parse(
-      readFileSync(join(process.cwd(), 'node_modules/mermaid/package.json'), 'utf8'),
+      readFileSync(join(__dirname, '../../../node_modules/mermaid/package.json'), 'utf8'),
     );
     expect(mermaidPkg.version).toMatch(/^11\.17\./);
   });

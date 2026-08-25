@@ -17,10 +17,16 @@ const HTML_ENTITIES: Record<string, string> = {
 
 function decodeHtmlEntityOnce(s: string): string {
   return s.replace(/&(?:#x([0-9a-fA-F]+)|#(\d+)|([a-zA-Z]+));/g, (m, hex, dec, name) => {
-    if (hex) return String.fromCodePoint(parseInt(hex, 16));
-    if (dec) return String.fromCodePoint(parseInt(dec, 10));
+    const code = hex ? parseInt(hex, 16) : dec ? parseInt(dec, 10) : NaN;
+    if (Number.isFinite(code) && code >= 0 && code <= 0x10ffff) {
+      try {
+        return String.fromCodePoint(code);
+      } catch {
+        return m; // lone-surrogate etc — leave verbatim
+      }
+    }
     if (name && HTML_ENTITIES[name]) return HTML_ENTITIES[name]!;
-    return m; // unknown entity left verbatim
+    return m; // unknown/invalid entity left verbatim
   });
 }
 

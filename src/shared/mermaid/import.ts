@@ -116,11 +116,23 @@ function mapStyleStrings(styles: string[] | undefined): {
 
 export async function importMermaid(text: string, parse: ParseFn): Promise<ImportResult> {
   const { frontmatter, body } = splitFrontmatter(text);
+  // mermaid's own error positions are relative to the text it parsed; our
+  // splitter consumed the frontmatter — offset line numbers back.
+  const frontmatterLines = frontmatter ? frontmatter.split('\n').length - 1 : 0;
+  const offsetError = (err: {
+    message: string;
+    line?: number;
+    col?: number;
+    expected?: string[];
+  }) => ({
+    ...err,
+    ...(err.line !== undefined ? { line: err.line + frontmatterLines } : {}),
+  });
   const parsed = await parse(body); // NOTE: frontmatter stripped — mermaid handles it
   // itself when present; callers pass the full text when the doc has one. We
   // parse the BODY here because our splitter already consumed it; mermaid's
   // own frontmatter handling is equivalent for the flowchart db surface.
-  if (!parsed.ok) return { kind: 'error', error: parsed.error };
+  if (!parsed.ok) return { kind: 'error', error: offsetError(parsed.error) };
   if (!FLOWCHART_TYPES.has(parsed.diagramType)) {
     return { kind: 'island', diagramType: parsed.diagramType, source: text };
   }
@@ -150,8 +162,7 @@ export async function importMermaid(text: string, parse: ParseFn): Promise<Impor
     while (cursor !== undefined) {
       const sg = subgraphById.get(cursor);
       if (!sg) break;
-      const outer = sg.nodes.length > 0 ? nodeToSubgraph.get(sg.id) : undefined;
-      cursor = outer && outer !== sg.id ? outer : undefined;
+      cursor = nodeToSubgraph.get(sg.id); // outer container (if any)
       depth += 1;
     }
     return depth;
@@ -179,7 +190,7 @@ export async function importMermaid(text: string, parse: ParseFn): Promise<Impor
   // --- classDefs resolved BEFORE vertices (class styles compose into the
   //     vertex style map — db keeps them on the CLASS, not the vertex) ---
   const classes = db.getClasses();
-  const classDefs: Record<string, string[]> = {};
+  const classDefs: Record<string, string[]> = Object.create(null);
   for (const [name, def] of classes) {
     if (def?.styles && def.styles.length > 0) classDefs[name] = [...def.styles];
   }
@@ -293,7 +304,8 @@ function longestLine(label: string): number {
 }
 
 function normalizeDirection(d: string): MermaidDirection {
-  if (d === 'BT' || d === 'LR' || d === 'RL') return d;
+  const upper = d.toUpperCase();
+  if (upper === 'BT' || upper === 'LR' || upper === 'RL') return upper;
   return 'TB'; // includes TD
 }
 

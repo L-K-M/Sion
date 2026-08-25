@@ -32,11 +32,16 @@ async function docState(page: Page): Promise<{
 }
 
 async function typeLabel(page: Page, text: string): Promise<void> {
-  // First char either opens the editor (type-to-edit) or lands in the already
-  // open one (grow). Then await the editor and type the remainder.
-  await page.keyboard.press(text[0]!);
-  await expect(page.locator('.thalyx-label-editor')).toBeVisible();
-  if (text.length > 1) await page.keyboard.type(text.slice(1));
+  // Grow leaves the editor OPEN on the new node; plain placement leaves it
+  // closed (single selection). Handle both: open via Enter if needed, type
+  // the full text, commit with Enter.
+  const editor = page.locator('.thalyx-label-editor');
+  const alreadyOpen = await editor.isVisible().catch(() => false);
+  if (!alreadyOpen) {
+    await page.keyboard.press('Enter'); // Enter-to-edit (exactly one node selected)
+  }
+  await expect(editor).toBeVisible();
+  await page.keyboard.type(text);
   await page.keyboard.press('Enter');
 }
 

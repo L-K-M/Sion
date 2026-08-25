@@ -10,7 +10,10 @@ import { useStore } from '../../store/store';
 import * as A from '../../store/actions';
 import { absolutePosition } from '../../../shared/model/queries';
 
-const CHEVRON_OFFSET = 0; // flush with the node edge — no pane gap to cross
+// 16px out: clears the 10px connection Handle that sits ON the edge
+// (flush chevrons would be un-clickable under the handle) while staying
+// close enough that there is no meaningful pane gap to cross.
+const CHEVRON_OFFSET = 16;
 
 export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
   const chevronsEnabled = useStore((s) => s.session.chevronsEnabled);

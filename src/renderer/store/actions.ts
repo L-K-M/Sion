@@ -1084,6 +1084,54 @@ export function updateNodeMermaidSource(id: string, source: string): void {
   });
 }
 
+export function setMermaidPanelOpen(open: boolean): void {
+  setStore((s) => ({ session: { ...s.session, mermaidPanelOpen: open } }));
+}
+
+/** Copy the selection (or doc) as Mermaid text to the clipboard (§13.3). */
+export async function copyAsMermaid(): Promise<string | null> {
+  const state = getStore();
+  const { exportMermaid } = await import('../../shared/mermaid/export');
+  const out = exportMermaid(state.doc, {
+    selection:
+      state.session.selection.nodeIds.length > 0
+        ? { nodeIds: state.session.selection.nodeIds, edgeIds: state.session.selection.edgeIds }
+        : undefined,
+  });
+  ensureMermaidIds(out.idAssignments);
+  try {
+    await navigator.clipboard.writeText(out.text);
+  } catch {
+    // browser fallback — dev/test contexts
+    console.warn('clipboard unavailable');
+  }
+  return out.text;
+}
+
+/**
+ * ensureMermaidIds (§8.3): applies idAssignments returned by exportMermaid —
+ * the ONE deliberate exception to history tracking: idempotent bookkeeping
+ * metadata, a fixpoint after one pass, triggered by merely VIEWING the
+ * Mermaid panel. NEVER pollutes undo. (This is the only untracked doc
+ * mutation in the app.)
+ */
+export function ensureMermaidIds(idAssignments: Record<string, string>): void {
+  if (Object.keys(idAssignments).length === 0) return; // fixpoint — nothing to do
+  setStore((s) => ({
+    doc: produce(s.doc, (d) => {
+      for (const n of d.nodes) {
+        const mid = idAssignments[n.id];
+        if (mid) {
+          n.meta ??= {};
+          n.meta.mermaid ??= {};
+          n.meta.mermaid.id = mid;
+        }
+      }
+    }),
+    // no history commit, no dirty flag change (pure metadata)
+  }));
+}
+
 export function setHelpOpen(open: boolean): void {
   setStore((s) => ({ session: { ...s.session, helpOpen: open } }));
 }

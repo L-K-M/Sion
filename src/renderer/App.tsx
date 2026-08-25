@@ -6,6 +6,7 @@ import { Canvas } from './canvas/Canvas';
 import { Toolbar } from './panels/Toolbar';
 import { ContextPanel } from './panels/ContextPanel';
 import { HelpOverlay } from './panels/HelpOverlay';
+import { MermaidPanel } from './panels/MermaidPanel';
 import { useKeymap } from './canvas/hooks/useKeymap';
 import { useEffectiveTheme } from './theme/useEffectiveTheme';
 import { useEffect } from 'react';
@@ -23,6 +24,7 @@ function Shell() {
       <Toolbar />
       <Canvas />
       <ContextPanel />
+      <MermaidPanel />
       <HelpOverlay />
     </div>
   );

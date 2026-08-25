@@ -8,6 +8,44 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M6 — Mermaid export & round-trip (PLAN.md §17 M6)
+
+Added:
+
+- **`exportMermaid` (§9.4, pure)** — returns `{text, idAssignments}` without
+  touching the doc: frontmatter verbatim; `flowchart <dir>`; node lines in
+  z-order (skip-eligible nodes — label==id, rect, in an edge — omit the
+  declaration; edge-less nodes always get one); containers as `subgraph`
+  blocks with `direction` and nesting; the 22-body emit table exactly
+  (degrade rule + minlen extension, `~~~` for hidden); `|label|` edge labels;
+  `id@` user edge ids; style tail (classDef/class/style/click-with-tooltip).
+  Empty labels emit a quoted space (`A[""]` is a parse error — verified).
+  Islands: mixed docs export the flowchart only; callers surface the
+  "N islands not included" notice (the panel does).
+- **`ensureMermaidIds` (§8.3)** — the ONE untracked doc mutation (comment at
+  the definition): applies idAssignments, idempotent, never pollutes undo,
+  triggered by viewing the panel.
+- **Round-trip machinery (§15.1)** — `semanticallyEqual` (canonicalized
+  heads, mermaid-id keying, containment/dir/link) + fixpoint assertion.
+- **Corpus round-trip** — every flowchart fixture: import → export → import →
+  semantic equality + `export(M2) === export(M1)` byte-equal. Emit-table
+  coverage test (all 21 bodies in one doc), degrade/hidden/lone-node/blocklist
+  tests, and a 25-iteration deterministic property test (random docs → export
+  → import → semantic equality + fixpoint).
+- **Mermaid panel (§9.5)** — `Mod+Shift+M` toggle; live export debounced
+  300 ms (read-only `pre`, selectable); `ensureMermaidIds` applied untracked;
+  island notice; single-island docs show the island source; direction
+  dropdown (TB/BT/LR/RL → `setDirection`, one undo step); Copy button.
+- **`copyAsMermaid` (`Mod+Shift+C`)** — export selection-or-doc, apply ids,
+  clipboard write.
+- e2e `mermaid-export.spec.ts`: panel open/close + live content (subgraph,
+  labeled edges), byte-stability across a doc change, direction round-trip
+  with undo, island notice, single-island source, and the M4 demo graph
+  exported → re-imported → identical labels/counts.
+
+Deviations from PLAN.md: none. (Known-loss list §9.4.7 untouched by design;
+manual mermaid.live check noted in qa-checklist for M8.)
+
 ### M5 — Mermaid import (PLAN.md §17 M5)
 
 Added:

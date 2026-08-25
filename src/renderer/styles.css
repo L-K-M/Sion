@@ -606,3 +606,69 @@ body {
   cursor: pointer;
   font-size: 12px;
 }
+
+/* --- mermaid panel (§9.5) ----------------------------------------------------- */
+
+.thalyx-mermaid-panel {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  bottom: 12px;
+  width: 360px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+}
+
+.thalyx-mermaid-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.8;
+}
+
+.thalyx-mermaid-head-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.thalyx-mermaid-head-actions button {
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--canvas);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.thalyx-mermaid-notice {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink);
+}
+
+.thalyx-mermaid-text {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  user-select: text;
+  color: var(--ink);
+}

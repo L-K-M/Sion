@@ -148,11 +148,7 @@ export function extendBody(body: string, minlen: number): string {
   if (body === HIDDEN_BODY) return HIDDEN_BODY.repeat(minlen);
   // body like '-->' / '-.->' / '<==>' / '---': middle char is
   // '-' for solid, '.' for dashed, '=' for thick.
-  const middle = body.includes('.')
-    ? '.'
-    : body.includes('=') && !body.startsWith('x') && !body.startsWith('o')
-      ? '='
-      : '-';
+  const middle = body.includes('.') ? '.' : body.includes('=') ? '=' : '-';
   // insert (minlen-1) middle chars after the first run start
   const extra = middle.repeat(minlen - 1);
   // '->' style: insert before the head arrow segment. Simplest robust rule:

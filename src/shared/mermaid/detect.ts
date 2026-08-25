@@ -53,5 +53,6 @@ export function isProbablyMermaid(text: string): boolean {
   }
   const header = lines[i]?.trim() ?? '';
   const firstWord = header.split(/[\s(]/)[0] ?? '';
-  return KEYWORDS.includes(firstWord);
+  // mermaid allows '-beta' suffixed experimental diagrams (e.g. architecture-beta)
+  return KEYWORDS.includes(firstWord) || KEYWORDS.includes(firstWord.replace(/-beta$/, ''));
 }

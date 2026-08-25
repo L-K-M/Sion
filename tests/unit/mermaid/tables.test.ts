@@ -53,6 +53,11 @@ describe('mermaid tables (§9.2)', () => {
     expect(extendBody('==>', 2)).toBe('===>');
     expect(extendBody('====', 2)).toBe('=====');
     expect(extendBody('~~~', 2)).toBe('~~~~~~');
+    // bidirectional thick/dashed bodies (regression: head chars o/x broke middle detection)
+    expect(extendBody('o==o', 2)).toBe('o===o');
+    expect(extendBody('x==x', 2)).toBe('x===x');
+    expect(extendBody('o-.-o', 2)).toBe('o-..-o');
+    expect(extendBody('x-.-x', 2)).toBe('x-..-x');
     // no extension at minlen 1
     expect(extendBody('-->', 1)).toBe('-->');
   });

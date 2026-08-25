@@ -23,9 +23,9 @@ export const MermaidIslandNode = memo(function MermaidIslandNode({ data }: { dat
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!node?.mermaidSource) return;
       setRendered(null); // stale SVG must not linger during re-render
       setError(null);
+      if (!node?.mermaidSource) return;
       try {
         const { svg } = await mermaid.render(idRef.current, node.mermaidSource);
         const clean = DOMPurify.sanitize(svg, {

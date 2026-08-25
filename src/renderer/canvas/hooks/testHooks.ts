@@ -22,8 +22,12 @@ export function installTestHooks(): void {
     // patchDoc receives PATCH SOURCE (Playwright cannot serialize function
     // arguments across the boundary) — compiled here, inside the page.
     patchDoc(patchSrc: string): void {
-      // Arbitrary code execution — never expose in packaged builds.
-      if (!import.meta.env.DEV) throw new Error('patchDoc is dev-only');
+      // Arbitrary code execution — same availability gate as the hook set
+      // itself: dev server, or an explicit ?testHooks=1 opt-in on a built app
+      // (§15.2 web-mode testing). Never reachable in a normal packaged launch.
+      if (!import.meta.env.DEV && !new URLSearchParams(window.location.search).has('testHooks')) {
+        throw new Error('patchDoc is dev/test-only');
+      }
       // eslint-disable-next-line no-new-func
       const patch = new Function('d', patchSrc) as (d: unknown) => void;
       A.applyDocPatch((d) => {

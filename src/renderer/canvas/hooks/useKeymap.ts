@@ -41,6 +41,11 @@ export function useKeymap(): void {
         A.setMermaidPanelOpen(!useStore.getState().session.mermaidPanelOpen);
         return;
       }
+      if (mod && e.shiftKey && !e.altKey && e.code === 'KeyE') {
+        e.preventDefault();
+        A.setExportDialogOpen(true);
+        return;
+      }
       if (mod && e.shiftKey && !e.altKey && e.code === 'KeyC') {
         e.preventDefault();
         void A.copyAsMermaid();

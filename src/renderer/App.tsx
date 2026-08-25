@@ -7,11 +7,14 @@ import { Toolbar } from './panels/Toolbar';
 import { ContextPanel } from './panels/ContextPanel';
 import { HelpOverlay } from './panels/HelpOverlay';
 import { MermaidPanel } from './panels/MermaidPanel';
+import { useDocumentLifecycle } from './files/useDocumentLifecycle';
+import { ExportDialog } from './panels/ExportDialog';
 import { useKeymap } from './canvas/hooks/useKeymap';
 import { useEffectiveTheme } from './theme/useEffectiveTheme';
 import { useEffect } from 'react';
 
 function Shell() {
+  useDocumentLifecycle();
   useKeymap();
   const theme = useEffectiveTheme();
 
@@ -25,6 +28,7 @@ function Shell() {
       <Canvas />
       <ContextPanel />
       <MermaidPanel />
+      <ExportDialog />
       <HelpOverlay />
     </div>
   );

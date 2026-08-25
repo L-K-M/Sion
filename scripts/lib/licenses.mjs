@@ -22,6 +22,7 @@ export const ALLOWED = new Set([
   'Unlicense',
   'CC0-1.0',
   'BlueOak-1.0.0',
+  'Zlib',
 ]);
 
 /**

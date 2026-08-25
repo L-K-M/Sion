@@ -8,6 +8,58 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M7 — Files & desktop integration (PLAN.md §17 M7)
+
+Added:
+
+- **Complete IPC surface (§12.2)** — main `ipc.ts` (dialog/file/recovery/
+  recents/prefs/shellx/clip/appx/export handlers; zod-validated inputs;
+  §14.5 path-policy grant set + extension allowlist + 50 MB caps;
+  `THALYX_ALLOW_ANY_PATH` dev loosening) + preload exposing exactly the
+  §12.2 list (contextBridge; `pathForDropped` wraps `webUtils.getPathForFile`
+  and main re-validates; `onMenu`/`onOpenFile`/`onRecoveryScratch` events).
+- **Files (§12.4)** — `files.ts`: atomic writes (tmp+rename), per-session
+  `.bak`, recovery store (`recovery/<docId>.thalyx` + manifest; docId =
+  sha256(path).slice(16), scratch ids via prefs), prefs JSON (zod,
+  normalize-on-load, existence-checked recents).
+- **Menus (§12.3)** — role rule honored (roles only for app/window menus;
+  Edit items are role-less custom items dispatching `menu:action` events the
+  renderer routes by focus); File/View/Help per the plan; macOS
+  `setDocumentEdited` + recents submenu.
+- **Lifecycle wiring** — `useDocumentLifecycle`: 800 ms debounced autosave
+  (path → atomic in-place; untitled → recovery), dirty/title/edited
+  indicators, recovery clearing for saved docs, scratch-doc restore on
+  launch, open-file/open-recent/import-Mermaid handling, menus→store actions.
+- **Export pipeline (§13)** — `renderDocToSvg` (pure; background choice,
+  containers-back, markers per arrowhead/color, Inter font-family, line
+  breaking, island placeholder/embed, label chips; no CSS classes, no
+  foreignObject), PNG (blob→Image→canvas at 1×/2×, font inlining via data:
+  URI for the isolated SVG context), PDF (jsPDF+svg2pdf from the model SVG;
+  Inter TTF registration best-effort), `.mmd` via the M6 exporter,
+  internal clipboard flavor (thalyx JSON + PNG ClipboardItem), browser
+  fallbacks (download anchors/localStorage) for web-mode.
+- **Export dialog** — Mod+Shift+E: SVG/PNG/PDF/MMD, 1×/2×, background
+  choice.
+- **File associations** — electron-builder `fileAssociations` (.thalyx own
+  icon+MIME, .mmd/.mermaid alternate); `open-file`/argv routing.
+- **E2E** — `desktop.spec.ts` Electron suite (menu→store wiring, crash
+  simulation: `destroy()` → relaunch restores the scratch doc via recovery,
+  full `window.thalyx` surface check) + `export-pipeline.spec.ts` web suite
+  (SVG self-containment/XML validity/background modes, PNG dimensions, PDF
+  one-page golden smoke, clipboard flavor). Virtual e2e modules exposed by
+  the preview config.
+
+Changed / deviations from PLAN.md (§19.6–7):
+
+- `jspdf ^4.2.1` / `svg2pdf.js ^2.7.0` added (MIT, §5-listed). Transitive
+  `pako` is `(MIT AND Zlib)` — **Zlib added to the license allowlist**
+  (BSD-style permissive, same class as the listed licenses; CHANGELOG note
+  per §19.3). Ledger regenerated.
+- PNG save in Electron currently uses the download-anchor path (the §12.2
+  text-bridge cannot carry binary save dialogs); native binary save-file IPC
+  is an M8 polish candidate. Clipboard PNG uses `clip.writePng`.
+- Wayland hint, updater wiring, About/licenses dialog: M8 scope per plan.
+
 ### M6 — Mermaid export & round-trip (PLAN.md §17 M6)
 
 Added:

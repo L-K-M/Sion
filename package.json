@@ -36,10 +36,12 @@
     "@xyflow/react": "^12.11.3",
     "dompurify": "^3.4.14",
     "immer": "^11.1.18",
+    "jspdf": "^4.2.1",
     "mermaid": "11.17.0",
     "nanoid": "^6.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "svg2pdf.js": "^2.7.0",
     "zod": "^4.4.3",
     "zustand": "^5.0.15"
   },

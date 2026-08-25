@@ -110,7 +110,45 @@ export function useKeymap(): void {
         }
       }
 
-      // --- Arrow keys: nudge / grow is M4c ----------------------------------
+      // --- Mod+Arrow: grow (§11.6) — gated while a label editor is open so
+      // macOS caret navigation stays intact (§10.1 delta 1)
+      if (
+        mod &&
+        !e.altKey &&
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)
+      ) {
+        const sel = useStore.getState().session;
+        if (sel.editingLabel === null && sel.selection.nodeIds.length === 1) {
+          e.preventDefault();
+          const dir =
+            e.code === 'ArrowUp'
+              ? 'n'
+              : e.code === 'ArrowDown'
+                ? 's'
+                : e.code === 'ArrowRight'
+                  ? 'e'
+                  : 'w';
+          A.growConnectedNode(sel.selection.nodeIds[0]!, dir, {
+            grid: useStore.getState().doc.canvas.grid,
+          });
+          return;
+        }
+        return;
+      }
+
+      // --- Alt+Shift chords for layout (§10.2: Alt chords match on e.code) ---
+      if (e.altKey && e.shiftKey && !mod && e.code === 'KeyT') {
+        e.preventDefault();
+        A.tidyUpSelection();
+        return;
+      }
+      if (e.altKey && e.shiftKey && !mod && e.code === 'KeyL') {
+        e.preventDefault();
+        A.autoLayout();
+        return;
+      }
+
+      // --- Arrow keys: nudge ---
       if (
         e.code === 'ArrowUp' ||
         e.code === 'ArrowDown' ||

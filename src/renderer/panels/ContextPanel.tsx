@@ -349,6 +349,26 @@ export const ContextPanel = memo(function ContextPanel() {
       ) : null}
 
       {nodes.length >= 2 ? (
+        <Row label="Layout">
+          <div className="thalyx-seg-group" role="group" aria-label="Layout actions">
+            <button
+              className="thalyx-seg"
+              title="Tidy Up (Alt+Shift+T)"
+              onClick={() => A.tidyUpSelection()}
+            >
+              Tidy
+            </button>
+            <button
+              className="thalyx-seg"
+              title="Auto-layout (Alt+Shift+L)"
+              onClick={() => A.autoLayout()}
+            >
+              Auto
+            </button>
+          </div>
+        </Row>
+      ) : null}
+      {nodes.length >= 2 ? (
         <Row label="Align">
           <div className={SEGGROUP}>
             {(

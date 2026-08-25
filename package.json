@@ -32,6 +32,7 @@
     "gen:licenses": "node scripts/gen-third-party-licenses.mjs"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
     "@xyflow/react": "^12.11.3",
     "immer": "^11.1.18",
     "nanoid": "^6.0.1",

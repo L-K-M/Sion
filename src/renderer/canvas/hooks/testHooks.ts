@@ -28,6 +28,14 @@ export function installTestHooks(): void {
         return false;
       }
     },
+    selectNode(id: string): void {
+      A.setSelection([id], []);
+    },
+    addNodeToSelection(id: string, reset: boolean): void {
+      const s = useStore.getState().session.selection;
+      const nodes = reset ? [id] : [...new Set([...s.nodeIds, id])];
+      A.setSelection(nodes, []);
+    },
     selectEdge(id: string): void {
       A.setSelection([], [id]);
     },

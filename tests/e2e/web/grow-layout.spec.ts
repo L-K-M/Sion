@@ -72,6 +72,9 @@ async function typeLabel(page: Page, text: string): Promise<void> {
     await page.keyboard.press('Enter'); // Enter-to-edit (single node selected)
   }
   await expect(editor).toBeVisible();
+  // Select-all before typing: even if the editor raced open on a different
+  // node, the typed text REPLACES instead of appending.
+  await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type(text);
   await page.keyboard.press('Enter');
 }
@@ -234,9 +237,17 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   await page.keyboard.press('ControlOrMeta+ArrowRight');
   await typeLabel(page, 'Login form');
 
+  console.log(
+    '[demo] after Start+grow:',
+    JSON.stringify((await docState(page)).nodes.map((n) => n.label)),
+  );
   // diamond below it: Valid?
   await page.keyboard.press('ControlOrMeta+ArrowDown');
   await typeLabel(page, 'Valid?');
+  console.log(
+    '[demo] after Valid?:',
+    JSON.stringify((await docState(page)).nodes.map((n) => n.label)),
+  );
   await patchDoc(
     page,
     "const v = d.nodes.find(function(n){return n.label==='Valid?';}); if (v) v.shape = 'diamond';",
@@ -245,6 +256,10 @@ test('M4 acceptance demo: login flow built with keyboard+mouse', async ({ page }
   // Dashboard (yes)
   await page.keyboard.press('ControlOrMeta+ArrowRight');
   await typeLabel(page, 'Dashboard');
+  console.log(
+    '[demo] after Dashboard:',
+    JSON.stringify((await docState(page)).nodes.map((n) => n.label)),
+  );
   await patchDoc(page, "var e = d.edges[d.edges.length - 1]; if (e) e.label = 'yes';");
 
   // Show error (no), grown downward from Valid?

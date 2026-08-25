@@ -59,7 +59,12 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
   useEffect(() => {
     const el = document.querySelector('.thalyx-canvas-root');
     if (!el) return;
-    const down = () => setPointerDown(true);
+    const down = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      // A potential node DRAG starts on a node — not on overlay buttons
+      // (clicking a chevron must not hide the chevrons mid-click).
+      if (target?.closest?.('.react-flow__node')) setPointerDown(true);
+    };
     const up = () => setPointerDown(false);
     el.addEventListener('pointerdown', down);
     window.addEventListener('pointerup', up);

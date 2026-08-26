@@ -161,29 +161,43 @@ export function reconcileDocument(
     const orig = fallbackDoc.nodes.find((n) => n.id === id);
     return orig ? absolutePosition(fallbackDoc, orig) : { x: 0, y: 0 };
   };
-  for (const n of withParents) {
+  // Order-independent: convert any node whose parent's conversion is
+  // already final; repeat until no progress (handles child-before-parent).
+  const pending = [...withParents];
+  const finalById = new Map<string, ThalyxNode>();
+  let progressed = true;
+  while (pending.length > 0 && progressed) {
+    progressed = false;
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const n = pending[i]!;
+      const parent = n.parentId !== undefined ? finalById.get(n.parentId) : null;
+      const parentPending =
+        n.parentId !== undefined && !parent && withParents.some((p) => p.id === n.parentId);
+      if (parentPending) continue; // parent not converted yet — wait
+      pending.splice(i, 1);
+      progressed = true;
+      convert(n, parent ?? null);
+    }
+  }
+  // anything left (cycles) falls back to top-level absolute
+  for (const n of pending) convert(n, null);
+
+  function convert(n: ThalyxNode, parent: ThalyxNode | null): void {
     const abs = matchedAbsolute.get(n.id);
-    if (!abs) {
-      // NEW node: imported seeds are ABSOLUTE — convert to parent-relative
-      if (n.parentId !== undefined) {
-        const pAbs = absOfConverted(n.parentId, current);
-        nodesFinal2.push({ ...n, x: n.x - pAbs.x, y: n.y - pAbs.y });
-      } else {
-        nodesFinal2.push(n);
-      }
-      continue;
+    if (parent) {
+      // parent is already CONVERTED (top-level frame) — subtract its absolute
+      const pAbs = absoluteOfFinal(nodesFinal2, parent);
+      nodesFinal2.push({
+        ...n,
+        x: abs ? abs.x - pAbs.x : n.x - pAbs.x,
+        y: abs ? abs.y - pAbs.y : n.y - pAbs.y,
+      });
+      finalById.set(n.id, nodesFinal2[nodesFinal2.length - 1]!);
+      return;
     }
-    if (n.parentId === undefined) {
-      nodesFinal2.push({ ...n, x: abs.x, y: abs.y });
-      continue;
-    }
-    const parentExists = withParents.some((p) => p.id === n.parentId);
-    if (!parentExists) {
-      nodesFinal2.push({ ...n, x: abs.x, y: abs.y, parentId: undefined });
-      continue;
-    }
-    const pAbs = absOfConverted(n.parentId, current);
-    nodesFinal2.push({ ...n, x: abs.x - pAbs.x, y: abs.y - pAbs.y });
+    // no (convertible) parent: absolute frame
+    nodesFinal2.push({ ...n, x: abs ? abs.x : n.x, y: abs ? abs.y : n.y, parentId: undefined });
+    finalById.set(n.id, nodesFinal2[nodesFinal2.length - 1]!);
   }
 
   // deletion count: olds with mermaid ids absent from the import
@@ -263,7 +277,7 @@ export function reconcileDocument(
 
   // hand-drawn nodes whose container vanished promote to top level with
   // absolute-position preservation
-  const survivingIds = new Set(nodesFinal2.map((n) => n.id));
+  const survivingIds = new Set([...nodesFinal2, ...unmatchedCurrent].map((n) => n.id));
   const promotedUnmatched = unmatchedCurrent.map((n) => {
     if (n.parentId === undefined || survivingIds.has(n.parentId)) return n;
     const abs = absolutePosition(current, n);

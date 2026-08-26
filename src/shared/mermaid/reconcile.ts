@@ -179,8 +179,13 @@ export function reconcileDocument(
       convert(n, parent ?? null);
     }
   }
-  // anything left (cycles) falls back to top-level absolute
-  for (const n of pending) convert(n, null);
+  // anything left (cycles) falls back to top-level absolute, KEEPING the
+  // parent link when the parent IS in the final set (the link stays valid;
+  // only its frame conversion was unresolvable)
+  for (const n of pending) {
+    const parent = n.parentId !== undefined ? finalById.get(n.parentId) : null;
+    convert(n, parent ?? null);
+  }
 
   function convert(n: ThalyxNode, parent: ThalyxNode | null): void {
     const abs = matchedAbsolute.get(n.id);

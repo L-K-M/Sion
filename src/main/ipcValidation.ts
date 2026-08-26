@@ -8,8 +8,8 @@ export function validateDocId(docId: string): void {
   docIdSchema.parse(docId);
 }
 
-export function validateContentSize(contents: string): void {
-  if (Buffer.byteLength(contents, 'utf8') <= MAX_CONTENT_BYTES) return;
+export function validateContentSize(contents: string, maxBytes: number = MAX_CONTENT_BYTES): void {
+  if (Buffer.byteLength(contents, 'utf8') <= maxBytes) return;
 
   throw new Error('content too large');
 }

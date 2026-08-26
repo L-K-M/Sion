@@ -36,7 +36,7 @@ jobs:
             npx electron-builder --mac --arm64 --x64 --publish always
           else
             echo "::warning::CSC_LINK not set - unsigned macOS build (auto-update inert, PLAN.md 12.6)"
-            CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --arm64 --x64 --publish always
+            npx electron-builder --mac --arm64 --x64 --publish always -c.mac.identity=null
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

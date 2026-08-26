@@ -8,6 +8,16 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-08-26
+
+First tagged release. All M0–M8 milestones landed (see the milestone entries
+below); artifacts on the GitHub release: dmg (arm64 + x64), AppImage, deb,
+rpm, plus the latest-mac.yml / latest-linux.yml auto-update feeds.
+
+- macOS build is **unsigned** (no CSC_LINK secret configured): the dmg
+  installs normally but auto-update is inert on macOS by design (§12.6);
+  AppImage auto-update works unconditionally.
+
 ### M8 — Sync, polish, release (PLAN.md §17 M8)
 
 Added:

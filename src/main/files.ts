@@ -3,7 +3,7 @@
  * and the recovery store. IPC-registered in ipc.ts.
  */
 import { app } from 'electron';
-import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile, stat } from 'node:fs/promises';
+import { copyFile, mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -16,10 +16,16 @@ export function docIdForPath(absPath: string): string {
   return createHash('sha256').update(absPath).digest('hex').slice(0, 16);
 }
 
-/** ATOMIC write: tmp in the same directory, fsync via rename (§12.4). */
+/** ATOMIC write: unique tmp in the same directory, fsync, then rename (§12.4). */
 export async function writeAtomic(path: string, contents: string): Promise<void> {
-  const tmp = `${path}.tmp`;
-  await writeFile(tmp, contents, 'utf8');
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  const fh = await open(tmp, 'w');
+  try {
+    await fh.writeFile(contents, 'utf8');
+    await fh.sync(); // fsync before rename
+  } finally {
+    await fh.close();
+  }
   await rename(tmp, path);
 }
 
@@ -27,9 +33,9 @@ export async function writeAtomic(path: string, contents: string): Promise<void>
 const backedUpThisSession = new Set<string>();
 export async function backupOnce(path: string): Promise<void> {
   if (backedUpThisSession.has(path)) return;
-  backedUpThisSession.add(path);
   if (!existsSync(path)) return;
   await copyFile(path, `${path}.bak`);
+  backedUpThisSession.add(path); // marked only after the copy succeeded
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +49,13 @@ interface ManifestEntry {
 }
 
 const manifestPath = () => join(recoveryDir(), 'manifest.json');
+
+const DOC_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Guard recovery file paths against traversal via crafted docIds. */
+function assertDocId(docId: string): void {
+  if (!DOC_ID_RE.test(docId)) throw new Error('invalid docId');
+}
 
 async function readManifest(): Promise<ManifestEntry[]> {
   try {
@@ -79,10 +92,12 @@ export async function recoveryList(): Promise<ManifestEntry[]> {
 }
 
 export async function recoveryRead(docId: string): Promise<string> {
+  assertDocId(docId);
   return readFile(join(recoveryDir(), `${docId}.thalyx`), 'utf8');
 }
 
 export async function recoveryClear(docId: string): Promise<void> {
+  assertDocId(docId);
   const file = join(recoveryDir(), `${docId}.thalyx`);
   if (existsSync(file)) await rm(file);
   await writeManifest((await readManifest()).filter((e) => e.docId !== docId));

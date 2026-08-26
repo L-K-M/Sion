@@ -151,7 +151,7 @@ export function renderDocToSvg(doc: ThalyxDoc, opts: RenderSvgOptions): string {
       const y0 = abs.y + node.height / 2 - ((lines.length - 1) * lh) / 2;
       lines.forEach((line, i) => {
         parts.push(
-          `<text x="${abs.x + node.width / 2}" y="${y0 + i * lh + node.style.fontSize * 0.35}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${node.style.fontSize}" fill="#1f2328">${esc(line)}</text>`,
+          `<text x="${abs.x + node.width / 2}" y="${y0 + i * lh + node.style.fontSize * 0.35}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${node.style.fontSize}" fill="${opts.background === 'dark' ? '#e9ebee' : '#1f2328'}">${esc(line)}</text>`,
         );
       });
       continue;
@@ -166,7 +166,7 @@ export function renderDocToSvg(doc: ThalyxDoc, opts: RenderSvgOptions): string {
     const y0 = abs.y + node.height / 2 - ((lines.length - 1) * lh) / 2;
     lines.forEach((line, i) => {
       parts.push(
-        `<text x="${abs.x + node.width / 2}" y="${y0 + i * lh + node.style.fontSize * 0.35}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${node.style.fontSize}" fill="#1f2328">${esc(line)}</text>`,
+        `<text x="${abs.x + node.width / 2}" y="${y0 + i * lh + node.style.fontSize * 0.35}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${node.style.fontSize}" fill="${opts.background === 'dark' ? '#e9ebee' : '#1f2328'}">${esc(line)}</text>`,
       );
     });
   }

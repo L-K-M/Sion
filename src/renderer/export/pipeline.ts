@@ -25,7 +25,13 @@ async function inlineInterFont(svg: string): Promise<string> {
     const url = new URL('../theme/fonts/inter-regular.woff2', import.meta.url);
     const res = await fetch(url);
     const buf = await res.arrayBuffer();
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    const b64 = btoa(bin);
     return svg.replace(
       /(<svg[^>]*>)/,
       `$1<defs><style>@font-face{font-family:'Inter';src:url(data:font/woff2;base64,${b64}) format('woff2');}</style></defs>`,
@@ -107,7 +113,11 @@ export async function pdfBlob(
     const url = new URL('../theme/fonts/inter-regular.ttf', import.meta.url);
     const res = await fetch(url);
     const buf = new Uint8Array(await res.arrayBuffer());
-    pdf.addFileToVFS('inter-regular.ttf', btoa(String.fromCharCode(...buf)));
+    let ttf = '';
+    for (let i = 0; i < buf.length; i += 0x8000) {
+      ttf += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    }
+    pdf.addFileToVFS('inter-regular.ttf', btoa(ttf));
     pdf.addFont('inter-regular.ttf', 'Inter', 'normal');
   } catch {
     // fall back to helvetica (documented §13 limitation)

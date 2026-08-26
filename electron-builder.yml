@@ -36,7 +36,9 @@ fileAssociations:
     mimeType: application/vnd.thalyx+json
   - ext: mmd
     name: Mermaid Diagram
-    role: Alternate
+    role: Viewer
+    mimeType: text/vnd.mermaid
   - ext: mermaid
     name: Mermaid Diagram
-    role: Alternate
+    role: Viewer
+    mimeType: text/vnd.mermaid

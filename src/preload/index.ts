@@ -13,8 +13,13 @@ const thalyxApi = {
       ipcRenderer.invoke('dialog:openFile', filters),
     saveFile: (
       defaultName: string,
+      contents: string,
       filters?: Array<{ name: string; extensions: string[] }>,
-    ): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile', defaultName, filters),
+    ): Promise<string | null> => {
+      // contents forwarded: main saves atomically in the SAME call when a
+      // path is chosen (no second grant round-trip)
+      return ipcRenderer.invoke('dialog:saveFile', defaultName, contents, filters);
+    },
   },
   file: {
     read: (path: string): Promise<string> => ipcRenderer.invoke('file:read', path),

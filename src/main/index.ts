@@ -54,7 +54,13 @@ function createWindow(): void {
     if (state.maximized) win.maximize();
   }
 
-  win.on('ready-to-show', () => win.show());
+  win.on('ready-to-show', () => {
+    win.show();
+    while (pendingOpenPaths.length > 0) {
+      const p = pendingOpenPaths.shift()!;
+      sendToRenderer('thalyx:open-file', p);
+    }
+  });
   win.on('close', () => {
     // persist window state (§12.5)
     const bounds = win.isMaximized() ? win.getNormalBounds() : win.getBounds();
@@ -78,10 +84,16 @@ function createWindow(): void {
   }
 }
 
+/** Open-file paths delivered before a window exists (held + flushed). */
+const pendingOpenPaths: string[] = [];
+
 /** Open a file path routed from argv / open-file / second-instance. */
 async function openPath(path: string): Promise<void> {
   grantPath(path);
-  if (mainWindow === null) return; // no window yet — the renderer pulls argv via onOpenFile
+  if (mainWindow === null) {
+    pendingOpenPaths.push(path); // flushed once the window finishes loading
+    return;
+  }
   sendToRenderer('thalyx:open-file', path);
 }
 

@@ -13,7 +13,7 @@ import {
   nativeImage,
 } from 'electron';
 import { readFile, stat } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 import { z } from 'zod';
 import {
   addRecent,
@@ -39,18 +39,21 @@ function grant(path: string): void {
 }
 
 function assertGranted(path: string): void {
-  if (process.env['THALYX_ALLOW_ANY_PATH'] === '1') return; // dev-mode loosening
+  // dev-mode loosening only for unpackaged runs
+  if (!app.isPackaged && process.env['THALYX_ALLOW_ANY_PATH'] === '1') return;
   if (!grantedPaths.has(resolve(path))) {
     throw new Error(`path not granted: ${path}`);
   }
 }
 
 function assertExtension(path: string): void {
-  const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+  const ext = extname(path).toLowerCase();
   if (!ALLOWED_EXTENSIONS.has(ext)) {
     throw new Error(`extension not allowed: ${ext}`);
   }
 }
+
+const docIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/); // charset guard (traversal)
 
 export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   // --- dialog ---------------------------------------------------------------
@@ -74,9 +77,15 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle(
     'dialog:saveFile',
-    async (_e, defaultName: string, filters?: Array<{ name: string; extensions: string[] }>) => {
+    async (
+      _e,
+      defaultName: string,
+      contents: string | undefined,
+      filters?: Array<{ name: string; extensions: string[] }>,
+    ) => {
       const win = getMainWindow();
-      const res = await dialog.showSaveDialog(win!, {
+      if (!win) return null;
+      const res = await dialog.showSaveDialog(win, {
         defaultPath: defaultName,
         filters: filters ?? [
           { name: 'Thalyx document', extensions: ['thalyx'] },
@@ -88,6 +97,9 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
       });
       if (res.canceled || !res.filePath) return null;
       grant(res.filePath);
+      if (typeof contents === 'string') {
+        await writeAtomic(res.filePath, contents);
+      }
       return res.filePath;
     },
   );
@@ -105,7 +117,8 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   ipcMain.handle('file:writeAtomic', async (_e, path: string, contents: string) => {
     assertGranted(path);
     assertExtension(path);
-    if (contents.length > MAX_CONTENT_BYTES) throw new Error('content too large');
+    if (Buffer.byteLength(contents, 'utf8') > MAX_CONTENT_BYTES)
+      throw new Error('content too large');
     await backupOnce(path);
     await writeAtomic(path, contents);
   });
@@ -136,11 +149,11 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   );
   ipcMain.handle('recovery:list', () => recoveryList());
   ipcMain.handle('recovery:read', async (_e, docId: string) => {
-    z.string().min(1).max(64).parse(docId);
+    docIdSchema.parse(docId);
     return recoveryRead(docId);
   });
   ipcMain.handle('recovery:clear', async (_e, docId: string) => {
-    z.string().min(1).max(64).parse(docId);
+    docIdSchema.parse(docId);
     await recoveryClear(docId);
   });
 
@@ -152,7 +165,7 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   ipcMain.handle('recents:add', async (_e, path: string) => {
     const prefs = await addRecent(await readPrefs(), path);
     await writePrefs(prefs);
-    grant(path);
+    if (grantedPaths.has(resolve(path))) grant(path); // only re-grant already-granted paths
   });
   ipcMain.handle('recents:clear', async () => {
     await writePrefs({ ...(await readPrefs()), recents: [] });
@@ -173,6 +186,7 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
 
   // --- shell / clipboard / app -------------------------------------------------
   ipcMain.handle('shellx:openExternal', (_e, url: string) => {
+    z.string().url().max(2048).parse(url); // must parse as a URL at all
     openExternalSafely(url); // scheme-validated (§14.4)
   });
   ipcMain.handle('clip:writePng', (_e, bytes: Uint8Array) => {
@@ -203,7 +217,6 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   (globalThis as Record<string, unknown>).__thalyxDocIdForPath = docIdForPath;
   void shell;
   void webUtils;
-  void basename;
 }
 
 export function sendToRenderer(channel: string, payload: unknown): void {

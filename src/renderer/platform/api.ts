@@ -66,9 +66,8 @@ export const platform = {
       filters?: Array<{ name: string; extensions: string[] }>,
     ): Promise<string | null> {
       if (api()) {
-        const path = await api()!.dialog.saveFile(defaultName, filters);
-        if (path) await api()!.file.writeAtomic(path, contents);
-        return path;
+        // main saves atomically in the same call when a path is chosen
+        return api()!.dialog.saveFile(defaultName, contents, filters);
       }
       const name = window.prompt('Save as', defaultName);
       if (!name) return null;

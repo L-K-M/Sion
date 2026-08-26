@@ -22,6 +22,8 @@ export const ALLOWED = new Set([
   'Unlicense',
   'CC0-1.0',
   'BlueOak-1.0.0',
+  // Zlib allowed for pako (jspdf transitive): BSD-class permissive,
+  // same category as the listed licenses — noted in CHANGELOG per §19.3.
   'Zlib',
 ]);
 

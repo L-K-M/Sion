@@ -1,7 +1,7 @@
 {
   "name": "thalyx",
   "productName": "Thalyx",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "A fast, friendly desktop diagramming tool with Mermaid as a first-class citizen.",
   "license": "Unlicense",

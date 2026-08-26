@@ -127,6 +127,17 @@ test('window.thalyx exposes the full §12.2 surface', async () => {
     return Object.keys(api).sort();
   });
   expect(surface).toEqual(
-    ['appx', 'clip', 'dialog', 'exportx', 'file', 'prefs', 'recents', 'recovery', 'shellx'].sort(),
+    [
+      'appx',
+      'clip',
+      'dialog',
+      'exportx',
+      'file',
+      'prefs',
+      'recents',
+      'recovery',
+      'shellx',
+      'updater',
+    ].sort(),
   );
 });

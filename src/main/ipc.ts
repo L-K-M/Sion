@@ -28,11 +28,16 @@ import {
   writePrefs,
 } from './files';
 import { openExternalSafely } from './security';
+import {
+  MAX_CONTENT_BYTES,
+  validateContentSize,
+  validateDocId,
+  validateRecoveryWrite,
+} from './ipcValidation';
 
 /** §14.5: paths the renderer may touch — granted via dialogs/recents/drops. */
 const grantedPaths = new Set<string>();
 const ALLOWED_EXTENSIONS = new Set(['.thalyx', '.mmd', '.mermaid', '.json']);
-const MAX_CONTENT_BYTES = 50 * 1024 * 1024;
 
 function grant(path: string): void {
   grantedPaths.add(resolve(path));
@@ -52,8 +57,6 @@ function assertExtension(path: string): void {
     throw new Error(`extension not allowed: ${ext}`);
   }
 }
-
-const docIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/); // charset guard (traversal)
 
 export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   // --- dialog ---------------------------------------------------------------
@@ -99,9 +102,7 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
       assertExtension(res.filePath); // validate BEFORE granting
       grant(res.filePath);
       if (typeof contents === 'string') {
-        if (Buffer.byteLength(contents, 'utf8') > MAX_CONTENT_BYTES) {
-          throw new Error('content too large');
-        }
+        validateContentSize(contents);
         await backupOnce(res.filePath);
         await writeAtomic(res.filePath, contents);
       }
@@ -122,8 +123,7 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   ipcMain.handle('file:writeAtomic', async (_e, path: string, contents: string) => {
     assertGranted(path);
     assertExtension(path);
-    if (Buffer.byteLength(contents, 'utf8') > MAX_CONTENT_BYTES)
-      throw new Error('content too large');
+    validateContentSize(contents);
     await backupOnce(path);
     await writeAtomic(path, contents);
   });
@@ -148,17 +148,17 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   ipcMain.handle(
     'recovery:write',
     async (_e, docId: string, contents: string, originalPath: string | null) => {
-      z.string().min(1).max(64).parse(docId);
+      validateRecoveryWrite(docId, contents);
       await recoveryWrite(docId, contents, originalPath);
     },
   );
   ipcMain.handle('recovery:list', () => recoveryList());
   ipcMain.handle('recovery:read', async (_e, docId: string) => {
-    docIdSchema.parse(docId);
+    validateDocId(docId);
     return recoveryRead(docId);
   });
   ipcMain.handle('recovery:clear', async (_e, docId: string) => {
-    docIdSchema.parse(docId);
+    validateDocId(docId);
     await recoveryClear(docId);
   });
 

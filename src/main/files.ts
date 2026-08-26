@@ -23,9 +23,12 @@ export async function writeAtomic(path: string, contents: string): Promise<void>
   try {
     await fh.writeFile(contents, 'utf8');
     await fh.sync(); // fsync before rename
-  } finally {
+  } catch (err) {
     await fh.close();
+    await rm(tmp, { force: true }); // no orphaned tmp on failure
+    throw err;
   }
+  await fh.close();
   await rename(tmp, path);
 }
 

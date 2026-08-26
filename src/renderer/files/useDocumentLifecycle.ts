@@ -13,6 +13,7 @@ import { parseMermaid } from '../mermaid/runtime';
 import { isProbablyMermaid } from '../../shared/mermaid/detect';
 import { newDoc } from '../../shared/model/create';
 import { isCompletedSaveCurrent } from './saveGuard';
+import { SerializedTaskQueue } from './serializedTaskQueue';
 
 function docIdForSession(): string {
   // untitled scratch doc id, persisted across relaunches via prefs
@@ -46,6 +47,7 @@ export function useDocumentLifecycle(): void {
   const dirty = useStore((s) => s.session.dirtySinceSave);
   const filePath = useStore((s) => s.session.filePath);
   const timer = useRef<number | null>(null);
+  const writeQueue = useRef(new SerializedTaskQueue());
   const docRef = useRef(doc);
   const pathRef = useRef(filePath);
   const dirtyRef = useRef(dirty);
@@ -63,13 +65,18 @@ export function useDocumentLifecycle(): void {
       const contents = serializeDoc(docRef.current);
       const targetPath = pathRef.current;
       if (targetPath) {
-        void platform.file.write(targetPath, contents).then(() => {
-          const currentContents = serializeDoc(docRef.current);
-          if (!isCompletedSaveCurrent(contents, targetPath, currentContents, pathRef.current))
-            return;
+        void writeQueue.current
+          .run(() => platform.file.write(targetPath, contents))
+          .then(() => {
+            const currentContents = serializeDoc(docRef.current);
+            if (!isCompletedSaveCurrent(contents, targetPath, currentContents, pathRef.current))
+              return;
 
-          A.markSaved();
-        });
+            A.markSaved();
+          })
+          .catch((error: unknown) => {
+            console.error('[autosave] write failed', { targetPath, error });
+          });
       } else {
         void platform.recovery.write(docIdForSession(), contents, null);
       }

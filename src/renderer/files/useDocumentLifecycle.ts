@@ -78,8 +78,9 @@ export function useDocumentLifecycle(): void {
             console.error('[autosave] write failed', { targetPath, error });
           });
       } else {
+        const docId = docIdForSession();
         void writeQueue.current
-          .run(() => platform.recovery.write(docIdForSession(), contents, null))
+          .run(() => platform.recovery.write(docId, contents, null))
           .catch((error: unknown) => {
             console.error('[autosave] recovery write failed', { error });
           });

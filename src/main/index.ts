@@ -8,6 +8,7 @@ import { applyWebContentsSecurity } from './security';
 import { registerIpc, sendToRenderer, grantPath } from './ipc';
 import { buildMenu } from './menu';
 import { docIdForPath, recoveryList, readPrefs, writePrefs } from './files';
+import { routeMenuAction } from './menuRouting';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -133,7 +134,9 @@ if (!gotLock) {
       (action, arg) => {
         // Edit items route by focus context in the renderer; everything else
         // dispatches the store action directly there.
-        sendToRenderer('thalyx:menu-action', { action, arg });
+        void routeMenuAction(action, arg, openPath, (nextAction, nextArg) => {
+          sendToRenderer('thalyx:menu-action', { action: nextAction, arg: nextArg });
+        });
       },
       prefs.recents,
     );

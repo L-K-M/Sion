@@ -184,7 +184,18 @@ if (!gotLock) {
           console.warn('[updater] check failed:', String(err));
         });
       }, 5000);
-      ipcMain.handle('updater:check', () => autoUpdater.checkForUpdates());
+      autoUpdater.on('error', (err) => {
+        // without a listener, updater errors propagate as unhandled events
+        console.warn('[updater] error:', String(err));
+      });
+      ipcMain.handle('updater:check', async () => {
+        const info = await autoUpdater.checkForUpdates();
+        // serializable subset for the renderer
+        return {
+          version: info?.updateInfo?.version ?? null,
+          files: info?.updateInfo?.files?.length ?? 0,
+        };
+      });
       ipcMain.handle('updater:quitAndInstall', () => autoUpdater.quitAndInstall());
       autoUpdater.on('update-downloaded', () => {
         sendToRenderer('thalyx:update-ready', {});

@@ -23,6 +23,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Fail fast when tag and package.json version diverge
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG != package.json $PKG"; exit 1
+          fi
       - run: npm run build
       - name: Package (electron-builder, publish always)
         run: npx electron-builder --publish always

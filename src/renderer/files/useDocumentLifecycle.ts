@@ -214,9 +214,12 @@ export function useDocumentLifecycle(): void {
     ).thalyx;
     return (
       api?.updater?.onUpdateReady(() => {
-        // simple confirm-style toast; quitAndInstall only on explicit click
+        if (document.querySelector('.thalyx-toast[data-update-toast]')) return; // dedupe
+        // confirm-style toast; quitAndInstall only on explicit click
         const el = document.createElement('div');
         el.className = 'thalyx-toast';
+        el.setAttribute('data-update-toast', '1');
+        el.setAttribute('role', 'status');
         el.innerHTML = '<span>Update ready — restart to install?</span>';
         const btn = document.createElement('button');
         btn.textContent = 'Restart';

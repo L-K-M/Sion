@@ -1197,6 +1197,9 @@ export function ensureMermaidIds(idAssignments: Record<string, string>): void {
  * deleted, all in ONE history entry. Island docs: replaces the source.
  */
 export async function applyMermaidText(text: string): Promise<boolean> {
+  if (text.length > 1_000_000) {
+    throw new Error('mermaid text exceeds the 1 MB limit');
+  }
   const state = getStore();
   const doc = state.doc;
   const { importMermaid } = await import('../../shared/mermaid/import');

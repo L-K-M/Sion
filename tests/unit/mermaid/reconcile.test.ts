@@ -27,18 +27,19 @@ async function importText(text: string) {
 }
 
 describe('reconcileDocument (§9.6)', () => {
-  it('rename: matched node keeps position, label updates', async () => {
+  it('rename: matched node keeps identity (id) and position; label follows the text', async () => {
     const cur = docWithIds();
     const imp = await importText('flowchart TB\n  A[Alpha2] --> B[Beta]');
     const { doc } = reconcileDocument(cur, imp);
     const alpha = doc.nodes.find((n) => n.meta?.mermaid?.id === 'A')!;
+    expect(alpha.id).toBe('nA'); // matched identity survives
     expect(alpha.label).toBe('Alpha2');
     expect(alpha.x).toBe(100);
     expect(alpha.y).toBe(100);
     expect(doc.nodes).toHaveLength(2);
   });
 
-  it('add an edge: matched by endpoints, label carried', async () => {
+  it('add an edge: matched by endpoints; label follows the text (import is authoritative)', async () => {
     const cur = docWithIds();
     const imp = await importText('flowchart TB\n  A --> B\n  B --> A');
     const { doc } = reconcileDocument(cur, imp);
@@ -88,7 +89,10 @@ describe('reconcileDocument (§9.6)', () => {
     cur.nodes.push(newNode({ id: 'hand', label: 'Hand drawn', x: 900, y: 500 }));
     const imp = await importText('flowchart TB\n  A[Alpha2] --> B[Beta]');
     const { doc } = reconcileDocument(cur, imp);
-    expect(doc.nodes.some((n) => n.id === 'hand')).toBe(true);
+    const hand = doc.nodes.find((n) => n.id === 'hand')!;
+    expect(hand).toBeTruthy();
+    expect(hand.x).toBe(900); // truly untouched
+    expect(hand.y).toBe(500);
   });
 
   it('one-way semantic check: reconcile(doc, import(export(doc))) is a fixpoint twice', async () => {
@@ -110,6 +114,13 @@ describe('reconcileDocument (§9.6)', () => {
     const a = doc.nodes.find((n) => n.meta?.mermaid?.id === 'A')!;
     expect(a.x).toBe(100);
     expect(a.label).toBe('Alpha');
+
+    // fixpoint: reconcile(reconcile(...)) with the same text changes nothing
+    const imp2 = await importText(out2.text);
+    const again = reconcileDocument(doc, imp2);
+    const a2 = again.doc.nodes.find((n) => n.meta?.mermaid?.id === 'A')!;
+    expect(a2.x).toBe(a.x);
+    expect(again.doc.nodes.map((n) => n.id).sort()).toEqual(doc.nodes.map((n) => n.id).sort());
   });
 });
 

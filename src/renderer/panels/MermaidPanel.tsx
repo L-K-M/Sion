@@ -47,14 +47,18 @@ export const MermaidPanel = memo(function MermaidPanel() {
   }, [doc, text, singleIsland]);
 
   const applyDraft = async (): Promise<void> => {
-    const ok = await A.applyMermaidText(draft);
-    if (!ok) {
-      setParseError('Could not parse or apply the text');
-      return;
+    try {
+      const ok = await A.applyMermaidText(draft);
+      if (!ok) {
+        setParseError('Could not parse or apply the text');
+        return;
+      }
+      setEditing(false);
+      setDirtyDraft(false);
+      setParseError(null);
+    } catch (err) {
+      setParseError(`Apply failed: ${String((err as Error).message ?? err).slice(0, 160)}`);
     }
-    setEditing(false);
-    setDirtyDraft(false);
-    setParseError(null);
   };
 
   if (!open) return null;

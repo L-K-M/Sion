@@ -7,7 +7,6 @@
  * didn't move.
  */
 import type { ThalyxDoc, ThalyxEdge, ThalyxNode } from '../model/types';
-import { newEdge, newNode } from '../model/create';
 import { absolutePosition, boundsOfNodes } from '../model/queries';
 
 export interface ReconcileResult {
@@ -55,6 +54,7 @@ export function reconcileDocument(
     void newParent;
     keep.push({
       ...imp,
+      id: old.id, // matched nodes keep their identity (edges/selection survive)
       x,
       y, // ABSOLUTE for now — frame conversion runs after placement
       width: old.width,
@@ -62,7 +62,7 @@ export function reconcileDocument(
       style: { ...old.style, ...(imp.style.fill !== 'surface' ? { fill: imp.style.fill } : {}) },
       // waypoints survive only per-edge below
     });
-    matchedAbsolute.set(imp.id, { x, y });
+    matchedAbsolute.set(old.id, { x, y }); // keyed by the SURVIVING id
     moved += 1;
   }
 
@@ -107,7 +107,7 @@ export function reconcileDocument(
     }
   }
   // nudge until not overlapping
-  const nodesFinal = keep.map((n) => {
+  const nodesPlaced = keep.map((n) => {
     const p = newlyPlaced.get(n.id);
     if (!p) return n;
     let guard = 0;
@@ -123,6 +123,10 @@ export function reconcileDocument(
     }
     return { ...n, x, y };
   });
+  // imported id → surviving doc id (matched nodes kept their old ids)
+  const surviveAs = new Map<string, string>();
+  for (const [impId, oldId] of importedIdToOld) surviveAs.set(impId, oldId);
+
   // --- frame conversion: matched nodes move into their FINAL parent frame ---
   const absoluteOfFinal = (docNodes: ThalyxNode[], node: ThalyxNode): { x: number; y: number } => {
     let x = node.x;
@@ -139,12 +143,17 @@ export function reconcileDocument(
     }
     return { x, y };
   };
-  const nodesFinal2 = nodesFinal.map((n) => {
+  // remap parent links to surviving ids, then convert matched coordinates
+  const withParents = nodesPlaced.map((n) => ({
+    ...n,
+    ...(n.parentId !== undefined ? { parentId: surviveAs.get(n.parentId) ?? n.parentId } : {}),
+  }));
+  const nodesFinal2 = withParents.map((n) => {
     const abs = matchedAbsolute.get(n.id);
     if (!abs || n.parentId === undefined) return n;
-    const parent = nodesFinal.find((p) => p.id === n.parentId);
+    const parent = withParents.find((p) => p.id === n.parentId);
     if (!parent) return { ...n, x: abs.x, y: abs.y, parentId: undefined };
-    const pAbs = absoluteOfFinal(nodesFinal, parent);
+    const pAbs = absoluteOfFinal(withParents, parent);
     return { ...n, x: abs.x - pAbs.x, y: abs.y - pAbs.y };
   });
 
@@ -175,10 +184,14 @@ export function reconcileDocument(
     (e) => keptIds.has(e.source) && keptIds.has(e.target),
   );
 
-  for (const imp of imported.edges) {
-    const impSourceOld = reverseLookup(importedIdToOld, imp.source) ?? imp.source;
-    const impTargetOld = reverseLookup(importedIdToOld, imp.target) ?? imp.target;
-    const k = `${impSourceOld}|${impTargetOld}`;
+  for (const rawImp of imported.edges) {
+    // remap endpoints to SURVIVING ids (matched nodes kept their old ids)
+    const imp = {
+      ...rawImp,
+      source: surviveAs.get(rawImp.source) ?? rawImp.source,
+      target: surviveAs.get(rawImp.target) ?? rawImp.target,
+    };
+    const k = `${imp.source}|${imp.target}`;
     const idx = seenOccurrences.get(k) ?? 0;
     seenOccurrences.set(k, idx + 1);
     // find the idx-th current edge with this key
@@ -229,13 +242,3 @@ export function reconcileDocument(
   };
   return { doc, added, removed, moved };
 }
-
-function reverseLookup(map: Map<string, string>, value: string): string | undefined {
-  for (const [k, v] of map) {
-    if (v === value) return k;
-  }
-  return undefined;
-}
-
-void newEdge;
-void newNode;

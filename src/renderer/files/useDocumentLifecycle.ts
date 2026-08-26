@@ -12,6 +12,7 @@ import { resetStore } from '../store/store';
 import { parseMermaid } from '../mermaid/runtime';
 import { isProbablyMermaid } from '../../shared/mermaid/detect';
 import { newDoc } from '../../shared/model/create';
+import { isCompletedSaveCurrent } from './saveGuard';
 
 function docIdForSession(): string {
   // untitled scratch doc id, persisted across relaunches via prefs
@@ -60,8 +61,15 @@ export function useDocumentLifecycle(): void {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       const contents = serializeDoc(docRef.current);
-      if (pathRef.current) {
-        void platform.file.write(pathRef.current, contents).then(() => A.markSaved());
+      const targetPath = pathRef.current;
+      if (targetPath) {
+        void platform.file.write(targetPath, contents).then(() => {
+          const currentContents = serializeDoc(docRef.current);
+          if (!isCompletedSaveCurrent(contents, targetPath, currentContents, pathRef.current))
+            return;
+
+          A.markSaved();
+        });
       } else {
         void platform.recovery.write(docIdForSession(), contents, null);
       }

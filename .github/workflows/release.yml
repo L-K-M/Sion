@@ -32,7 +32,12 @@ jobs:
           fi
       - run: npm run build
       - name: Package (electron-builder, publish always)
-        run: npx electron-builder --publish always
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            npx electron-builder --mac --arm64 --x64 --publish always
+          else
+            npx electron-builder --linux --x64 --publish always
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS signing/notarization only when secrets exist; unsigned mac

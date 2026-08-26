@@ -1084,6 +1084,54 @@ export function updateNodeMermaidSource(id: string, source: string): void {
   });
 }
 
+export async function copySelectionInternal(nodeIds: string[], edgeIds: string[]): Promise<void> {
+  const state = getStore();
+  const include = new Set(nodeIds);
+  const nodes = state.doc.nodes.filter((n) => include.has(n.id));
+  const ids = new Set(nodes.map((n) => n.id));
+  const edges = state.doc.edges.filter(
+    (e) => ids.has(e.source) && ids.has(e.target) && edgeIds.includes(e.id),
+  );
+  const payload = JSON.stringify({ type: 'thalyx/clipboard', version: 1, nodes, edges });
+  try {
+    await navigator.clipboard.writeText(payload);
+  } catch {
+    console.warn('clipboard unavailable');
+  }
+}
+
+export async function pasteFromClipboard(): Promise<void> {
+  let text: string;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    return;
+  }
+  try {
+    const parsed = JSON.parse(text) as {
+      type?: string;
+      nodes?: Parameters<typeof newNodeFactory>[0][] & { id?: string; kind?: string }[];
+      edges?: Parameters<typeof newEdgeFactory>[0][] & { id?: string };
+    };
+    if (parsed.type === 'thalyx/clipboard' && Array.isArray(parsed.nodes)) {
+      const nodes = parsed.nodes.map((n) => ({ ...n, id: newId() })) as never[];
+      pasteInternal(nodes, parsed.edges as never[]);
+      return;
+    }
+  } catch {
+    // not JSON — fall through
+  }
+  // mermaid detection (§9.7) — the paste event path already handles this for
+  // real user pastes; this fallback covers the menu item.
+  const { isProbablyMermaid } = await import('../../shared/mermaid/detect');
+  if (isProbablyMermaid(text)) {
+    const { parseMermaid } = await import('../mermaid/runtime');
+    await importMermaidAsNew(text, parseMermaid);
+  } else if (text.length > 0) {
+    addNode({ kind: 'text', x: 100, y: 100, label: text.slice(0, 4000) });
+  }
+}
+
 export function setMermaidPanelOpen(open: boolean): void {
   setStore((s) => ({ session: { ...s.session, mermaidPanelOpen: open } }));
 }
@@ -1132,6 +1180,10 @@ export function ensureMermaidIds(idAssignments: Record<string, string>): void {
   }));
 }
 
+export function setExportDialogOpen(open: boolean): void {
+  setStore((s) => ({ session: { ...s.session, exportDialogOpen: open } }));
+}
+
 export function setHelpOpen(open: boolean): void {
   setStore((s) => ({ session: { ...s.session, helpOpen: open } }));
 }
@@ -1139,6 +1191,15 @@ export function setHelpOpen(open: boolean): void {
 /** Q toggle (§10.2): quick-connect chevrons visibility. */
 export function toggleChevrons(): void {
   setStore((s) => ({ session: { ...s.session, chevronsEnabled: !s.session.chevronsEnabled } }));
+}
+
+/** Open a file into the session: set path + clean (lifecycle helper). */
+export function setDirtySinceSave(): void {
+  setStore((s) => ({ session: { ...s.session, dirtySinceSave: true } }));
+}
+
+export function openFilePath(path: string | null): void {
+  setStore((s) => ({ session: { ...s.session, filePath: path, dirtySinceSave: false } }));
 }
 
 export function setFilePath(filePath: string | null): void {

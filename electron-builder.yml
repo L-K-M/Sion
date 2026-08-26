@@ -26,3 +26,19 @@ linux:
     - AppImage
     - deb
     - rpm
+
+# File associations (§12.6)
+fileAssociations:
+  - ext: thalyx
+    name: Thalyx Document
+    description: Thalyx diagram document
+    role: Editor
+    mimeType: application/vnd.thalyx+json
+  - ext: mmd
+    name: Mermaid Diagram
+    role: Viewer
+    mimeType: text/vnd.mermaid
+  - ext: mermaid
+    name: Mermaid Diagram
+    role: Viewer
+    mimeType: text/vnd.mermaid

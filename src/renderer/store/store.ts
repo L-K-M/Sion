@@ -30,6 +30,7 @@ export interface SessionState {
   /** Last-used connector style (arrow/line + line style) — new edges inherit it (§10.1 delta 1). */
   lastEdgeStyle: { arrowEnd: 'none' | 'arrow'; line: 'solid' | 'dashed' | 'thick' };
   helpOpen: boolean;
+  exportDialogOpen: boolean;
 }
 
 export interface StoreState {
@@ -55,6 +56,7 @@ export function createInitialState(doc: ThalyxDoc = newDoc()): StoreState {
       chevronsEnabled: true,
       mermaidPanelOpen: false,
       helpOpen: false,
+      exportDialogOpen: false,
       lastEdgeStyle: { arrowEnd: 'arrow', line: 'solid' },
     },
     history: emptyHistory(),

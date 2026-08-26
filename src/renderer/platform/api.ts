@@ -124,8 +124,10 @@ export const platform = {
   prefs: {
     async get<T>(key: string): Promise<T | null> {
       if (api()) return (await api()!.prefs.get(key)) as T | null;
-      const v = browserState.prefs[key] ?? localStorage.getItem(`thalyx:prefs:${key}`);
-      return v === null ? null : (JSON.parse(v as string) as T);
+      const mem = browserState.prefs[key];
+      if (mem !== undefined) return mem as T; // in-memory values are already parsed
+      const raw = localStorage.getItem(`thalyx:prefs:${key}`);
+      return raw === null ? null : (JSON.parse(raw) as T);
     },
     async set(key: string, value: unknown): Promise<void> {
       if (api()) {

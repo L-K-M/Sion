@@ -12,6 +12,8 @@ import { resetStore } from '../store/store';
 import { parseMermaid } from '../mermaid/runtime';
 import { isProbablyMermaid } from '../../shared/mermaid/detect';
 import { newDoc } from '../../shared/model/create';
+import { isCompletedSaveCurrent } from './saveGuard';
+import { SerializedTaskQueue } from './serializedTaskQueue';
 
 function docIdForSession(): string {
   // untitled scratch doc id, persisted across relaunches via prefs
@@ -45,6 +47,7 @@ export function useDocumentLifecycle(): void {
   const dirty = useStore((s) => s.session.dirtySinceSave);
   const filePath = useStore((s) => s.session.filePath);
   const timer = useRef<number | null>(null);
+  const writeQueue = useRef(new SerializedTaskQueue());
   const docRef = useRef(doc);
   const pathRef = useRef(filePath);
   const dirtyRef = useRef(dirty);
@@ -60,10 +63,27 @@ export function useDocumentLifecycle(): void {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       const contents = serializeDoc(docRef.current);
-      if (pathRef.current) {
-        void platform.file.write(pathRef.current, contents).then(() => A.markSaved());
+      const targetPath = pathRef.current;
+      if (targetPath) {
+        void writeQueue.current
+          .run(() => platform.file.write(targetPath, contents))
+          .then(() => {
+            const currentContents = serializeDoc(docRef.current);
+            if (!isCompletedSaveCurrent(contents, targetPath, currentContents, pathRef.current))
+              return;
+
+            A.markSaved();
+          })
+          .catch((error: unknown) => {
+            console.error('[autosave] write failed', { targetPath, error });
+          });
       } else {
-        void platform.recovery.write(docIdForSession(), contents, null);
+        const docId = docIdForSession();
+        void writeQueue.current
+          .run(() => platform.recovery.write(docId, contents, null))
+          .catch((error: unknown) => {
+            console.error('[autosave] recovery write failed', { error });
+          });
       }
     }, 800);
     return () => {

@@ -1200,13 +1200,15 @@ export async function applyMermaidText(text: string): Promise<boolean> {
   if (text.length > 1_000_000) {
     throw new Error('mermaid text exceeds the 1 MB limit');
   }
-  const state = getStore();
-  const doc = state.doc;
   const { importMermaid } = await import('../../shared/mermaid/import');
   const { reconcileDocument } = await import('../../shared/mermaid/reconcile');
   const { parseMermaid } = await import('../mermaid/runtime');
   const result = await importMermaid(text, parseMermaid);
   if (result.kind === 'error') return false;
+
+  // re-read AFTER the async parse — the user may have edited meanwhile
+  const state = getStore();
+  const doc = state.doc;
 
   if (result.kind === 'island') {
     const island = doc.nodes.find((n) => n.kind === 'mermaid');

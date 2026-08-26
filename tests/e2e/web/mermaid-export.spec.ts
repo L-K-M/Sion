@@ -184,9 +184,7 @@ test('M8: edit mode — Apply reconciles with positions preserved, one undo', as
   const editor = page.locator('.thalyx-mermaid-editor');
   await expect(editor).toBeVisible();
   // rename Valid? → Checked?, add an edge, delete 'out'
-  const edited = (await editor.inputValue())
-    .replace('Valid?', 'Checked?')
-    .replace('Log out', 'Log out');
+  const edited = (await editor.inputValue()).replace('Valid?', 'Checked?');
   await editor.fill(edited);
   await page.keyboard.press('ControlOrMeta+Enter');
   await page.waitForTimeout(600);

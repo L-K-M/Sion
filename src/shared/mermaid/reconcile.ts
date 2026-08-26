@@ -148,14 +148,43 @@ export function reconcileDocument(
     ...n,
     ...(n.parentId !== undefined ? { parentId: surviveAs.get(n.parentId) ?? n.parentId } : {}),
   }));
-  const nodesFinal2 = withParents.map((n) => {
+  // Convert in document order so parents are converted before children:
+  // a converted child's coords are parent-relative, so computing a parent's
+  // absolute position AFTER its own conversion uses parent-relative chains.
+  const nodesFinal2: ThalyxNode[] = [];
+  const absOfConverted = (
+    id: string | undefined,
+    fallbackDoc: ThalyxDoc,
+  ): { x: number; y: number } => {
+    const idx = nodesFinal2.findIndex((n) => n.id === id);
+    if (idx !== -1) return absoluteOfFinal(nodesFinal2, nodesFinal2[idx]!);
+    const orig = fallbackDoc.nodes.find((n) => n.id === id);
+    return orig ? absolutePosition(fallbackDoc, orig) : { x: 0, y: 0 };
+  };
+  for (const n of withParents) {
     const abs = matchedAbsolute.get(n.id);
-    if (!abs || n.parentId === undefined) return n;
-    const parent = withParents.find((p) => p.id === n.parentId);
-    if (!parent) return { ...n, x: abs.x, y: abs.y, parentId: undefined };
-    const pAbs = absoluteOfFinal(withParents, parent);
-    return { ...n, x: abs.x - pAbs.x, y: abs.y - pAbs.y };
-  });
+    if (!abs) {
+      // NEW node: imported seeds are ABSOLUTE — convert to parent-relative
+      if (n.parentId !== undefined) {
+        const pAbs = absOfConverted(n.parentId, current);
+        nodesFinal2.push({ ...n, x: n.x - pAbs.x, y: n.y - pAbs.y });
+      } else {
+        nodesFinal2.push(n);
+      }
+      continue;
+    }
+    if (n.parentId === undefined) {
+      nodesFinal2.push({ ...n, x: abs.x, y: abs.y });
+      continue;
+    }
+    const parentExists = withParents.some((p) => p.id === n.parentId);
+    if (!parentExists) {
+      nodesFinal2.push({ ...n, x: abs.x, y: abs.y, parentId: undefined });
+      continue;
+    }
+    const pAbs = absOfConverted(n.parentId, current);
+    nodesFinal2.push({ ...n, x: abs.x - pAbs.x, y: abs.y - pAbs.y });
+  }
 
   // deletion count: olds with mermaid ids absent from the import
   const importedMids = new Set(imported.nodes.map((n) => n.meta?.mermaid?.id ?? n.id));
@@ -212,13 +241,14 @@ export function reconcileDocument(
       const tgtOld = current.nodes.find((n) => n.id === oldEdge.target);
       const srcNew = nodesFinal2.find((n) => n.id === imp.source);
       const tgtNew = nodesFinal2.find((n) => n.id === imp.target);
-      const endpointsMoved =
-        !srcOld || !tgtOld || !srcNew || !tgtNew
-          ? true
-          : absolutePosition(current, srcOld).x !==
-              absolutePosition({ ...current, nodes: nodesFinal2 } as never, srcNew).x ||
-            absolutePosition(current, tgtOld).y !==
-              absolutePosition({ ...current, nodes: nodesFinal2 } as never, tgtNew).y;
+      const endpointsMoved = (() => {
+        const srcA = srcOld ? absolutePosition(current, srcOld) : null;
+        const tgtA = tgtOld ? absolutePosition(current, tgtOld) : null;
+        const srcB = srcNew ? absOfConverted(srcNew.id, current) : null;
+        const tgtB = tgtNew ? absOfConverted(tgtNew.id, current) : null;
+        if (!srcA || !tgtA || !srcB || !tgtB) return true;
+        return srcA.x !== srcB.x || srcA.y !== srcB.y || tgtA.x !== tgtB.x || tgtA.y !== tgtB.y;
+      })();
       edgesFinal.push({
         ...imp,
         id: match.id,
@@ -231,9 +261,18 @@ export function reconcileDocument(
     }
   }
 
+  // hand-drawn nodes whose container vanished promote to top level with
+  // absolute-position preservation
+  const survivingIds = new Set(nodesFinal2.map((n) => n.id));
+  const promotedUnmatched = unmatchedCurrent.map((n) => {
+    if (n.parentId === undefined || survivingIds.has(n.parentId)) return n;
+    const abs = absolutePosition(current, n);
+    return { ...n, parentId: undefined, x: abs.x, y: abs.y };
+  });
+
   const doc: ThalyxDoc = {
     ...current,
-    nodes: [...nodesFinal2, ...unmatchedCurrent],
+    nodes: [...nodesFinal2, ...promotedUnmatched],
     edges: [...edgesFinal, ...unmatchedEdges],
     meta: {
       ...current.meta,

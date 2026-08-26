@@ -1114,8 +1114,19 @@ export async function pasteFromClipboard(): Promise<void> {
       edges?: Parameters<typeof newEdgeFactory>[0][] & { id?: string };
     };
     if (parsed.type === 'thalyx/clipboard' && Array.isArray(parsed.nodes)) {
-      const nodes = parsed.nodes.map((n) => ({ ...n, id: newId() })) as never[];
-      pasteInternal(nodes, parsed.edges as never[]);
+      // fresh node ids + edge endpoint remap (pasteInternal re-ids edges)
+      const idMap = new Map<string, string>();
+      const nodes = parsed.nodes.map((n) => {
+        const fresh = newId();
+        if (typeof n?.id === 'string') idMap.set(n.id as string, fresh);
+        return { ...n, id: fresh };
+      });
+      const edges = (parsed.edges ?? []).map((e) => ({
+        ...e,
+        source: (typeof e.source === 'string' ? idMap.get(e.source) : undefined) ?? e.source,
+        target: (typeof e.target === 'string' ? idMap.get(e.target) : undefined) ?? e.target,
+      }));
+      pasteInternal(nodes as never[], edges as never[]);
       return;
     }
   } catch {
@@ -1180,6 +1191,41 @@ export function ensureMermaidIds(idAssignments: Record<string, string>): void {
   }));
 }
 
+/**
+ * applyMermaidText (§9.6): re-import edited text and RECONCILE into the
+ * current doc — matched nodes keep positions, new ones placed, absent ids
+ * deleted, all in ONE history entry. Island docs: replaces the source.
+ */
+export async function applyMermaidText(text: string): Promise<boolean> {
+  const state = getStore();
+  const doc = state.doc;
+  const { importMermaid } = await import('../../shared/mermaid/import');
+  const { reconcileDocument } = await import('../../shared/mermaid/reconcile');
+  const { parseMermaid } = await import('../mermaid/runtime');
+  const result = await importMermaid(text, parseMermaid);
+  if (result.kind === 'error') return false;
+
+  if (result.kind === 'island') {
+    const island = doc.nodes.find((n) => n.kind === 'mermaid');
+    if (island) {
+      tracked((d) => {
+        const n = d.nodes.find((x) => x.id === island.id);
+        if (n) n.mermaidSource = text.slice(0, 1_000_000);
+      });
+      return true;
+    }
+    return false;
+  }
+
+  const rec = reconcileDocument(doc, result);
+  tracked((d) => {
+    d.nodes = rec.doc.nodes;
+    d.edges = rec.doc.edges;
+    d.meta = rec.doc.meta;
+  });
+  return true;
+}
+
 export function setExportDialogOpen(open: boolean): void {
   setStore((s) => ({ session: { ...s.session, exportDialogOpen: open } }));
 }
@@ -1193,11 +1239,11 @@ export function toggleChevrons(): void {
   setStore((s) => ({ session: { ...s.session, chevronsEnabled: !s.session.chevronsEnabled } }));
 }
 
-/** Open a file into the session: set path + clean (lifecycle helper). */
 export function setDirtySinceSave(): void {
   setStore((s) => ({ session: { ...s.session, dirtySinceSave: true } }));
 }
 
+/** Open a file into the session: set path + clean (lifecycle helper). */
 export function openFilePath(path: string | null): void {
   setStore((s) => ({ session: { ...s.session, filePath: path, dirtySinceSave: false } }));
 }

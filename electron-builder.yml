@@ -42,3 +42,9 @@ fileAssociations:
     name: Mermaid Diagram
     role: Viewer
     mimeType: text/vnd.mermaid
+
+# electron-updater feed (§12.6): GitHub Releases
+publish:
+  provider: github
+  owner: L-K-M
+  repo: Thalyx

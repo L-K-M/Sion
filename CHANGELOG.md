@@ -8,6 +8,48 @@ deviations from the plan here (per PLAN.md §19.6–7).
 
 ## [Unreleased]
 
+### M8 — Sync, polish, release (PLAN.md §17 M8)
+
+Added:
+
+- **reconcileDocument (§9.6)** — position-preserving re-import: matched
+  nodes (by meta.mermaid.id) keep x/y/size/style; labels/shapes/links
+  updated; coordinate frames converted across parentId changes (deferred
+  pass after placement so NEW parents have final positions); new nodes at
+  the barycenter of placed neighbors (+GRID_GAP) or below content, nudged
+  until not overlapping; absent ids deleted with edges; hand-drawn
+  (no mermaid id) nodes + their intra-edges kept untouched; edges matched
+  by (source, target, occurrenceIndex) with waypoints surviving only when
+  endpoints didn't move. 7 unit tests incl. rename/add-edge/delete/
+  parentId-change/unmatched-keep/fixpoint.
+- **applyMermaidText** — one history entry; islands replace their source.
+- **Mermaid panel edit mode (§9.5)** — Edit button / double-click;
+  textarea with Mod+Enter Apply, Esc/Revert; unapplied-changes notice;
+  parse-error surface; the ONE permitted confirm-style interaction
+  (leaving with unapplied changes) is a notice, not a dialog.
+- **Updater (§12.6)** — electron-updater wired: background check 5 s
+  after launch, manual handler, "Restart to update?" toast (never
+  force); GitHub Releases feed (electron-builder publish config);
+  Linux Wayland hint (ELECTRON_OZONE_PLATFORM_HINT=auto).
+- **Release workflow** — .github/workflows/release.yml on v* tags:
+  mac (dmg arm64+x64) + linux (AppImage/deb/rpm) with
+  --publish always (latest-mac.yml/latest-linux.yml for the updater);
+  macOS signing/notarization only when secrets exist (warning otherwise,
+  §12.6).
+- **a11y pass** — focus-visible rings everywhere, prefers-reduced-motion
+  honored, aria labels on icon-only buttons.
+- docs/qa-checklist.md finalized (M6 manual checks section added earlier).
+
+Changed / deviations from PLAN.md (§19.6–7):
+
+- Python-2.0 (PSF) added to the license allowlist for argparse
+  (electron-updater → js-yaml transitive; BSD-class permissive) — §19.3
+  note here and in scripts/lib/licenses.mjs.
+- v0.1.0 tag + release verification happen from main right after this
+  PR merges; auto-update verification from a v0.0.x throwaway build
+  requires the release artifacts to exist (documented in
+  docs/qa-checklist.md as the post-tag step).
+
 ### M7 — Files & desktop integration (PLAN.md §17 M7)
 
 Added:

@@ -1,7 +1,7 @@
 /**
  * Thalyx main process entry (PLAN.md §12.1 lifecycle, §12.3 menus, §12.4 recovery).
  */
-import { app, BrowserWindow, Menu, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, screen } from 'electron';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { applyWebContentsSecurity } from './security';
@@ -120,6 +120,11 @@ if (!gotLock) {
     applyWebContentsSecurity(contents);
   });
 
+  // Wayland/X11 hint (§15.3): let Chromium pick the native backend
+  if (process.platform === 'linux' && !process.env['ELECTRON_OZONE_PLATFORM_HINT']) {
+    process.env['ELECTRON_OZONE_PLATFORM_HINT'] = 'auto';
+  }
+
   app.whenReady().then(async () => {
     registerIpc(() => mainWindow);
 
@@ -166,6 +171,28 @@ if (!gotLock) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+
+    // electron-updater (§12.6): background check 5s after launch; never force.
+    try {
+      const electronUpdater =
+        (await import('electron-updater')) as typeof import('electron-updater');
+      const autoUpdater = electronUpdater.autoUpdater;
+      autoUpdater.autoDownload = true;
+      autoUpdater.autoInstallOnAppQuit = true;
+      setTimeout(() => {
+        autoUpdater.checkForUpdates().catch((err) => {
+          console.warn('[updater] check failed:', String(err));
+        });
+      }, 5000);
+      ipcMain.handle('updater:check', () => autoUpdater.checkForUpdates());
+      ipcMain.handle('updater:quitAndInstall', () => autoUpdater.quitAndInstall());
+      autoUpdater.on('update-downloaded', () => {
+        sendToRenderer('thalyx:update-ready', {});
+      });
+      (globalThis as Record<string, unknown>).__thalyxAutoUpdater = autoUpdater;
+    } catch (err) {
+      console.warn('[updater] unavailable:', String(err));
+    }
   });
 
   app.on('window-all-closed', () => {

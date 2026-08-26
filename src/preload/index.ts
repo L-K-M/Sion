@@ -81,6 +81,15 @@ const thalyxApi = {
       ipcRenderer.invoke('appx:setDocumentEdited', edited),
     setTitle: (title: string): Promise<void> => ipcRenderer.invoke('appx:setTitle', title),
   },
+  updater: {
+    check: (): Promise<unknown> => ipcRenderer.invoke('updater:check'),
+    quitAndInstall: (): Promise<void> => ipcRenderer.invoke('updater:quitAndInstall'),
+    onUpdateReady: (cb: () => void): (() => void) => {
+      const listener = () => cb();
+      ipcRenderer.on('thalyx:update-ready', listener);
+      return () => ipcRenderer.removeListener('thalyx:update-ready', listener);
+    },
+  },
   exportx: {
     print: (): Promise<void> => ipcRenderer.invoke('export:print'),
   },

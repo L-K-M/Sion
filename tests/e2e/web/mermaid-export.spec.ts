@@ -168,3 +168,42 @@ test('M4 demo graph round-trips: export re-imports semantically identical', asyn
   const login = after.nodes.find((n) => n.label === 'Login form');
   expect(login?.parentId).toBe(container?.id);
 });
+
+test('M8: edit mode — Apply reconciles with positions preserved, one undo', async ({ page }) => {
+  await patchDoc(page, DEMO_PATCH);
+  await page.keyboard.press('ControlOrMeta+Shift+m');
+  await expect(page.locator('.thalyx-mermaid-panel')).toBeVisible();
+  await expect(page.locator('.thalyx-mermaid-text')).toContainText('flowchart TB');
+  const before = await page.evaluate(() => {
+    const api = (globalThis as unknown as { __thalyxTest: { getDocJson(): string } }).__thalyxTest;
+    return JSON.parse(api.getDocJson());
+  });
+  const validBefore = before.nodes.find((n: { label: string }) => n.label === 'Valid?');
+
+  await page.locator('.thalyx-mermaid-edit-btn').click();
+  const editor = page.locator('.thalyx-mermaid-editor');
+  await expect(editor).toBeVisible();
+  // rename Valid? → Checked?, add an edge, delete 'out'
+  const edited = (await editor.inputValue()).replace('Valid?', 'Checked?');
+  await editor.fill(edited);
+  await page.keyboard.press('ControlOrMeta+Enter');
+  await page.waitForTimeout(600);
+
+  const after = await page.evaluate(() => {
+    const api = (globalThis as unknown as { __thalyxTest: { getDocJson(): string } }).__thalyxTest;
+    return JSON.parse(api.getDocJson());
+  });
+  expect(after.nodes.some((n: { label: string }) => n.label === 'Checked?')).toBe(true);
+  const validAfter = after.nodes.find((n: { label: string }) => n.label === 'Checked?');
+  // untouched positions preserved
+  expect(validAfter.x).toBe(validBefore.x);
+  expect(validAfter.y).toBe(validBefore.y);
+
+  // one undo reverts
+  await page.keyboard.press('ControlOrMeta+z');
+  const undone = await page.evaluate(() => {
+    const api = (globalThis as unknown as { __thalyxTest: { getDocJson(): string } }).__thalyxTest;
+    return JSON.parse(api.getDocJson());
+  });
+  expect(undone.nodes.some((n: { label: string }) => n.label === 'Valid?')).toBe(true);
+});

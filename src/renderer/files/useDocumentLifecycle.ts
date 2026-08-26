@@ -205,6 +205,38 @@ export function useDocumentLifecycle(): void {
     });
   }, []);
 
+  // --- updater toast (§12.6): 'Restart to update' — never force ----------------------
+  useEffect(() => {
+    const api = (
+      globalThis as unknown as {
+        thalyx?: { updater?: { onUpdateReady(cb: () => void): () => void } };
+      }
+    ).thalyx;
+    return (
+      api?.updater?.onUpdateReady(() => {
+        if (document.querySelector('.thalyx-toast[data-update-toast]')) return; // dedupe
+        // confirm-style toast; quitAndInstall only on explicit click
+        const el = document.createElement('div');
+        el.className = 'thalyx-toast';
+        el.setAttribute('data-update-toast', '1');
+        el.setAttribute('role', 'status');
+        el.innerHTML = '<span>Update ready — restart to install?</span>';
+        const btn = document.createElement('button');
+        btn.textContent = 'Restart';
+        btn.onclick = () => {
+          void (
+            globalThis as unknown as { thalyx: { updater: { quitAndInstall(): Promise<void> } } }
+          ).thalyx.updater.quitAndInstall();
+        };
+        const no = document.createElement('button');
+        no.textContent = 'Later';
+        no.onclick = () => el.remove();
+        el.append(btn, no);
+        document.body.append(el);
+      }) ?? (() => undefined)
+    );
+  }, []);
+
   // --- scratch-doc restore on launch (§12.4) --------------------------------
   useEffect(() => {
     const off = platform.appx.onRecoveryScratch(async ({ contents }) => {

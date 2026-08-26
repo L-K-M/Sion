@@ -14,6 +14,10 @@ export const MermaidPanel = memo(function MermaidPanel() {
   const [text, setText] = useState('');
   const [islandNotice, setIslandNotice] = useState<number | null>(null);
   const timer = useRef<number | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [dirtyDraft, setDirtyDraft] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -41,6 +45,21 @@ export const MermaidPanel = memo(function MermaidPanel() {
     if (singleIsland) return doc.nodes[0]!.mermaidSource ?? '';
     return text;
   }, [doc, text, singleIsland]);
+
+  const applyDraft = async (): Promise<void> => {
+    try {
+      const ok = await A.applyMermaidText(draft);
+      if (!ok) {
+        setParseError('Could not parse or apply the text');
+        return;
+      }
+      setEditing(false);
+      setDirtyDraft(false);
+      setParseError(null);
+    } catch (err) {
+      setParseError(`Apply failed: ${String((err as Error).message ?? err).slice(0, 160)}`);
+    }
+  };
 
   if (!open) return null;
 
@@ -74,9 +93,69 @@ export const MermaidPanel = memo(function MermaidPanel() {
           {islandNotice} mermaid island{islandNotice > 1 ? 's' : ''} not included
         </div>
       ) : null}
-      <pre className="thalyx-mermaid-text" aria-readonly="true">
-        {headline}
-      </pre>
+      {editing ? (
+        <>
+          <textarea
+            className="thalyx-mermaid-editor"
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setDirtyDraft(true);
+            }}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                void applyDraft();
+              } else if (e.key === 'Escape') {
+                setEditing(false);
+                setDirtyDraft(false);
+                setParseError(null);
+              }
+            }}
+            aria-label="Edit Mermaid source"
+          />
+          {parseError ? <div className="thalyx-mermaid-error">{parseError}</div> : null}
+          <div className="thalyx-mermaid-head-actions">
+            <button onClick={() => void applyDraft()}>Apply</button>
+            <button
+              onClick={() => {
+                setEditing(false);
+                setDirtyDraft(false);
+                setParseError(null);
+              }}
+            >
+              Revert
+            </button>
+          </div>
+        </>
+      ) : (
+        <pre
+          className="thalyx-mermaid-text"
+          aria-readonly="true"
+          onDoubleClick={() => {
+            setDraft(headline);
+            setEditing(true);
+          }}
+        >
+          {headline}
+        </pre>
+      )}
+      {dirtyDraft && editing ? (
+        <div className="thalyx-mermaid-notice" role="status">
+          Unapplied changes — Apply (Mod+Enter) or Revert
+        </div>
+      ) : null}
+      {!editing ? (
+        <button
+          className="thalyx-mermaid-edit-btn"
+          onClick={() => {
+            setDraft(headline);
+            setEditing(true);
+          }}
+        >
+          Edit
+        </button>
+      ) : null}
     </aside>
   );
 });

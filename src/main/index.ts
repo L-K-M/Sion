@@ -35,19 +35,18 @@ function createWindow(): void {
     },
   });
 
-  // validate restored position is on-screen (§12.1)
+  // validate restored position is on-screen on BOTH axes (§12.1)
   if (state) {
-    const visible = win.isVisibleOnAllWorkspaces; // cheap check; bounds validated below
-    void visible;
     try {
       const bounds = win.getBounds();
       const nearest = screen.getDisplayMatching(bounds);
-      if (
+      const offX =
         bounds.x + bounds.width < nearest.workArea.x ||
-        bounds.x > nearest.workArea.x + nearest.workArea.width
-      ) {
-        win.center();
-      }
+        bounds.x > nearest.workArea.x + nearest.workArea.width;
+      const offY =
+        bounds.y + bounds.height < nearest.workArea.y ||
+        bounds.y > nearest.workArea.y + nearest.workArea.height;
+      if (offX || offY) win.center();
     } catch {
       win.center();
     }

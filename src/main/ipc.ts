@@ -96,9 +96,9 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
         ],
       });
       if (res.canceled || !res.filePath) return null;
+      assertExtension(res.filePath); // validate BEFORE granting
       grant(res.filePath);
       if (typeof contents === 'string') {
-        assertExtension(res.filePath);
         if (Buffer.byteLength(contents, 'utf8') > MAX_CONTENT_BYTES) {
           throw new Error('content too large');
         }

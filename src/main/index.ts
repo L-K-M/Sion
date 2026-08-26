@@ -135,6 +135,9 @@ if (!gotLock) {
     // Recovery restore (§12.4): silently restore the untitled scratch; for
     // path-associated entries newer than the file, offer via toast.
     const entries = await recoveryList();
+    // delay the broadcast until the renderer's listeners are attached
+    // (preload events registered in effects after first paint)
+    await new Promise((resolve) => setTimeout(resolve, 800));
     for (const entry of entries) {
       if (entry.originalPath === null) {
         try {

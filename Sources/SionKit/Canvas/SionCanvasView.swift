@@ -781,10 +781,11 @@
         x: CGFloat(-content.minX),
         y: CGFloat(-content.minY)
       )
-      NSGraphicsContext.current = NSGraphicsContext(
+      let renderContext = NSGraphicsContext(
         cgContext: bitmapContext.cgContext,
         flipped: true
       )
+      NSGraphicsContext.current = renderContext
 
       rendersOffscreenPreview = true
       defer { rendersOffscreenPreview = false }
@@ -796,7 +797,7 @@
         draw(element)
       }
 
-      bitmapContext.flushGraphics()
+      renderContext.flushGraphics()
       return bitmap.representation(using: .png, properties: [:])
     }
 

@@ -92,7 +92,7 @@
       XCTAssertEqual(controller.elementIDsIntersecting(rect), [element.id])
     }
 
-    func testMarqueeIntersectionExcludesLockedHiddenAndTinyRects() throws {
+    func testMarqueeIntersectionExcludesLockedAndHiddenElements() throws {
       var locked = SceneElement.shape(
         frame: SionRect(x: 0, y: 0, width: 100, height: 60),
         kind: .rectangle
@@ -112,8 +112,9 @@
       let wideRect = SionRect(x: -10, y: -10, width: 1_000, height: 100)
       XCTAssertEqual(controller.elementIDsIntersecting(wideRect), [editable.id])
 
-      let tinyRect = SionRect(x: 0, y: 0, width: 1, height: 1)
-      XCTAssertTrue(controller.elementIDsIntersecting(tinyRect).isEmpty)
+      // Drag thresholds belong to the view; the controller only resolves hits.
+      let tinyRect = SionRect(x: 400, y: 0, width: 1, height: 1)
+      XCTAssertEqual(controller.elementIDsIntersecting(tinyRect), [editable.id])
     }
 
     func testMarqueeIntersectionIncludesConnectorsCrossingTheBand() throws {
@@ -143,6 +144,12 @@
       let band = SionRect(x: 180, y: 10, width: 40, height: 40)
 
       XCTAssertEqual(controller.elementIDsIntersecting(band), [connector.id])
+
+      let reversedBand = SionRect(
+        origin: SionPoint(x: 220, y: 50),
+        size: SionSize(width: -40, height: -40)
+      )
+      XCTAssertEqual(controller.elementIDsIntersecting(reversedBand), [connector.id])
     }
 
     private func makeController(elements: [SceneElement]) throws -> SionEditorController {

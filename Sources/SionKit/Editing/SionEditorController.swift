@@ -190,11 +190,175 @@
     @discardableResult
     func insertSelectionPayload(_ data: Data, at point: SionPoint) throws -> [ElementID] {
       let payload = try SceneSelectionPayload(data: data)
+      return try insertPayload(payload, centeredAt: point, undoName: "Paste")
+    }
+
+    /// Copies the selection one grid pitch aside; a repeat after moving the
+    /// copy re-applies that manual offset (power duplicate).
+    @discardableResult
+    func duplicateSelection() throws -> [ElementID] {
+      guard !selection.isEmpty else { return [] }
+
+      endAnchorEditing()
+      let payload = try SceneSelectionPayload(
+        package: packageForArchiving(),
+        selectedElementIDs: selection
+      )
+      let center = payload.contentBounds.center
+      let delta = duplicateDelta(from: center)
+      let insertedIDs = try insertPayload(
+        payload,
+        centeredAt: center + delta,
+        undoName: "Duplicate"
+      )
+
+      guard !insertedIDs.isEmpty else {
+        lastDuplicate = nil
+        return []
+      }
+
+      lastDuplicate = DuplicateState(
+        ids: Set(insertedIDs),
+        delta: delta,
+        center: center + delta
+      )
+      return insertedIDs
+    }
+
+    func alignSelection(_ edge: SceneAlignmentEdge) throws {
+      let targets = arrangeableSelection()
+      guard targets.count > 1 else { return }
+
+      // Rotated elements align their painted bounds, not their frames.
+      let offsets = SceneArrangement.alignedOffsets(
+        targets.map(\.geometry.rotatedBounds),
+        edge: edge
+      )
+      let commands = zip(targets, offsets).map { element, offset in
+        SceneCommand.translate(elementIDs: [element.id], by: offset)
+      }
+      try perform(name: "Align", commands: commands)
+    }
+
+    func distributeSelection(_ axis: SceneDistributionAxis) throws {
+      let targets = arrangeableSelection()
+      guard targets.count > 2 else { return }
+
+      let offsets = SceneArrangement.distributedOffsets(
+        targets.map(\.geometry.rotatedBounds),
+        axis: axis
+      )
+      let commands = zip(targets, offsets).map { element, offset in
+        SceneCommand.translate(elementIDs: [element.id], by: offset)
+      }
+      try perform(name: "Distribute", commands: commands)
+    }
+
+    /// Reorders the whole selection as one block in the retained z-space.
+    func moveSelectionInZOrder(_ movement: ZOrderMovement) throws {
+      let elements = editor.document.scene.elements
+      let orderedIDs = elements.map(\.id).filter(selection.contains)
+      guard !orderedIDs.isEmpty else { return }
+
+      let retainedCount = elements.count - orderedIDs.count
+      let destination: Int
+      switch movement {
+      case .front:
+        destination = retainedCount
+      case .back:
+        destination = 0
+      case .forward:
+        let topmost = elements.lastIndex { selection.contains($0.id) } ?? elements.endIndex
+        let retainedAbove = elements[...topmost].count { !selection.contains($0.id) }
+        destination = min(retainedAbove + 1, retainedCount)
+      case .backward:
+        let bottommost = elements.firstIndex { selection.contains($0.id) } ?? elements.startIndex
+        let retainedBelow = elements[..<bottommost].count { !selection.contains($0.id) }
+        destination = max(retainedBelow - 1, 0)
+      }
+
+      try perform(
+        name: movement.actionName,
+        command: .reorder(elementIDs: orderedIDs, destinationIndex: destination)
+      )
+    }
+
+    func setSelectionLockState(_ lockState: ElementLockState) throws {
+      guard !selection.isEmpty else { return }
+
+      endAnchorEditing()
+      let commands = selection.map { id in
+        SceneCommand.setLockState(elementID: id, lockState: lockState)
+      }
+      try perform(name: lockState.undoActionName, commands: commands)
+    }
+
+    func hideSelection() throws {
+      let targets = selection
+      let hiddenIDs = editor.document.scene.elements
+        .filter { targets.contains($0.id) && $0.lockState == .editable }
+        .map(\.id)
+      guard !hiddenIDs.isEmpty else { return }
+
+      endAnchorEditing()
+      try perform(
+        name: "Hide",
+        commands: hiddenIDs.map {
+          SceneCommand.setVisibility(elementID: $0, visibility: .hidden)
+        }
+      )
+      selection.subtract(hiddenIDs)
+      notifyObservers()
+    }
+
+    func revealHiddenElements() throws {
+      let hidden = editor.document.scene.elements.filter {
+        $0.visibility == .hidden && $0.lockState == .editable
+      }
+      guard !hidden.isEmpty else { return }
+
+      try perform(
+        name: "Reveal All",
+        commands: hidden.map {
+          SceneCommand.setVisibility(elementID: $0.id, visibility: .visible)
+        }
+      )
+    }
+
+    /// Visible, editable, non-connector selection with group descendants
+    /// dropped when their ancestor is also selected (translate cascades, so
+    /// keeping both would move the descendant twice).
+    private func arrangeableSelection() -> [SceneElement] {
+      let candidates = selectedElements.filter {
+        $0.visibility == .visible && $0.lockState == .editable && $0.content.connector == nil
+      }
+      let candidateIDs = Set(candidates.map(\.id))
+
+      return candidates.filter { element in
+        var ancestor = element.parentID
+        while let current = ancestor {
+          if candidateIDs.contains(current) { return false }
+          ancestor = editor.document.scene.element(withID: current)?.parentID
+        }
+        return true
+      }
+    }
+
+    var arrangeableSelectionCount: Int {
+      arrangeableSelection().count
+    }
+
+    @discardableResult
+    private func insertPayload(
+      _ payload: SceneSelectionPayload,
+      centeredAt point: SionPoint,
+      undoName: String
+    ) throws -> [ElementID] {
       let occupiedIDs = Set(editor.document.scene.elements.map(\.id))
       let insertion = try payload.insertion(centeredAt: point, excluding: occupiedIDs)
       let insertedAssetIDs = try mergeAssets(insertion.assets)
       let transaction = SceneTransaction(
-        name: "Paste",
+        name: undoName,
         command: .insert(elements: insertion.elements, at: nil)
       )
 
@@ -216,6 +380,31 @@
       registerUndo(actionName: transaction.name)
       notifyModelChange(notification: .done)
       return insertedIDs
+    }
+
+    private func duplicateDelta(from center: SionPoint) -> SionVector {
+      if let lastDuplicate, selection == lastDuplicate.ids {
+        let moved = center - lastDuplicate.center
+        // Recomputed bounds drift by floating-point ulp; treat sub-pixel
+        // equality as "not moved" so an untouched copy keeps stepping.
+        let stayedPut =
+          abs(moved.dx) < EditorDefaults.duplicateMoveTolerance
+          && abs(moved.dy) < EditorDefaults.duplicateMoveTolerance
+
+        // A manual move of the last copy becomes the new repeat offset;
+        // without one, the copies keep stepping by the previous delta.
+        if !stayedPut {
+          return moved
+        }
+
+        return lastDuplicate.delta
+      }
+
+      let step = max(
+        EditorDefaults.duplicateStepMinimum,
+        editor.document.scene.canvas.grid.spacing
+      )
+      return SionVector(dx: step, dy: step)
     }
 
     func packageForArchiving() -> SionPackage {
@@ -1350,6 +1539,37 @@
     let elementID: ElementID
     let baselineText: String
     var didMarkDocumentChanged = false
+  }
+
+  private struct DuplicateState {
+    let ids: Set<ElementID>
+    let delta: SionVector
+    let center: SionPoint
+  }
+
+  enum ZOrderMovement {
+    case front
+    case forward
+    case backward
+    case back
+
+    var actionName: String {
+      switch self {
+      case .front: "Bring to Front"
+      case .forward: "Bring Forward"
+      case .backward: "Send Backward"
+      case .back: "Send to Back"
+      }
+    }
+  }
+
+  extension ElementLockState {
+    fileprivate var undoActionName: String {
+      switch self {
+      case .editable: "Unlock"
+      case .locked: "Lock"
+      }
+    }
   }
 
   private enum DocumentChangeNotification {

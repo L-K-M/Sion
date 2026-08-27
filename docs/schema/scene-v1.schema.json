@@ -746,9 +746,10 @@
     },
     "imageContent": {
       "type": "object",
-      "required": ["assetID", "scalingMode", "interpolation"],
+      "required": ["assetID", "displayAssetID", "scalingMode", "interpolation"],
       "properties": {
         "assetID": { "$ref": "#/$defs/assetID" },
+        "displayAssetID": { "$ref": "#/$defs/assetID" },
         "scalingMode": { "enum": ["fit", "fill", "stretch", "tile"] },
         "interpolation": { "enum": ["automatic", "nearestNeighbor", "highQuality"] },
         "accessibilityDescription": { "type": "string" }

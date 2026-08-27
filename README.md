@@ -5,9 +5,9 @@ Native macOS diagramming and digital illustration, paired with
 
 Sion opens directly onto a canvas. Shapes get useful typography, shadows, and
 connection magnets by default. Connection points are directly editable, and
-connectors preview their routed path before placement. Images paste as original
-embedded assets. Inspector, library, and history menus detach into native
-palettes.
+connectors preview their routed path before placement. Image paste keeps the
+original plus a safe display rendition. Inspector, library, and history menus
+detach into native palettes.
 
 `.sion` files are ZIP archives containing the editable scene, original assets,
 standalone SVG, Mermaid, and retained history. The contract is documented in

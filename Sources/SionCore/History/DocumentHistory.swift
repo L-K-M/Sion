@@ -36,6 +36,13 @@ public struct DocumentHistory: Equatable, Sendable {
     self.revisions = Self.thinned(revisions)
   }
 
+  /// Loading preserves every valid retained snapshot; retention belongs to writers.
+  init(preservingValidatedRevisions revisions: [HistoryRevision]) {
+    precondition(revisions.count <= Self.maximumRevisionCount)
+
+    self.revisions = revisions
+  }
+
   public func appending(
     sceneData: Data,
     at date: Date,

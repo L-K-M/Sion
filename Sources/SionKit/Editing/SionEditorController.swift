@@ -55,6 +55,7 @@
     private var assets: [AssetID: SionAsset]
     private var history: DocumentHistory
     private var previewPNG: Data?
+    private var pendingTextEdit: PendingTextEdit?
 
     private let undoManagerProvider: () -> UndoManager?
     private let didChange: (DocumentChange) -> Void
@@ -69,6 +70,7 @@
       assets = package.assets
       history = package.history
       previewPNG = package.previewPNG
+      pendingTextEdit = nil
       self.undoManagerProvider = undoManagerProvider
       self.didChange = didChange
 
@@ -162,6 +164,7 @@
       assets = package.assets
       history = package.history
       previewPNG = package.previewPNG
+      pendingTextEdit = nil
       selection.removeAll()
       undoManagerProvider()?.removeAllActions(withTarget: self)
       notifyObservers()
@@ -317,19 +320,25 @@
 
     @discardableResult
     func insertImage(
-      data: Data,
+      originalData: Data,
       mediaType: String,
       fileExtension: String,
       filename: String?,
       pixelSize: SionSize?,
+      displayPNGData: Data,
+      displayPixelSize: SionSize,
       at point: SionPoint
     ) throws -> ElementID {
-      let asset = try SionAsset(
-        data: data,
+      let originalAsset = try SionAsset(
+        data: originalData,
         mediaType: mediaType,
         fileExtension: fileExtension,
         originalFilename: filename,
         pixelSize: pixelSize
+      )
+      let displayAsset = try SionAsset.safeDisplayPNG(
+        data: displayPNGData,
+        pixelSize: displayPixelSize
       )
       let size = fittedImageSize(pixelSize)
       let frame = SionRect(
@@ -338,15 +347,22 @@
         width: size.width,
         height: size.height
       )
-      let element = SceneElement.image(frame: frame, assetID: asset.id)
+      let element = SceneElement.image(
+        frame: frame,
+        assetID: originalAsset.id,
+        displayAssetID: displayAsset.id
+      )
 
-      assets[asset.id] = asset
+      var incomingAssets = [originalAsset.id: originalAsset]
+      if displayAsset.id != originalAsset.id {
+        incomingAssets[displayAsset.id] = displayAsset
+      }
+      let insertedAssetIDs = try mergeAssets(incomingAssets)
+
       do {
         try perform(name: "Add Image", command: .insert(elements: [element], at: nil))
       } catch {
-        if !SionPackage.referencedAssetIDs(in: editor.document).contains(asset.id) {
-          assets[asset.id] = nil
-        }
+        removeAssets(insertedAssetIDs)
         throw error
       }
 
@@ -383,8 +399,87 @@
       return elements.map(\.id)
     }
 
-    func setText(_ text: String, on id: ElementID) throws {
-      try perform(name: "Edit Text", command: .setText(elementID: id, text: text))
+    func beginTextEdit(on id: ElementID) throws {
+      guard pendingTextEdit == nil else {
+        throw SceneEditingError.gestureAlreadyActive
+      }
+
+      try editor.beginGesture(named: EditorActionName.editText)
+      pendingTextEdit = PendingTextEdit(elementID: id)
+    }
+
+    func updateTextEdit(_ text: String, on id: ElementID) throws {
+      guard var pendingTextEdit, pendingTextEdit.elementID == id else {
+        throw SceneEditingError.noActiveGesture
+      }
+
+      let result = try editor.updateGesture(with: .setText(elementID: id, text: text))
+      guard result == .applied else { return }
+
+      if !pendingTextEdit.didMarkDocumentChanged {
+        pendingTextEdit.didMarkDocumentChanged = true
+        self.pendingTextEdit = pendingTextEdit
+        didChange(.done)
+      }
+
+      notifyModelChange(notification: .skip)
+    }
+
+    func endTextEdit() throws {
+      guard let pendingTextEdit else { return }
+
+      let result = try editor.endGesture()
+      self.pendingTextEdit = nil
+
+      guard result == .applied else {
+        if pendingTextEdit.didMarkDocumentChanged {
+          didChange(.undone)
+        }
+        return
+      }
+
+      if !pendingTextEdit.didMarkDocumentChanged {
+        didChange(.done)
+      }
+      registerUndo(actionName: EditorActionName.editText)
+    }
+
+    func checkpointTextEdit(on id: ElementID) throws {
+      guard let pendingTextEdit, pendingTextEdit.elementID == id else {
+        throw SceneEditingError.noActiveGesture
+      }
+
+      let result = try editor.endGesture()
+      self.pendingTextEdit = nil
+
+      switch result {
+      case .applied:
+        if !pendingTextEdit.didMarkDocumentChanged {
+          didChange(.done)
+        }
+        registerUndo(actionName: EditorActionName.editText)
+      case .noChange:
+        if pendingTextEdit.didMarkDocumentChanged {
+          didChange(.undone)
+        }
+      }
+
+      try editor.beginGesture(named: EditorActionName.editText)
+      self.pendingTextEdit = PendingTextEdit(elementID: id)
+    }
+
+    func cancelTextEdit() {
+      guard let pendingTextEdit else { return }
+
+      let result = try? editor.cancelGesture()
+      self.pendingTextEdit = nil
+
+      if pendingTextEdit.didMarkDocumentChanged {
+        didChange(.undone)
+      }
+      guard result == .applied else { return }
+
+      notifyModelChange(notification: .skip)
     }
 
     func setRoutingStyle(_ style: ConnectorRoutingStyle, on id: ElementID) throws {
@@ -780,6 +875,15 @@
     static let connectorMagnetSnapTolerance = 10.0
     static let elementHitSlop = 2.0
     static let customMagnetIDPrefix = "custom-"
+  }
+
+  private enum EditorActionName {
+    static let editText = "Edit Text"
+  }
+
+  private struct PendingTextEdit {
+    let elementID: ElementID
+    var didMarkDocumentChanged = false
   }
 
   private enum DocumentChangeNotification {

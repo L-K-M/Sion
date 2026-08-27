@@ -25,7 +25,7 @@ drawing.sion
 ├── mimetype                         required, first entry
 ├── manifest.json                    required
 ├── scene.json                       required, authoritative
-├── assets/<sha256>.<extension>      current/history originals
+├── assets/<sha256>.<extension>      originals and safe renditions
 ├── exports/diagram.svg              required, self-contained
 ├── exports/diagram.mmd              required, possibly partial
 ├── previews/preview.png             optional cached preview
@@ -141,7 +141,7 @@ Elements form a tagged union:
 
 - `shape`: frame, rotation, geometry, appearance, text, magnets.
 - `text`: frame, rotation, text, appearance, magnets.
-- `image`: frame, rotation, content-addressed asset ID, fit, appearance,
+- `image`: frame, rotation, original and display asset IDs, fit, appearance,
   magnets.
 - `path`: transform, SVG-compatible path commands, fill rule, appearance,
   magnets.
@@ -159,6 +159,16 @@ name, pixel dimensions when applicable, and hash. Original bytes are preserved;
 Sion never silently re-encodes an imported image.
 Media types MUST be nonempty. Pixel dimensions MUST be finite values above zero
 and at most 1,000,000.
+
+Every image has an `assetID` for its exact imported bytes and a
+`displayAssetID` for an inert PNG rendition. The display asset MUST use the
+`image/png` media type, a `png` extension, valid chunk checksums, and a valid,
+bounded zlib pixel stream with PNG scanline filters.
+The IDs MAY match when the original is already a valid PNG. Editors and exports
+MUST render only the display asset; original PDF, TIFF, SVG, or other bytes are
+never embedded into generated SVG. A display rendition is limited to 8,192
+pixels per dimension and 16,777,216 total pixels; original assets retain the
+broader metadata limit above.
 
 Saving MUST fail if a referenced asset is absent or hash-mismatched. An asset is
 removed only when no current element or retained history snapshot references it.
@@ -196,17 +206,19 @@ their endpoint element instead of being discarded.
 ## Reusable exports
 
 SVG is produced from the immutable scene, not a screenshot. It MUST be
-self-contained: raster assets use data URIs, styles are inline, and scripts,
-events, external URLs, `foreignObject`, and network fonts are forbidden. Fixed
-canvases export their extent. Infinite canvases export content bounds plus 32
-points of padding.
+self-contained: each validated PNG display asset is embedded once as a data URI,
+styles are inline, and scripts, events, external URLs, `foreignObject`, and
+network fonts are forbidden. Fixed canvases export their extent. Infinite
+canvases export content bounds plus 32 points of padding. Writers MUST reject an
+SVG above the single-entry budget before joining its output buffers.
 
 Mermaid is regenerated on save from the scene's graph projection. Stable
 semantic IDs are retained. Illustration-only elements are listed in leading
 comments and set coverage to `partial`; the file never pretends to be lossless.
 
 PNG is an optional cached convenience preview. SVG remains the required
-full-resolution recovery image.
+self-contained recovery rendering; exact imported image bytes remain separate
+assets.
 
 ## History
 

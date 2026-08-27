@@ -15,7 +15,13 @@ final class SceneSelectionPayloadTests: XCTestCase {
       payload.elements.map(\.id),
       [fixture.groupID, fixture.imageID, fixture.textID, fixture.connectorID]
     )
-    XCTAssertEqual(payload.assets, [fixture.asset.id: fixture.asset])
+    XCTAssertEqual(
+      payload.assets,
+      [
+        fixture.asset.id: fixture.asset,
+        fixture.displayAsset.id: fixture.displayAsset,
+      ]
+    )
     XCTAssertEqual(try SceneSelectionPayload(data: payload.dataRepresentation()), payload)
   }
 
@@ -142,11 +148,15 @@ final class SceneSelectionPayloadTests: XCTestCase {
     let connectorID = elementID("20000000-0000-0000-0000-000000000005")
     let externalConnectorID = elementID("20000000-0000-0000-0000-000000000006")
     let asset = try SionAsset(
-      data: Data("image".utf8),
-      mediaType: "image/png",
-      fileExtension: "png",
-      originalFilename: "source.png",
+      data: Data("original PDF".utf8),
+      mediaType: "application/pdf",
+      fileExtension: "pdf",
+      originalFilename: "source.pdf",
       pixelSize: SionSize(width: 100, height: 80)
+    )
+    let displayAsset = try SionAsset.safeDisplayPNG(
+      data: testPNGData(),
+      pixelSize: SionSize(width: 1, height: 1)
     )
     let group = SceneElement.group(
       id: groupID,
@@ -156,6 +166,7 @@ final class SceneSelectionPayloadTests: XCTestCase {
       id: imageID,
       frame: SionRect(x: 50, y: 50, width: 100, height: 80),
       assetID: asset.id,
+      displayAssetID: displayAsset.id,
       parentID: groupID
     )
     let text = SceneElement.text(
@@ -193,11 +204,18 @@ final class SceneSelectionPayloadTests: XCTestCase {
         elements: [group, image, text, external, connector, externalConnector]
       )
     )
-    let package = SionPackage(document: document, assets: [asset.id: asset])
+    let package = SionPackage(
+      document: document,
+      assets: [
+        asset.id: asset,
+        displayAsset.id: displayAsset,
+      ]
+    )
 
     return Fixture(
       package: package,
       asset: asset,
+      displayAsset: displayAsset,
       groupID: groupID,
       imageID: imageID,
       textID: textID,
@@ -257,6 +275,7 @@ final class SceneSelectionPayloadTests: XCTestCase {
 private struct Fixture {
   let package: SionPackage
   let asset: SionAsset
+  let displayAsset: SionAsset
   let groupID: ElementID
   let imageID: ElementID
   let textID: ElementID

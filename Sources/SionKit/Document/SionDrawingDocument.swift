@@ -22,7 +22,7 @@
           package: initialPackage,
           undoManagerProvider: { [weak self] in self?.undoManager },
           didChange: { [weak self] change in
-            self?.updateChangeCount(change.documentChangeType)
+            self?.recordEditorChange(change)
           }
         )
       else {
@@ -40,14 +40,37 @@
 
     public override class var autosavesInPlace: Bool { true }
 
+    public override func updateChangeCount(_ change: NSDocument.ChangeType) {
+      switch change {
+      case .changeDone, .changeUndone, .changeRedone:
+        // The editor records these while an edit is live; ignore AppKit's later duplicate.
+        return
+      default:
+        super.updateChangeCount(change)
+      }
+    }
+
     public override func makeWindowControllers() {
       let controller = SionDocumentWindowController(editorController: editingController)
       addWindowController(controller)
     }
 
+    public override func canClose(
+      withDelegate delegate: Any,
+      shouldClose shouldCloseSelector: Selector?,
+      contextInfo: UnsafeMutableRawPointer?
+    ) {
+      commitPendingWindowEdits()
+      super.canClose(
+        withDelegate: delegate,
+        shouldClose: shouldCloseSelector,
+        contextInfo: contextInfo
+      )
+    }
+
     public override func data(ofType typeName: String) throws -> Data {
       for case let windowController as SionDocumentWindowController in windowControllers {
-        windowController.commitPendingEdits()
+        windowController.checkpointPendingEdits()
       }
 
       let archive = try SionArchive.encode(
@@ -155,6 +178,10 @@
       for case let windowController as SionDocumentWindowController in windowControllers {
         windowController.commitPendingEdits()
       }
+    }
+
+    private func recordEditorChange(_ change: SionEditorController.DocumentChange) {
+      super.updateChangeCount(change.documentChangeType)
     }
 
     private func exportFilename(extension fileExtension: String) -> String {

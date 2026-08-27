@@ -5,6 +5,71 @@ import XCTest
 final class SVGExporterTests: XCTestCase {
   private let pointAccuracy = 1e-12
 
+  func testImageExportNeverEmbedsAnActiveOriginal() throws {
+    let originalData = Data("<svg><script>alert('unsafe')</script></svg>".utf8)
+    let original = try SionAsset(
+      data: originalData,
+      mediaType: "image/svg+xml",
+      fileExtension: "svg"
+    )
+    let display = try SionAsset.safeDisplayPNG(data: testPNGData())
+    let image = SceneElement.image(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+      assetID: original.id,
+      displayAssetID: display.id
+    )
+    let document = SionDocument(scene: SionScene(elements: [image]))
+
+    let svg = try SVGExporter.export(
+      document: document,
+      assets: [original.id: original, display.id: display]
+    )
+
+    XCTAssertTrue(svg.contains("href=\"data:image/png;base64,"))
+    XCTAssertTrue(svg.contains(display.data.base64EncodedString()))
+    XCTAssertFalse(svg.contains(originalData.base64EncodedString()))
+  }
+
+  func testImageExportRejectsSpoofedDisplayPNG() throws {
+    let spoofed = try SionAsset(
+      data: Data("<svg><script>alert('unsafe')</script></svg>".utf8),
+      mediaType: "image/png",
+      fileExtension: "png"
+    )
+    let image = SceneElement.image(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+      assetID: spoofed.id,
+      displayAssetID: spoofed.id
+    )
+    let document = SionDocument(scene: SionScene(elements: [image]))
+
+    XCTAssertThrowsError(
+      try SVGExporter.export(document: document, assets: [spoofed.id: spoofed])
+    ) { error in
+      XCTAssertEqual(error as? SVGExportError, .invalidDisplayAsset(spoofed.id))
+    }
+  }
+
+  func testImageExportEmbedsEachDisplayAssetOnce() throws {
+    let display = try SionAsset.safeDisplayPNG(data: testPNGData())
+    let first = SceneElement.image(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+      assetID: display.id,
+      displayAssetID: display.id
+    )
+    let second = SceneElement.image(
+      frame: SionRect(x: 120, y: 0, width: 100, height: 100),
+      assetID: display.id,
+      displayAssetID: display.id
+    )
+    let document = SionDocument(scene: SionScene(elements: [first, second]))
+
+    let svg = try SVGExporter.export(document: document, assets: [display.id: display])
+    let payload = display.data.base64EncodedString()
+
+    XCTAssertEqual(svg.components(separatedBy: payload).count - 1, 1)
+  }
+
   func testConnectorResolvesVertexMagnetOnDiamondOutline() throws {
     var diamond = SceneElement.shape(
       frame: SionRect(x: 100, y: 200, width: 200, height: 100),

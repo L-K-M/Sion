@@ -175,7 +175,11 @@ final class SionArchiveTests: XCTestCase {
       magnetConfiguration: .preset(.eight),
       style: .imageDefault,
       content: .image(
-        ImageContent(assetID: fixture.asset.id, scalingMode: .tile)
+        ImageContent(
+          assetID: fixture.asset.id,
+          displayAssetID: fixture.asset.id,
+          scalingMode: .tile
+        )
       )
     )
     let extremeShape = SceneElement(
@@ -471,6 +475,41 @@ final class SionArchiveTests: XCTestCase {
     }
   }
 
+  func testInvalidHistoryIndexIDDoesNotSuppressValidSnapshot() throws {
+    let encoded = try encodedFixture()
+    let corruptedIndex = try modifyingJSONEntry(
+      in: encoded.data,
+      path: SionArchiveConstants.historyIndexPath
+    ) { object in
+      var entries = object["entries"] as! [[String: Any]]
+      entries[0]["id"] = "sha256:\(String(repeating: "0", count: 64))"
+      object["entries"] = entries
+    }
+    let entries = try StoredZIPArchive.decode(corruptedIndex)
+    let indexData = try XCTUnwrap(
+      entries.first { $0.path == SionArchiveConstants.historyIndexPath }?.data
+    )
+    let archive = try modifyingJSONEntry(
+      in: corruptedIndex,
+      path: SionArchiveConstants.manifestPath
+    ) { object in
+      var entries = object["entries"] as! [[String: Any]]
+      let index = entries.firstIndex {
+        $0["path"] as? String == SionArchiveConstants.historyIndexPath
+      }!
+      entries[index]["bytes"] = indexData.count
+      entries[index]["sha256"] = SHA256.hexDigest(indexData)
+      object["entries"] = entries
+    }
+
+    let decoded = try SionArchive.decode(archive)
+
+    XCTAssertEqual(
+      decoded.history.revisions.map(\.identifier),
+      encoded.committedHistory.revisions.map(\.identifier)
+    )
+  }
+
   func testHistoryIndexCannotAliasCurrentScene() throws {
     let encoded = try encodedFixture()
     var entries = try StoredZIPArchive.decode(encoded.data).filter { entry in
@@ -602,6 +641,48 @@ final class SionArchiveTests: XCTestCase {
     XCTAssertEqual(decoded.history, encoded.committedHistory)
   }
 
+  func testDecodeDropsHistoryWithConflictingAssetDescriptor() throws {
+    let originalData = Data("shared original".utf8)
+    let currentOriginal = try SionAsset(
+      data: originalData,
+      mediaType: "application/octet-stream",
+      fileExtension: "bin"
+    )
+    let historicalOriginal = try SionAsset(
+      data: originalData,
+      mediaType: "application/pdf",
+      fileExtension: "pdf"
+    )
+    let display = try SionAsset.safeDisplayPNG(data: testPNGData())
+    let image = SceneElement.image(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+      assetID: currentOriginal.id,
+      displayAssetID: display.id
+    )
+    let package = SionPackage(
+      document: SionDocument(scene: SionScene(elements: [image])),
+      assets: [
+        currentOriginal.id: currentOriginal,
+        display.id: display,
+      ]
+    )
+    let encoded = try SionArchive.encode(
+      package: package,
+      intent: .manual,
+      at: Date(timeIntervalSince1970: 1_787_830_522)
+    )
+    let archive = try replacingHistoricalAssetDescriptor(
+      in: encoded.data,
+      assetID: currentOriginal.id,
+      with: historicalOriginal
+    )
+
+    let decoded = try SionArchive.decode(archive)
+
+    XCTAssertEqual(decoded.document, package.document)
+    XCTAssertTrue(decoded.history.revisions.isEmpty)
+  }
+
   func testHistoryDeduplicatesAcrossNonAdjacentSaves() throws {
     let documentA = SionDocument(
       id: documentID("10000000-0000-0000-0000-000000000020"),
@@ -646,6 +727,135 @@ final class SionArchiveTests: XCTestCase {
     XCTAssertEqual(decoded.history, encoded.committedHistory)
   }
 
+  func testDecodePreservesAllValidRetainedHistory() throws {
+    let encoded = try encodedFixture()
+    let archive = try replacingHistory(in: encoded.data, snapshotCount: 20)
+
+    let decoded = try SionArchive.decode(archive)
+
+    XCTAssertEqual(decoded.history.revisions.count, 20)
+  }
+
+  func testDecodeRejectsTooManyHistorySnapshots() throws {
+    let encoded = try encodedFixture()
+    let archive = try replacingHistory(
+      in: encoded.data,
+      snapshotCount: ArchiveTestLimits.maximumHistorySnapshotCount + 1
+    )
+
+    XCTAssertThrowsError(try SionArchive.decode(archive)) { error in
+      XCTAssertEqual(
+        error as? SionArchiveError,
+        .tooManyHistorySnapshots(ArchiveTestLimits.maximumHistorySnapshotCount + 1)
+      )
+    }
+  }
+
+  func testOversizedHistoryIndexIsRebuiltFromSnapshots() throws {
+    let fixture = try makeFixture()
+    let encoded = try SionArchive.encode(
+      package: fixture.package,
+      intent: .autosave,
+      at: Date(timeIntervalSince1970: 1_787_830_522)
+    )
+    let oversizedIndex = try modifyingJSONEntry(
+      in: encoded.data,
+      path: SionArchiveConstants.historyIndexPath
+    ) { object in
+      let entry = (object["entries"] as! [[String: Any]])[0]
+      object["entries"] = Array(
+        repeating: entry,
+        count: ArchiveTestLimits.maximumHistorySnapshotCount + 1
+      )
+    }
+    let entries = try StoredZIPArchive.decode(oversizedIndex)
+    let indexData = try XCTUnwrap(
+      entries.first { $0.path == SionArchiveConstants.historyIndexPath }?.data
+    )
+    let verifiedIndex = try modifyingJSONEntry(
+      in: oversizedIndex,
+      path: SionArchiveConstants.manifestPath
+    ) { object in
+      var manifestEntries = object["entries"] as! [[String: Any]]
+      let index = manifestEntries.firstIndex {
+        $0["path"] as? String == SionArchiveConstants.historyIndexPath
+      }!
+      manifestEntries[index]["bytes"] = indexData.count
+      manifestEntries[index]["sha256"] = SHA256.hexDigest(indexData)
+      object["entries"] = manifestEntries
+    }
+
+    let decoded = try SionArchive.decode(verifiedIndex)
+
+    XCTAssertEqual(decoded.history.revisions.count, 1)
+    XCTAssertEqual(decoded.history.revisions.first?.intent, .manual)
+  }
+
+  func testDecodeRejectsTooManyManifestEntries() throws {
+    let encoded = try encodedFixture()
+    let oversized = try modifyingJSONEntry(
+      in: encoded.data,
+      path: SionArchiveConstants.manifestPath
+    ) { object in
+      var entries = object["entries"] as! [[String: Any]]
+
+      while entries.count <= ArchiveTestLimits.maximumManifestEntryCount {
+        let digest = String(format: "%064x", entries.count)
+        entries.append([
+          "path": "assets/\(digest).bin",
+          "role": "derived",
+          "mediaType": "application/octet-stream",
+          "bytes": 0,
+          "sha256": SHA256.hexDigest(Data()),
+        ])
+      }
+
+      object["entries"] = entries
+    }
+
+    XCTAssertThrowsError(try SionArchive.decode(oversized)) { error in
+      XCTAssertEqual(
+        error as? SionArchiveError,
+        .tooManyManifestEntries(ArchiveTestLimits.maximumManifestEntryCount + 1)
+      )
+    }
+  }
+
+  func testCommittedHistoryContainsOnlyRestorableScenes() throws {
+    let invalidElement = SceneElement.shape(
+      frame: SionRect(x: 0, y: 0, width: -100, height: 50)
+    )
+    let invalidDocument = SionDocument(
+      title: "Invalid history",
+      scene: SionScene(elements: [invalidElement])
+    )
+    let invalidScene = try CanonicalJSON.encode(
+      SceneFile(document: invalidDocument, assets: [])
+    )
+    let invalidRevision = HistoryRevision(
+      identifier: SHA256.hexDigest(invalidScene),
+      savedAt: Date(timeIntervalSince1970: 1_000),
+      intent: .manual,
+      sceneData: invalidScene
+    )
+    let package = SionPackage(
+      document: SionDocument(title: "Current"),
+      history: DocumentHistory(revisions: [invalidRevision])
+    )
+
+    let encoded = try SionArchive.encode(
+      package: package,
+      intent: .manual,
+      at: Date(timeIntervalSince1970: 2_000)
+    )
+    let decoded = try SionArchive.decode(encoded.data)
+
+    XCTAssertEqual(encoded.committedHistory, decoded.history)
+    XCTAssertFalse(
+      encoded.committedHistory.revisions.contains { $0.identifier == invalidRevision.identifier }
+    )
+  }
+
   private func encodedFixture() throws -> EncodedSionArchive {
     let fixture = try makeFixture()
     return try SionArchive.encode(
@@ -657,7 +867,7 @@ final class SionArchiveTests: XCTestCase {
 
   private func makeFixture() throws -> ArchiveFixture {
     let asset = try SionAsset(
-      data: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A]),
+      data: testPNGData(),
       mediaType: "image/png",
       fileExtension: "png",
       originalFilename: "source.png",
@@ -677,7 +887,8 @@ final class SionArchiveTests: XCTestCase {
     let image = SceneElement.image(
       id: elementID("00000000-0000-0000-0000-000000000003"),
       frame: SionRect(x: 40, y: 160, width: 96, height: 72),
-      assetID: asset.id
+      assetID: asset.id,
+      displayAssetID: asset.id
     )
     let path = SceneElement.path(
       id: elementID("00000000-0000-0000-0000-000000000004"),
@@ -747,6 +958,146 @@ final class SionArchiveTests: XCTestCase {
       historyPath,
       SionArchiveConstants.readmePath,
     ]
+  }
+
+  private func replacingHistory(in archive: Data, snapshotCount: Int) throws -> Data {
+    var entries = try StoredZIPArchive.decode(archive).filter {
+      !$0.path.hasPrefix("history/")
+    }
+    let sceneData = try XCTUnwrap(
+      entries.first { $0.path == SionArchiveConstants.scenePath }?.data
+    )
+    var scene = try jsonObject(sceneData)
+    var historyEntries: [ZIPEntry] = []
+    var manifestHistoryEntries: [[String: Any]] = []
+    let start = Date(timeIntervalSince1970: 1_787_830_000)
+
+    for index in 0..<snapshotCount {
+      scene["title"] = "History \(index)"
+      let data = try JSONSerialization.data(withJSONObject: scene, options: [.sortedKeys])
+      let digest = SHA256.hexDigest(data)
+      let savedAt = start.addingTimeInterval(TimeInterval(index))
+      let path = "history/\(historyTimestamp(savedAt))-\(digest.prefix(12)).scene.json"
+
+      historyEntries.append(ZIPEntry(path: path, data: data))
+      manifestHistoryEntries.append([
+        "path": path,
+        "role": "derived",
+        "mediaType": "application/json",
+        "bytes": data.count,
+        "sha256": digest,
+      ])
+    }
+
+    let manifestIndex = try XCTUnwrap(
+      entries.firstIndex { $0.path == SionArchiveConstants.manifestPath }
+    )
+    var manifest = try jsonObject(entries[manifestIndex].data)
+    var manifestEntries = (manifest["entries"] as! [[String: Any]]).filter {
+      !(($0["path"] as? String)?.hasPrefix("history/") ?? false)
+    }
+    manifestEntries.append(contentsOf: manifestHistoryEntries)
+    manifest["entries"] = manifestEntries
+    entries[manifestIndex] = ZIPEntry(
+      path: SionArchiveConstants.manifestPath,
+      data: try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
+    )
+    entries.append(contentsOf: historyEntries)
+
+    return try StoredZIPArchive.encode(entries)
+  }
+
+  private func historyTimestamp(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+    return formatter.string(from: date)
+  }
+
+  private func replacingHistoricalAssetDescriptor(
+    in archive: Data,
+    assetID: AssetID,
+    with replacement: SionAsset
+  ) throws -> Data {
+    var entries = try StoredZIPArchive.decode(archive)
+    let historyIndex = try XCTUnwrap(
+      entries.firstIndex {
+        $0.path.hasPrefix("history/")
+          && $0.path != SionArchiveConstants.historyIndexPath
+      }
+    )
+    let oldHistoryPath = entries[historyIndex].path
+    var historicalScene = try jsonObject(entries[historyIndex].data)
+    var assets = historicalScene["assets"] as! [[String: Any]]
+    let assetIndex = try XCTUnwrap(
+      assets.firstIndex { $0["id"] as? String == assetID.rawValue }
+    )
+    assets[assetIndex]["path"] = replacement.archivePath
+    assets[assetIndex]["mediaType"] = replacement.mediaType
+    assets[assetIndex]["fileExtension"] = replacement.fileExtension
+    historicalScene["assets"] = assets
+
+    let historyData = try JSONSerialization.data(
+      withJSONObject: historicalScene,
+      options: [.sortedKeys]
+    )
+    let historyDigest = SHA256.hexDigest(historyData)
+    let timestamp = oldHistoryPath.dropFirst("history/".count).prefix(16)
+    let historyPath = "history/\(timestamp)-\(historyDigest.prefix(12)).scene.json"
+    entries[historyIndex] = ZIPEntry(path: historyPath, data: historyData)
+
+    let indexPosition = try XCTUnwrap(
+      entries.firstIndex { $0.path == SionArchiveConstants.historyIndexPath }
+    )
+    var index = try jsonObject(entries[indexPosition].data)
+    var indexEntries = index["entries"] as! [[String: Any]]
+    let indexedHistory = try XCTUnwrap(
+      indexEntries.firstIndex { $0["scene"] as? String == oldHistoryPath }
+    )
+    indexEntries[indexedHistory]["id"] = "sha256:\(historyDigest)"
+    indexEntries[indexedHistory]["scene"] = historyPath
+    index["entries"] = indexEntries
+    let indexData = try JSONSerialization.data(withJSONObject: index, options: [.sortedKeys])
+    entries[indexPosition] = ZIPEntry(
+      path: SionArchiveConstants.historyIndexPath,
+      data: indexData
+    )
+
+    let manifestPosition = try XCTUnwrap(
+      entries.firstIndex { $0.path == SionArchiveConstants.manifestPath }
+    )
+    var manifest = try jsonObject(entries[manifestPosition].data)
+    var manifestEntries = manifest["entries"] as! [[String: Any]]
+    let historyManifestIndex = try XCTUnwrap(
+      manifestEntries.firstIndex { $0["path"] as? String == oldHistoryPath }
+    )
+    manifestEntries[historyManifestIndex]["path"] = historyPath
+    manifestEntries[historyManifestIndex]["bytes"] = historyData.count
+    manifestEntries[historyManifestIndex]["sha256"] = historyDigest
+    let indexManifestIndex = try XCTUnwrap(
+      manifestEntries.firstIndex {
+        $0["path"] as? String == SionArchiveConstants.historyIndexPath
+      }
+    )
+    manifestEntries[indexManifestIndex]["bytes"] = indexData.count
+    manifestEntries[indexManifestIndex]["sha256"] = SHA256.hexDigest(indexData)
+    manifestEntries.append([
+      "path": replacement.archivePath,
+      "role": "derived",
+      "mediaType": replacement.mediaType,
+      "bytes": replacement.data.count,
+      "sha256": SHA256.hexDigest(replacement.data),
+    ])
+    manifest["entries"] = manifestEntries
+    entries[manifestPosition] = ZIPEntry(
+      path: SionArchiveConstants.manifestPath,
+      data: try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
+    )
+    entries.append(ZIPEntry(path: replacement.archivePath, data: replacement.data))
+
+    return try StoredZIPArchive.encode(entries)
   }
 
   private func replacingEntry(in archive: Data, path: String, with data: Data) throws -> Data {
@@ -867,4 +1218,9 @@ private struct ArchiveFixture {
 
 private struct DuplicateKeyFixture: Codable {
   let value: Int
+}
+
+private enum ArchiveTestLimits {
+  static let maximumManifestEntryCount = 4_093
+  static let maximumHistorySnapshotCount = 120
 }

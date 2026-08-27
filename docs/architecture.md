@@ -30,7 +30,7 @@ document controller invokes the archive service; it does not parse ZIP records.
 - `SionCore`: Foundation-only values and services. It builds and tests on macOS
   and Linux. No AppKit, Core Graphics, or UI coordinates enter this target.
 - `SionKit`: programmatic AppKit document UI, custom canvas, native text editing,
-  paste/drop, undo, and tear-off palettes.
+  paste, undo, and tear-off palettes.
 - `Sion`: thin application entry point and main menu.
 
 Canonical coordinates are top-left/y-down throughout. The canvas is flipped;
@@ -41,7 +41,9 @@ conversion occurs only at AppKit boundaries.
 One user intent is one command transaction and one undo step. Pointer drags keep
 a preview snapshot, render live, and commit once on mouse-up. Text uses native
 text views and AppKit measurement. Paste precedence is original image files,
-PDF/SVG, bitmap, Mermaid, then plain text.
+PDF/SVG, bitmap, Mermaid, then plain text. Image import keeps the source bytes
+and generates a bounded PNG rendition; canvas rendering reads only the
+rendition.
 
 Connectors reference elements and stable magnets. The router receives immutable
 geometry plus obstacles and returns a resolved path. Rendering never owns graph

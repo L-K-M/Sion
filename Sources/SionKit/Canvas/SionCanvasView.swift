@@ -3,7 +3,7 @@
   import SionCore
 
   @MainActor
-  /// Draws the top-left-origin model directly in AppKit's flipped coordinates.
+  /// Maps the top-left-origin model into AppKit's flipped view coordinates.
   final class SionCanvasView: NSView, NSTextViewDelegate {
     private enum TextEditingDisposition {
       case commit
@@ -28,11 +28,29 @@
     private var drag: Drag?
     private var textEditor: NSScrollView?
     private var editedElementID: ElementID?
+    private var inlineTextUndoManager: UndoManager?
+    private var editingCanvasBounds: SionRect
+    private var canvasExtent: CanvasExtent
 
     init(editorController: SionEditorController) {
       self.editorController = editorController
+      let scene = editorController.document.scene
+      let initialBounds = SceneRenderGeometry.editingCanvasBounds(
+        of: scene,
+        minimumInfiniteSize: CanvasMetrics.minimumInfiniteSize
+      )
+      editingCanvasBounds = initialBounds
+      canvasExtent = scene.canvas.extent
 
-      super.init(frame: NSRect(origin: .zero, size: CanvasMetrics.minimumSize))
+      super.init(
+        frame: NSRect(
+          origin: .zero,
+          size: NSSize(
+            width: initialBounds.width,
+            height: initialBounds.height
+          )
+        )
+      )
 
       wantsLayer = true
       setAccessibilityElement(true)
@@ -40,8 +58,11 @@
       setAccessibilityLabel("Diagram canvas")
       setAccessibilityHelp("Use Tab to select elements and arrow keys to move them")
       observerID = editorController.observeChanges { [weak self] in
-        self?.needsDisplay = true
-        self?.updateAccessibilitySummary()
+        guard let self else { return }
+
+        self.synchronizeCanvasBounds()
+        self.needsDisplay = true
+        self.updateAccessibilitySummary()
       }
       updateAccessibilitySummary()
     }
@@ -60,6 +81,21 @@
       commitTextEditing()
     }
 
+    func checkpointPendingEdits() {
+      guard let textView = textEditor?.documentView as? NSTextView,
+        let id = editedElementID
+      else {
+        return
+      }
+
+      do {
+        try editorController.updateTextEdit(textView.string, on: id)
+        try editorController.checkpointTextEdit(on: id)
+      } catch {
+        NSSound.beep()
+      }
+    }
+
     func discardPendingEdits() {
       finishTextEditing(.discard)
     }
@@ -75,8 +111,13 @@
       super.draw(dirtyRect)
 
       drawCanvas()
+
+      NSGraphicsContext.saveGraphicsState()
+      applyCanvasTransform()
+      drawGrid()
       drawElements()
       drawConnectorPreview()
+      NSGraphicsContext.restoreGraphicsState()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -231,8 +272,15 @@
       commitTextEditing()
 
       guard let element = editorController.document.scene.element(withID: id),
+        element.lockState == .editable,
         let text = element.editableText
       else {
+        return
+      }
+
+      do {
+        try editorController.beginTextEdit(on: id)
+      } catch {
         return
       }
 
@@ -241,7 +289,10 @@
       textView.isRichText = false
       textView.autoresizingMask = [.width, .height]
       configureTextEditor(textView, text: text, element: element, frame: frame)
+
+      inlineTextUndoManager = UndoManager()
       textView.delegate = self
+      textView.allowsUndo = true
       textView.setAccessibilityLabel("Edit element text")
 
       let scrollView = NSScrollView(frame: frame)
@@ -312,6 +363,27 @@
 
     func textDidEndEditing(_ notification: Notification) {
       commitTextEditing()
+    }
+
+    func textDidChange(_ notification: Notification) {
+      guard let textView = notification.object as? NSTextView,
+        textView === textEditor?.documentView,
+        let id = editedElementID
+      else {
+        return
+      }
+
+      do {
+        try editorController.updateTextEdit(textView.string, on: id)
+      } catch {
+        NSSound.beep()
+      }
+    }
+
+    func undoManager(for view: NSTextView) -> UndoManager? {
+      guard view === textEditor?.documentView else { return nil }
+
+      return inlineTextUndoManager
     }
 
     private func beginSelection(at point: SionPoint, event: NSEvent) {
@@ -394,34 +466,57 @@
       }
 
       textView.delegate = nil
+
+      switch disposition {
+      case .commit:
+        do {
+          try editorController.updateTextEdit(textView.string, on: id)
+          try editorController.endTextEdit()
+        } catch {
+          editorController.cancelTextEdit()
+          NSSound.beep()
+        }
+      case .discard:
+        editorController.cancelTextEdit()
+      }
+
       textEditor = nil
       editedElementID = nil
+      inlineTextUndoManager = nil
       scrollView.removeFromSuperview()
-
-      guard disposition == .commit else { return }
-
-      try? editorController.setText(textView.string, on: id)
     }
 
     private func textEditingFrame(for element: SceneElement) -> NSRect {
       guard let connector = element.content.connector,
         let route = editorController.connectorRoute(for: element)
       else {
-        return nsRect(element.geometry.frame)
+        return viewRect(for: element.geometry.frame)
       }
 
       let point = route.point(atFraction: connector.labelPosition)
-      return NSRect(
+      let modelFrame = SionRect(
         x: point.x - (CanvasMetrics.connectorLabelSize.width / 2),
         y: point.y - (CanvasMetrics.connectorLabelSize.height / 2),
         width: CanvasMetrics.connectorLabelSize.width,
         height: CanvasMetrics.connectorLabelSize.height
       )
+      return viewRect(for: modelFrame)
+    }
+
+    private func updateTextEditorFrame() {
+      guard let textEditor,
+        let id = editedElementID,
+        let element = editorController.document.scene.element(withID: id)
+      else {
+        return
+      }
+
+      textEditor.frame = textEditingFrame(for: element).insetBy(dx: -2, dy: -2)
     }
 
     private func copySelection(to pasteboard: NSPasteboard) -> Bool {
       guard let data = try? editorController.selectionPayloadData(),
-        data.count <= CanvasMetrics.maximumPasteboardPayloadBytes
+        data.count <= SionArchiveConstants.maximumEntryByteCount
       else {
         return false
       }
@@ -441,7 +536,7 @@
 
     private func pasteSelection(from pasteboard: NSPasteboard, at point: SionPoint) -> Bool {
       guard let data = pasteboard.data(forType: PasteboardType.selection),
-        data.count <= CanvasMetrics.maximumPasteboardPayloadBytes
+        data.count <= SionArchiveConstants.maximumEntryByteCount
       else {
         return false
       }
@@ -457,14 +552,12 @@
       )?.first as? URL,
         let type = ImagePasteType(fileExtension: fileURL.pathExtension),
         isSupportedAssetSize(fileURL),
-        let data = try? Data(contentsOf: fileURL),
-        let image = NSImage(data: data)
+        let data = try? Data(contentsOf: fileURL)
       {
         return insertPastedImage(
           data: data,
           type: type,
           filename: fileURL.lastPathComponent,
-          image: image,
           at: point
         )
       }
@@ -476,8 +569,7 @@
       ]
       for (pasteboardType, imageType) in preservedTypes {
         guard let data = pasteboard.data(forType: pasteboardType),
-          data.count <= CanvasMetrics.maximumPasteboardPayloadBytes,
-          let image = NSImage(data: data)
+          data.count <= SionArchiveConstants.maximumEntryByteCount
         else {
           continue
         }
@@ -486,31 +578,27 @@
           data: data,
           type: imageType,
           filename: nil,
-          image: image,
           at: point
         )
       }
 
       if let source = pasteboard.string(forType: .string),
         source.contains("<svg"),
-        source.utf8.count <= CanvasMetrics.maximumPasteboardPayloadBytes,
-        let data = source.data(using: .utf8),
-        let image = NSImage(data: data)
+        source.utf8.count <= SionArchiveConstants.maximumEntryByteCount,
+        let data = source.data(using: .utf8)
       {
         return insertPastedImage(
           data: data,
           type: .svg,
           filename: nil,
-          image: image,
           at: point
         )
       }
 
       if let data = pasteboard.data(forType: .png),
-        data.count <= CanvasMetrics.maximumPasteboardPayloadBytes,
-        let image = NSImage(data: data)
+        data.count <= SionArchiveConstants.maximumEntryByteCount
       {
-        return insertPastedImage(data: data, type: .png, filename: nil, image: image, at: point)
+        return insertPastedImage(data: data, type: .png, filename: nil, at: point)
       }
 
       return false
@@ -520,40 +608,36 @@
       data: Data,
       type: ImagePasteType,
       filename: String?,
-      image: NSImage,
       at point: SionPoint
     ) -> Bool {
-      guard data.count <= CanvasMetrics.maximumPasteboardPayloadBytes else { return false }
+      guard data.count <= SionArchiveConstants.maximumEntryByteCount else { return false }
 
-      let pixelSize = pixelSize(of: image)
-      let identifier = try? editorController.insertImage(
-        data: data,
-        mediaType: type.mediaType,
-        fileExtension: type.fileExtension,
-        filename: filename,
-        pixelSize: pixelSize,
-        at: point
-      )
-      return identifier != nil
-    }
+      Task { @MainActor [weak self] in
+        let display = await Task.detached(priority: .userInitiated) {
+          SafeImageRenditionBuilder.make(from: data)
+        }.value
+        guard let self, let display else {
+          NSSound.beep()
+          return
+        }
 
-    private func pixelSize(of image: NSImage) -> SionSize {
-      let representation = image.representations.max { first, second in
-        let firstPixels = Double(first.pixelsWide) * Double(first.pixelsHigh)
-        let secondPixels = Double(second.pixelsWide) * Double(second.pixelsHigh)
-        return firstPixels < secondPixels
+        do {
+          try self.editorController.insertImage(
+            originalData: data,
+            mediaType: type.mediaType,
+            fileExtension: type.fileExtension,
+            filename: filename,
+            pixelSize: display.sourcePixelSize,
+            displayPNGData: display.data,
+            displayPixelSize: display.pixelSize,
+            at: point
+          )
+        } catch {
+          NSSound.beep()
+        }
       }
-      guard let representation,
-        representation.pixelsWide > 0,
-        representation.pixelsHigh > 0
-      else {
-        return SionSize(width: image.size.width, height: image.size.height)
-      }
 
-      return SionSize(
-        width: Double(representation.pixelsWide),
-        height: Double(representation.pixelsHigh)
-      )
+      return true
     }
 
     private func isSupportedAssetSize(_ url: URL) -> Bool {
@@ -563,30 +647,55 @@
         return false
       }
 
-      return fileSize <= CanvasMetrics.maximumPasteboardPayloadBytes
+      return fileSize <= SionArchiveConstants.maximumEntryByteCount
     }
 
     private func drawCanvas() {
       let canvas = editorController.document.scene.canvas
-      nsColor(canvas.background).setFill()
-      bounds.fill()
+      switch canvas.extent {
+      case .infinite:
+        nsColor(canvas.background).setFill()
+        bounds.fill()
+      case .fixed(let size):
+        NSColor.underPageBackgroundColor.setFill()
+        bounds.fill()
 
-      guard canvas.grid.visibility == .visible else { return }
+        let page = viewRect(for: SionRect(origin: .zero, size: size))
+        nsColor(canvas.background).setFill()
+        page.fill()
+        NSColor.separatorColor.setStroke()
+        NSBezierPath(rect: page).stroke()
+      }
+    }
 
-      let spacing = max(CanvasMetrics.minimumGridSpacing, CGFloat(canvas.grid.spacing))
+    private func drawGrid() {
+      let grid = editorController.document.scene.canvas.grid
+
+      guard grid.visibility == .visible else { return }
+
+      let spacing = max(CanvasMetrics.minimumGridSpacing, CGFloat(grid.spacing))
+      let canvasBounds: SionRect
+      switch editorController.document.scene.canvas.extent {
+      case .infinite:
+        canvasBounds = editingCanvasBounds
+      case .fixed(let size):
+        canvasBounds = SionRect(origin: .zero, size: size)
+      }
+      let drawingBounds = nsRect(canvasBounds).intersection(visibleModelRect())
+      guard !drawingBounds.isEmpty else { return }
 
       let path = NSBezierPath()
-      var x = floor(bounds.minX / spacing) * spacing
-      while x <= bounds.maxX {
-        path.move(to: NSPoint(x: x, y: bounds.minY))
-        path.line(to: NSPoint(x: x, y: bounds.maxY))
+      var x = floor(drawingBounds.minX / spacing) * spacing
+      while x <= drawingBounds.maxX {
+        path.move(to: NSPoint(x: x, y: drawingBounds.minY))
+        path.line(to: NSPoint(x: x, y: drawingBounds.maxY))
         x += spacing
       }
 
-      var y = floor(bounds.minY / spacing) * spacing
-      while y <= bounds.maxY {
-        path.move(to: NSPoint(x: bounds.minX, y: y))
-        path.line(to: NSPoint(x: bounds.maxX, y: y))
+      var y = floor(drawingBounds.minY / spacing) * spacing
+      while y <= drawingBounds.maxY {
+        path.move(to: NSPoint(x: drawingBounds.minX, y: y))
+        path.line(to: NSPoint(x: drawingBounds.maxX, y: y))
         y += spacing
       }
 
@@ -723,7 +832,7 @@
     }
 
     private func drawImage(_ content: ImageContent, frame: SionRect) {
-      guard let asset = editorController.asset(for: content.assetID),
+      guard let asset = editorController.asset(for: content.displayAssetID),
         let image = NSImage(data: asset.data)
       else {
         drawMissingImage(in: frame)
@@ -763,40 +872,22 @@
         return
       }
 
-      let tileSize = NSSize(
-        width: max(CanvasMetrics.minimumTileDimension, image.size.width),
-        height: max(CanvasMetrics.minimumTileDimension, image.size.height)
-      )
-
       NSGraphicsContext.saveGraphicsState()
       NSBezierPath(rect: bounds).addClip()
 
-      let drawingBounds = bounds.intersection(visibleRect)
+      let drawingBounds = bounds.intersection(visibleModelRect())
       guard !drawingBounds.isEmpty else {
         NSGraphicsContext.restoreGraphicsState()
         return
       }
 
-      var y =
-        bounds.minY
-        + floor((drawingBounds.minY - bounds.minY) / tileSize.height) * tileSize.height
-      while y < drawingBounds.maxY {
-        var x =
-          bounds.minX
-          + floor((drawingBounds.minX - bounds.minX) / tileSize.width) * tileSize.width
-        while x < drawingBounds.maxX {
-          image.draw(
-            in: NSRect(origin: NSPoint(x: x, y: y), size: tileSize),
-            from: .zero,
-            operation: .sourceOver,
-            fraction: 1,
-            respectFlipped: true,
-            hints: [.interpolation: interpolation(interpolationMode)]
-          )
-          x += tileSize.width
-        }
-        y += tileSize.height
-      }
+      // Quartz repeats the tile as one bounded pattern operation.
+      NSGraphicsContext.current?.imageInterpolation = interpolation(interpolationMode)
+      NSGraphicsContext.current?.cgContext.setPatternPhase(
+        CGSize(width: bounds.minX, height: bounds.minY)
+      )
+      NSColor(patternImage: image).setFill()
+      drawingBounds.fill()
 
       NSGraphicsContext.restoreGraphicsState()
     }
@@ -1191,6 +1282,53 @@
       return path
     }
 
+    /// Infinite canvases grow monotonically so a drag cannot move the viewport under the pointer.
+    private func synchronizeCanvasBounds() {
+      let scene = editorController.document.scene
+      let requiredBounds = SceneRenderGeometry.editingCanvasBounds(
+        of: scene,
+        minimumInfiniteSize: CanvasMetrics.minimumInfiniteSize
+      )
+      let nextBounds: SionRect
+      switch (canvasExtent, scene.canvas.extent) {
+      case (.infinite, .infinite):
+        nextBounds = editingCanvasBounds.union(requiredBounds)
+      default:
+        nextBounds = requiredBounds
+      }
+
+      guard nextBounds != editingCanvasBounds || canvasExtent != scene.canvas.extent else {
+        updateTextEditorFrame()
+        return
+      }
+
+      let preservedCenter = visibleCanvasCenter()
+      editingCanvasBounds = nextBounds
+      canvasExtent = scene.canvas.extent
+      setFrameSize(NSSize(width: nextBounds.width, height: nextBounds.height))
+      updateTextEditorFrame()
+
+      guard let scrollView = enclosingScrollView else { return }
+
+      let visibleSize = scrollView.contentView.bounds.size
+      let viewCenter = viewPoint(for: preservedCenter)
+      let origin = NSPoint(
+        x: max(0, viewCenter.x - (visibleSize.width / 2)),
+        y: max(0, viewCenter.y - (visibleSize.height / 2))
+      )
+      scrollView.contentView.scroll(to: origin)
+      scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    private func applyCanvasTransform() {
+      let transform = NSAffineTransform()
+      transform.translateX(
+        by: -editingCanvasBounds.minX,
+        yBy: -editingCanvasBounds.minY
+      )
+      transform.concat()
+    }
+
     private func applyRotation(of element: SceneElement) {
       guard element.geometry.rotationRadians != 0 else { return }
 
@@ -1220,7 +1358,37 @@
 
     private func visibleCanvasCenter() -> SionPoint {
       let visible = visibleRect
-      return SionPoint(x: visible.midX, y: visible.midY)
+      return modelPoint(from: NSPoint(x: visible.midX, y: visible.midY))
+    }
+
+    func viewPoint(for modelPoint: SionPoint) -> NSPoint {
+      NSPoint(
+        x: modelPoint.x - editingCanvasBounds.minX,
+        y: modelPoint.y - editingCanvasBounds.minY
+      )
+    }
+
+    private func viewRect(for modelRect: SionRect) -> NSRect {
+      let rect = modelRect.standardized
+      let origin = viewPoint(for: SionPoint(x: rect.minX, y: rect.minY))
+      return NSRect(origin: origin, size: NSSize(width: rect.width, height: rect.height))
+    }
+
+    private func modelPoint(from viewPoint: NSPoint) -> SionPoint {
+      SionPoint(
+        x: viewPoint.x + editingCanvasBounds.minX,
+        y: viewPoint.y + editingCanvasBounds.minY
+      )
+    }
+
+    private func visibleModelRect() -> NSRect {
+      let visible = visibleRect
+      return NSRect(
+        x: visible.minX + editingCanvasBounds.minX,
+        y: visible.minY + editingCanvasBounds.minY,
+        width: visible.width,
+        height: visible.height
+      )
     }
 
     private func updateAccessibilitySummary() {
@@ -1232,7 +1400,7 @@
     }
 
     private func modelPoint(from event: NSEvent) -> SionPoint {
-      sionPoint(convert(event.locationInWindow, from: nil))
+      modelPoint(from: convert(event.locationInWindow, from: nil))
     }
 
     private func resizeCorner(at point: SionPoint, frame: SionRect) -> ResizeCorner? {
@@ -1326,11 +1494,10 @@
   }
 
   private enum CanvasMetrics {
-    static let minimumSize = NSSize(width: 4_000, height: 3_000)
+    static let minimumInfiniteSize = SionSize(width: 4_000, height: 3_000)
     static let gridOpacity = 0.18
     static let gridLineWidth = 0.5
     static let minimumGridSpacing: CGFloat = 4
-    static let minimumTileDimension: CGFloat = 1
     static let defaultFontSize: CGFloat = 15
     static let selectionInset = 4.0
     static let selectionLineWidth = 1.5
@@ -1349,7 +1516,6 @@
     static let curveControlFactor: CGFloat = 0.552_284_749_8
     static let textEditClickCount = 2
     static let connectorLabelSize = SionSize(width: 120, height: 36)
-    static let maximumPasteboardPayloadBytes = 256 * 1_024 * 1_024
     static let nudgeDistance = 1.0
     static let largeNudgeDistance = 10.0
   }

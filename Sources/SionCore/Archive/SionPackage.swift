@@ -92,16 +92,27 @@ public struct SionPackage: Equatable, Sendable {
     for id in referenced where assets[id] == nil {
       throw SionPackageError.missingAsset(id)
     }
+
+    for element in document.scene.elements {
+      guard case .image(let image) = element.content,
+        let displayAsset = assets[image.displayAssetID]
+      else {
+        continue
+      }
+
+      guard SafeDisplayImage.validates(displayAsset) else {
+        throw SionPackageError.invalidDisplayAsset(displayAsset.id)
+      }
+    }
   }
 
   public static func referencedAssetIDs(in document: SionDocument) -> Set<AssetID> {
-    Set(
-      document.scene.elements.compactMap { element in
-        guard case .image(let image) = element.content else {
-          return nil
-        }
-        return image.assetID
-      })
+    document.scene.elements.reduce(into: Set<AssetID>()) { result, element in
+      guard case .image(let image) = element.content else { return }
+
+      result.insert(image.assetID)
+      result.insert(image.displayAssetID)
+    }
   }
 }
 
@@ -109,6 +120,7 @@ public enum SionPackageError: Error, Equatable {
   case invalidAssetExtension(String)
   case invalidAssetMediaType(String)
   case invalidAssetPixelSize(SionSize)
+  case invalidDisplayAsset(AssetID)
   case missingAsset(AssetID)
 }
 
@@ -121,6 +133,7 @@ public enum SionArchiveConstants {
   public static let sceneSchemaVersion = 1
   public static let historyVersion = 1
   public static let assetIDPrefix = "sha256:"
+  public static let maximumEntryByteCount = 256 * 1_024 * 1_024
   public static let maximumAssetExtensionLength = 12
   public static let maximumPixelDimension = 1_000_000.0
 

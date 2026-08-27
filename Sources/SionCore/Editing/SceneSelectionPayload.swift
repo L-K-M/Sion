@@ -327,12 +327,12 @@ public struct SceneSelectionPayload: Equatable, Sendable {
   }
 
   private static func referencedAssetIDs(in elements: [SceneElement]) -> Set<AssetID> {
-    Set(
-      elements.compactMap { element in
-        guard case .image(let image) = element.content else { return nil }
+    elements.reduce(into: Set<AssetID>()) { result, element in
+      guard case .image(let image) = element.content else { return }
 
-        return image.assetID
-      })
+      result.insert(image.assetID)
+      result.insert(image.displayAssetID)
+    }
   }
 
   private static func validate(
@@ -351,6 +351,18 @@ public struct SceneSelectionPayload: Equatable, Sendable {
     }
     for id in assets.keys where !referencedAssetIDs.contains(id) {
       throw SceneSelectionPayloadError.unreferencedAsset(id)
+    }
+
+    for element in elements {
+      guard case .image(let image) = element.content,
+        let displayAsset = assets[image.displayAssetID]
+      else {
+        continue
+      }
+
+      guard SafeDisplayImage.validates(displayAsset) else {
+        throw SceneSelectionPayloadError.invalidAsset(displayAsset.id)
+      }
     }
   }
 }

@@ -42,6 +42,8 @@ public enum SionArchiveError: Error, Equatable {
   case missingEntry(String)
   case sceneDescriptorMismatch
   case sceneAssetSetMismatch
+  case tooManyHistorySnapshots(Int)
+  case tooManyManifestEntries(Int)
   case unsupportedFormatVersion(Int)
   case unsupportedHistoryVersion(Int)
   case unsupportedSceneVersion(Int)
@@ -194,9 +196,9 @@ public enum SionArchive {
     )
     let archive = try StoredZIPArchive.encode(entries)
 
-    // Verify the complete artifact before its history becomes editor state.
-    _ = try decode(archive)
-    return EncodedSionArchive(data: archive, committedHistory: history)
+    // Commit only history that the complete artifact can restore.
+    let verifiedPackage = try decode(archive)
+    return EncodedSionArchive(data: archive, committedHistory: verifiedPackage.history)
   }
 
   /// Strictly restores one retained scene using assets already loaded from its package.
@@ -257,7 +259,7 @@ public enum SionArchive {
 
     let (document, currentAssets) = try sceneFile.model(assetData: byPath)
     var assets = currentAssets
-    let history = decodeHistory(
+    let history = try decodeHistory(
       from: byPath,
       verifiedDerivedPaths: verified.derived,
       verifiedAuthoritativePaths: verified.authoritative,
@@ -303,6 +305,11 @@ public enum SionArchive {
     _ history: DocumentHistory,
     assets: [AssetID: SionAsset]
   ) -> DocumentHistory {
+    var assetData = [String: Data]()
+    for asset in assets.values {
+      assetData[asset.archivePath] = asset.data
+    }
+
     var revisions: [HistoryRevision] = []
     var seenIdentifiers = Set<String>()
     for revision in history.revisions {
@@ -315,6 +322,13 @@ public enum SionArchive {
       guard scene.assetsAreAvailable(in: assets) else {
         continue
       }
+
+      do {
+        _ = try scene.model(assetData: assetData)
+      } catch {
+        continue
+      }
+
       guard seenIdentifiers.insert(revision.identifier).inserted else {
         continue
       }
@@ -397,6 +411,9 @@ public enum SionArchive {
     }
     guard manifest.formatVersion == SionArchiveConstants.formatVersion else {
       throw SionArchiveError.unsupportedFormatVersion(manifest.formatVersion)
+    }
+    guard manifest.entries.count <= ArchiveLimits.maximumManifestEntryCount else {
+      throw SionArchiveError.tooManyManifestEntries(manifest.entries.count)
     }
   }
 
@@ -510,15 +527,20 @@ public enum SionArchive {
     verifiedDerivedPaths: Set<String>,
     verifiedAuthoritativePaths: Set<String>,
     assets: inout [AssetID: SionAsset]
-  ) -> DocumentHistory {
+  ) throws -> DocumentHistory {
+    let snapshotCount = archive.keys.lazy.filter { historyFilename($0) != nil }.count
+    guard snapshotCount <= DocumentHistory.maximumRevisionCount else {
+      throw SionArchiveError.tooManyHistorySnapshots(snapshotCount)
+    }
+
     var candidates: [HistoryCandidate] = []
-    var indexedPaths = Set<String>()
 
     if verifiedDerivedPaths.contains(SionArchiveConstants.historyIndexPath),
       let data = archive[SionArchiveConstants.historyIndexPath],
       let index = try? CanonicalJSON.decodeStrict(HistoryIndex.self, from: data),
       index.format == SionArchiveConstants.historyFormatIdentifier,
-      index.version == SionArchiveConstants.historyVersion
+      index.version == SionArchiveConstants.historyVersion,
+      index.entries.count <= DocumentHistory.maximumRevisionCount
     {
       for entry in index.entries {
         guard verifiedDerivedPaths.contains(entry.scene),
@@ -536,12 +558,11 @@ public enum SionArchive {
             intent: entry.reason
           )
         )
-        indexedPaths.insert(entry.scene)
       }
     }
 
     // The index is derived. Valid snapshots remain recoverable without it.
-    for path in verifiedDerivedPaths.sorted() where !indexedPaths.contains(path) {
+    for path in verifiedDerivedPaths.sorted() {
       guard let filename = historyFilename(path) else {
         continue
       }
@@ -560,14 +581,21 @@ public enum SionArchive {
       if lhs.savedAt != rhs.savedAt {
         return lhs.savedAt > rhs.savedAt
       }
-      return lhs.path < rhs.path
+      if lhs.path != rhs.path {
+        return lhs.path < rhs.path
+      }
+
+      // Prefer index metadata, then retry the snapshot directly if it is corrupt.
+      return lhs.identifier != nil && rhs.identifier == nil
     }
 
     var revisions: [HistoryRevision] = []
     var seenIdentifiers = Set<String>()
+    var acceptedPaths = Set<String>()
     let verifiedAssetPaths = verifiedAuthoritativePaths.union(verifiedDerivedPaths)
     for candidate in candidates {
-      guard revisions.count < DocumentHistory.maximumRevisionCount,
+      guard !acceptedPaths.contains(candidate.path),
+        revisions.count < DocumentHistory.maximumRevisionCount,
         let sceneData = archive[candidate.path],
         let filename = historyFilename(candidate.path)
       else {
@@ -590,7 +618,6 @@ public enum SionArchive {
 
       guard expectedIdentifier == identifier,
         identifier.hasPrefix(filename.hashPrefix),
-        seenIdentifiers.insert(identifier).inserted,
         let scene = try? CanonicalJSON.decodeStrict(SceneFile.self, from: sceneData),
         scene.assetPaths.isSubset(of: verifiedAssetPaths),
         let decoded = try? scene.model(assetData: archive)
@@ -598,9 +625,21 @@ public enum SionArchive {
         continue
       }
 
+      let hasConflictingAsset = decoded.1.contains { id, historicalAsset in
+        guard let loadedAsset = assets[id] else { return false }
+
+        return loadedAsset != historicalAsset
+      }
+      guard !hasConflictingAsset,
+        seenIdentifiers.insert(identifier).inserted
+      else {
+        continue
+      }
+
       for (id, asset) in decoded.1 where assets[id] == nil {
         assets[id] = asset
       }
+      acceptedPaths.insert(candidate.path)
       revisions.append(
         HistoryRevision(
           identifier: identifier,
@@ -611,7 +650,7 @@ public enum SionArchive {
       )
     }
 
-    return DocumentHistory(revisions: revisions)
+    return DocumentHistory(preservingValidatedRevisions: revisions)
   }
 
   private static func historyFilename(_ path: String) -> HistoryFilename? {
@@ -756,4 +795,9 @@ private struct HistoryCandidate {
 private struct HistoryFilename {
   let savedAt: Date
   let hashPrefix: String
+}
+
+private enum ArchiveLimits {
+  /// ZIP reserves three entries outside the manifest list.
+  static let maximumManifestEntryCount = 4_093
 }

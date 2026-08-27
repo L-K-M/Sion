@@ -37,7 +37,7 @@ public enum StoredZIPArchive {
   private static let zipVersion: UInt16 = 20
   private static let fixedDOSDate: UInt16 = 0x0021
   private static let maximumEntryCount = 4_096
-  private static let maximumEntrySize = 256 * 1_024 * 1_024
+  private static let maximumEntrySize = SionArchiveConstants.maximumEntryByteCount
   private static let maximumExpandedSize = 1_024 * 1_024 * 1_024
 
   public static func encode(_ entries: [ZIPEntry]) throws -> Data {

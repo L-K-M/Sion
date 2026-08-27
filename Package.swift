@@ -24,6 +24,10 @@ var targets: [Target] = [
   targets += [
     .target(name: "SionKit", dependencies: ["SionCore"]),
     .executableTarget(name: "Sion", dependencies: ["SionKit"]),
+    .testTarget(
+      name: "SionKitTests",
+      dependencies: ["SionKit", "SionCore"]
+    ),
   ]
 #endif
 

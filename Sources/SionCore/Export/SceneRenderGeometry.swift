@@ -64,6 +64,38 @@ public enum SceneRenderGeometry {
       return SionRect(origin: .zero, size: size)
     }
 
+    let content =
+      visibleElementBounds(of: scene)
+      ?? SionRect(
+        x: 0,
+        y: 0,
+        width: minimumCanvasDimension,
+        height: minimumCanvasDimension
+      )
+    return content.expanded(by: exportPadding)
+  }
+
+  /// Keeps off-page fixed content reachable without changing fixed export bounds.
+  public static func editingCanvasBounds(
+    of scene: SionScene,
+    minimumInfiniteSize: SionSize
+  ) -> SionRect {
+    if case .fixed(let size) = scene.canvas.extent {
+      let page = SionRect(origin: .zero, size: size)
+      guard let content = visibleElementBounds(of: scene) else { return page }
+
+      return page.union(content.expanded(by: exportPadding))
+    }
+
+    let minimumBounds = SionRect(origin: .zero, size: minimumInfiniteSize)
+    guard scene.elements.contains(where: { $0.visibility == .visible }) else {
+      return minimumBounds
+    }
+
+    return minimumBounds.union(contentBounds(of: scene))
+  }
+
+  private static func visibleElementBounds(of scene: SionScene) -> SionRect? {
     var bounds: SionRect?
 
     for element in scene.elements where element.visibility == .visible {
@@ -82,15 +114,7 @@ public enum SceneRenderGeometry {
       bounds = bounds.map { $0.union(elementBounds) } ?? elementBounds
     }
 
-    let content =
-      bounds
-      ?? SionRect(
-        x: 0,
-        y: 0,
-        width: minimumCanvasDimension,
-        height: minimumCanvasDimension
-      )
-    return content.expanded(by: exportPadding)
+    return bounds
   }
 
   private static func rotatedBounds(of geometry: ElementGeometry) -> SionRect {

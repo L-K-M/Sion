@@ -2,6 +2,8 @@ import Foundation
 
 public enum SVGExportError: Error, Equatable {
   case missingAsset(AssetID)
+  case invalidDisplayAsset(AssetID)
+  case outputTooLarge
 }
 
 public enum SVGExporter {
@@ -10,12 +12,21 @@ public enum SVGExporter {
     assets: [AssetID: SionAsset]
   ) throws -> String {
     let bounds = SceneRenderGeometry.contentBounds(of: document.scene)
-    var definitions: [String] = [markerDefinitions]
+    var definitions = [markerDefinitions]
+    var definitionByteCount = markerDefinitions.utf8.count
+    try appendImageDefinitions(
+      document: document,
+      assets: assets,
+      definitions: &definitions,
+      byteCount: &definitionByteCount
+    )
     var body = [
       "<rect id=\"canvas-background\" x=\"\(number(bounds.minX))\" y=\"\(number(bounds.minY))\" width=\"\(number(bounds.width))\" height=\"\(number(bounds.height))\" fill=\"\(document.scene.canvas.background.hex)\"/>"
     ]
+    var bodyByteCount = body[0].utf8.count
 
     for element in document.scene.elements where element.visibility == .visible {
+      let previousDefinitionCount = definitions.count
       let rendered = try render(
         element,
         scene: document.scene,
@@ -25,17 +36,80 @@ public enum SVGExporter {
       guard !rendered.isEmpty else {
         continue
       }
+
+      for definition in definitions[previousDefinitionCount...] {
+        definitionByteCount += definition.utf8.count
+      }
+      bodyByteCount += rendered.utf8.count
+      guard
+        fitsOutputBudget(
+          definitionByteCount: definitionByteCount,
+          bodyByteCount: bodyByteCount
+        )
+      else {
+        throw SVGExportError.outputTooLarge
+      }
+
       body.append(rendered)
     }
 
-    return [
+    let components = [
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
       "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"\(number(bounds.width))\" height=\"\(number(bounds.height))\" viewBox=\"\(number(bounds.minX)) \(number(bounds.minY)) \(number(bounds.width)) \(number(bounds.height))\" role=\"img\" aria-label=\"\(escape(document.title))\">",
       "<defs>\(definitions.joined())</defs>",
       body.joined(separator: "\n"),
       "</svg>",
       "",
-    ].joined(separator: "\n")
+    ]
+    guard
+      components.reduce(components.count - 1, { $0 + $1.utf8.count })
+        <= SionArchiveConstants.maximumEntryByteCount
+    else {
+      throw SVGExportError.outputTooLarge
+    }
+
+    return components.joined(separator: "\n")
+  }
+
+  private static func appendImageDefinitions(
+    document: SionDocument,
+    assets: [AssetID: SionAsset],
+    definitions: inout [String],
+    byteCount: inout Int
+  ) throws {
+    var embedded = Set<AssetID>()
+
+    for element in document.scene.elements where element.visibility == .visible {
+      guard case .image(let content) = element.content,
+        embedded.insert(content.displayAssetID).inserted
+      else {
+        continue
+      }
+      guard let asset = assets[content.displayAssetID] else {
+        throw SVGExportError.missingAsset(content.displayAssetID)
+      }
+      guard SafeDisplayImage.validates(asset) else {
+        throw SVGExportError.invalidDisplayAsset(asset.id)
+      }
+
+      let sourceSize = validTileSize(asset.pixelSize) ?? SVGDefaults.fallbackImageSize
+      let prefix =
+        "<image id=\"\(imageDefinitionID(asset.id))\" width=\"\(number(sourceSize.width))\" height=\"\(number(sourceSize.height))\" href=\"data:image/png;base64,"
+      let suffix = "\"/>"
+      let encodedByteCount = ((asset.data.count + 2) / 3) * 4
+      guard
+        byteCount <= SionArchiveConstants.maximumEntryByteCount
+          - prefix.utf8.count
+          - suffix.utf8.count
+          - encodedByteCount
+      else {
+        throw SVGExportError.outputTooLarge
+      }
+
+      let definition = prefix + asset.data.base64EncodedString() + suffix
+      definitions.append(definition)
+      byteCount += definition.utf8.count
+    }
   }
 
   private static func render(
@@ -56,8 +130,8 @@ public enum SVGExporter {
         definitions: &definitions
       )
     case .image(let image):
-      guard let asset = assets[image.assetID] else {
-        throw SVGExportError.missingAsset(image.assetID)
+      guard let asset = assets[image.displayAssetID] else {
+        throw SVGExportError.missingAsset(image.displayAssetID)
       }
       return renderImage(asset, content: image, element: element, definitions: &definitions)
     case .group:
@@ -113,8 +187,8 @@ public enum SVGExporter {
   ) -> String {
     let frame = element.geometry.frame.standardized
     let description = content.accessibilityDescription.map(escape) ?? "Image"
-    let dataURI =
-      "data:\(escapeAttribute(asset.mediaType));base64,\(asset.data.base64EncodedString())"
+    let definitionID = imageDefinitionID(asset.id)
+    let sourceSize = validTileSize(asset.pixelSize) ?? SVGDefaults.fallbackImageSize
     let aspect: String
     switch content.scalingMode {
     case .fit:
@@ -127,7 +201,7 @@ public enum SVGExporter {
       let patternID = "image-pattern-\(element.id)"
       let tileSize = validTileSize(asset.pixelSize) ?? frame.size
       definitions.append(
-        "<pattern id=\"\(patternID)\" patternUnits=\"userSpaceOnUse\" width=\"\(number(tileSize.width))\" height=\"\(number(tileSize.height))\"><image width=\"\(number(tileSize.width))\" height=\"\(number(tileSize.height))\" href=\"\(dataURI)\"/></pattern>"
+        "<pattern id=\"\(patternID)\" patternUnits=\"userSpaceOnUse\" width=\"\(number(tileSize.width))\" height=\"\(number(tileSize.height))\"><svg width=\"\(number(tileSize.width))\" height=\"\(number(tileSize.height))\" viewBox=\"0 0 \(number(sourceSize.width)) \(number(sourceSize.height))\" preserveAspectRatio=\"none\"><use href=\"#\(definitionID)\"/></svg></pattern>"
       )
       let tiled =
         "<rect x=\"\(number(frame.minX))\" y=\"\(number(frame.minY))\" width=\"\(number(frame.width))\" height=\"\(number(frame.height))\" fill=\"url(#\(patternID))\" aria-label=\"\(description)\"/>"
@@ -135,8 +209,29 @@ public enum SVGExporter {
     }
 
     let image =
-      "<image x=\"\(number(frame.minX))\" y=\"\(number(frame.minY))\" width=\"\(number(frame.width))\" height=\"\(number(frame.height))\" preserveAspectRatio=\"\(aspect)\" href=\"\(dataURI)\" aria-label=\"\(description)\"/>"
+      "<svg x=\"\(number(frame.minX))\" y=\"\(number(frame.minY))\" width=\"\(number(frame.width))\" height=\"\(number(frame.height))\" viewBox=\"0 0 \(number(sourceSize.width)) \(number(sourceSize.height))\" preserveAspectRatio=\"\(aspect)\" aria-label=\"\(description)\"><use href=\"#\(definitionID)\"/></svg>"
     return wrapped(image, element: element, definitions: &definitions)
+  }
+
+  private static func imageDefinitionID(_ id: AssetID) -> String {
+    "image-asset-"
+      + id.rawValue.map { character in
+        character.isLetter || character.isNumber || character == "-" || character == "_"
+          ? character
+          : "-"
+      }
+  }
+
+  private static func fitsOutputBudget(
+    definitionByteCount: Int,
+    bodyByteCount: Int
+  ) -> Bool {
+    let budget = SionArchiveConstants.maximumEntryByteCount
+    guard definitionByteCount <= budget - SVGDefaults.envelopeByteAllowance else {
+      return false
+    }
+
+    return bodyByteCount <= budget - SVGDefaults.envelopeByteAllowance - definitionByteCount
   }
 
   private static func renderConnector(
@@ -493,6 +588,8 @@ private enum SVGDefaults {
   static let connectorLabelWidth = 160.0
   static let connectorLabelHeight = 32.0
   static let numberPrecision = 1_000.0
+  static let fallbackImageSize = SionSize(width: 1, height: 1)
+  static let envelopeByteAllowance = 4_096
 }
 
 extension SionColor {

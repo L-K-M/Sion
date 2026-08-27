@@ -18,6 +18,10 @@
       canvasView.commitPendingEdits()
     }
 
+    func checkpointPendingEdits() {
+      canvasView.checkpointPendingEdits()
+    }
+
     func discardPendingEdits() {
       canvasView.discardPendingEdits()
     }
@@ -141,7 +145,7 @@
 
     @objc func zoomToFit(_ sender: Any?) {
       let bounds = editorController.contentBounds()
-      let available = scrollView.contentView.bounds.size
+      let available = scrollView.contentSize
       guard bounds.width > 0, bounds.height > 0 else { return }
 
       let scale =
@@ -151,9 +155,10 @@
         ) * WindowMetrics.fitInsetFactor
       setMagnification(scale)
       let visible = scrollView.contentView.bounds.size
+      let center = canvasView.viewPoint(for: bounds.center)
       let origin = NSPoint(
-        x: max(0, bounds.center.x - (visible.width / 2)),
-        y: max(0, bounds.center.y - (visible.height / 2))
+        x: max(0, center.x - (visible.width / 2)),
+        y: max(0, center.y - (visible.height / 2))
       )
       scrollView.contentView.scroll(to: origin)
       scrollView.reflectScrolledClipView(scrollView.contentView)

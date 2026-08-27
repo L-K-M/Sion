@@ -88,18 +88,23 @@ public enum ImageInterpolation: String, Codable, CaseIterable, Sendable {
 }
 
 public struct ImageContent: Codable, Equatable, Sendable {
+  /// The exact imported bytes retained for future reuse.
   public var assetID: AssetID
+  /// A validated PNG used for rendering and recovery exports.
+  public var displayAssetID: AssetID
   public var scalingMode: ImageScalingMode
   public var interpolation: ImageInterpolation
   public var accessibilityDescription: String?
 
   public init(
     assetID: AssetID,
+    displayAssetID: AssetID,
     scalingMode: ImageScalingMode = .fit,
     interpolation: ImageInterpolation = .automatic,
     accessibilityDescription: String? = nil
   ) {
     self.assetID = assetID
+    self.displayAssetID = displayAssetID
     self.scalingMode = scalingMode
     self.interpolation = interpolation
     self.accessibilityDescription = accessibilityDescription

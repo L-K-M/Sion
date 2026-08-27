@@ -322,6 +322,7 @@ extension SceneElement {
     id: ElementID = ElementID(),
     frame: SionRect,
     assetID: AssetID,
+    displayAssetID: AssetID,
     parentID: ElementID? = nil
   ) -> SceneElement {
     SceneElement(
@@ -330,7 +331,9 @@ extension SceneElement {
       geometry: ElementGeometry(frame: frame),
       magnetConfiguration: .preset(.eight),
       style: .imageDefault,
-      content: .image(ImageContent(assetID: assetID))
+      content: .image(
+        ImageContent(assetID: assetID, displayAssetID: displayAssetID)
+      )
     )
   }
 
@@ -514,8 +517,10 @@ public struct SionScene: Codable, Equatable, Sendable {
       }
     }
 
-    if case .image(let image) = element.content, image.assetID.rawValue.isEmpty {
-      throw SceneValidationError.emptyAssetID(element.id)
+    if case .image(let image) = element.content {
+      guard !image.assetID.rawValue.isEmpty, !image.displayAssetID.rawValue.isEmpty else {
+        throw SceneValidationError.emptyAssetID(element.id)
+      }
     }
 
     guard element.style.isValid else {

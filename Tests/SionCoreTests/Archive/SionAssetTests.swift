@@ -20,6 +20,20 @@ final class SionAssetTests: XCTestCase {
     }
   }
 
+  func testRejectsDisplayPNGWithMismatchedPixelSize() {
+    XCTAssertThrowsError(
+      try SionAsset.safeDisplayPNG(
+        data: testPNGData(),
+        pixelSize: SionSize(width: 2, height: 1)
+      )
+    ) { error in
+      guard case .invalidDisplayAsset = error as? SionPackageError else {
+        XCTFail("Expected invalid display asset")
+        return
+      }
+    }
+  }
+
   func testRejectsDisplayPNGDecompressionBombDimensions() {
     let excessiveDimension = UInt32(SionAsset.maximumSafeDisplayPixelDimension) + 1
 

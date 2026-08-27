@@ -1,5 +1,15 @@
 # AGENTS.md
 
+## Tooling
+
+Use Node.js 24+ and npm 11+ (`.node-version` pins CI's release).
+
+- `npm ci` installs the locked dependency tree.
+- `npm run check` mirrors the static, license, and unit-test gate.
+- `scripts/build.sh [--clean] [--run]` verifies and packages the app.
+- `scripts/release.sh X.Y.Z [--push]` bumps, commits, tags, and optionally
+  pushes a release through the shared `lkm-release` engine.
+
 ## AI review scope
 
 GLM review defaults to **hybrid**: the first review is full, then follow-ups

@@ -12,8 +12,18 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { flatten, scan } from './lib/licenses.mjs';
 
+const MODE = Object.freeze({ check: 'check', write: 'write' });
+const EXIT_FAILURE = 1;
 const root = process.cwd();
 const rootName = JSON.parse(readFileSync(`${root}/package.json`, 'utf8')).name;
+
+function parseMode(args) {
+  if (args.length === 0) return MODE.write;
+  if (args.length === 1 && args[0] === '--check') return MODE.check;
+
+  console.error('Usage: node scripts/gen-third-party-licenses.mjs [--check]');
+  process.exit(EXIT_FAILURE);
+}
 
 // Platform/arch-specific optional deps (esbuild/rollup binaries, napi modules)
 // differ per OS — exclude them so the ledger (and the CI staleness diff) is
@@ -76,5 +86,29 @@ for (const [license, names] of [...devByLicense.entries()].sort((a, b) =>
 }
 lines.push('');
 
-writeFileSync(join(root, 'THIRD_PARTY_LICENSES.md'), lines.join('\n'));
-console.log(`THIRD_PARTY_LICENSES.md written: ${prod.length} bundled, ${dev.length} dev entries.`);
+const outputPath = join(root, 'THIRD_PARTY_LICENSES.md');
+const generated = lines.join('\n');
+const mode = parseMode(process.argv.slice(2));
+
+if (mode === MODE.check) {
+  let current = '';
+  try {
+    current = readFileSync(outputPath, 'utf8');
+  } catch {
+    // A missing ledger is stale by definition.
+  }
+
+  if (current !== generated) {
+    console.error('THIRD_PARTY_LICENSES.md is stale; run npm run gen:licenses.');
+    process.exit(EXIT_FAILURE);
+  }
+
+  console.log(
+    `THIRD_PARTY_LICENSES.md is current: ${prod.length} bundled, ${dev.length} dev entries.`,
+  );
+} else {
+  writeFileSync(outputPath, generated);
+  console.log(
+    `THIRD_PARTY_LICENSES.md written: ${prod.length} bundled, ${dev.length} dev entries.`,
+  );
+}

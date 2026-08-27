@@ -4,6 +4,8 @@ A cross-platform (macOS + Linux) desktop diagramming tool in the spirit of
 OmniGraffle, with a ruthless focus on **simple, fast, user-friendly UX**, and
 with **Mermaid as a first-class citizen**:
 
+**Latest release:** v<!-- version -->0.1.0<!-- /version --> · [Download](https://github.com/L-K-M/Thalyx/releases/latest)
+
 - **Paste or open Mermaid text** and it becomes a fully editable diagram
   (flowcharts convert to native shapes and connectors; every other Mermaid
   diagram type renders as a live, text-editable "island").
@@ -34,7 +36,7 @@ Single npm package; public-domain source (Unlicense).
 
 ## Development
 
-Requirements: Node.js ≥ 22.12, npm ≥ 10.
+Requirements: Node.js ≥ 24, npm ≥ 11.
 
 ```bash
 npm install        # install toolchain (downloads the Electron binary)

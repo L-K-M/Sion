@@ -7,9 +7,10 @@
   "license": "Unlicense",
   "author": "Thalyx contributors",
   "engines": {
-    "node": ">=22.12.0",
-    "npm": ">=10.0.0"
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
   },
+  "packageManager": "npm@11.19.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/L-K-M/Thalyx"
@@ -17,6 +18,7 @@
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run check:licenses && npm run check:license-ledger && npm run test",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
@@ -29,6 +31,7 @@
     "e2e": "playwright test",
     "package": "electron-vite build && electron-builder --publish never",
     "check:licenses": "node scripts/check-licenses.mjs",
+    "check:license-ledger": "node scripts/gen-third-party-licenses.mjs --check",
     "gen:licenses": "node scripts/gen-third-party-licenses.mjs"
   },
   "dependencies": {
@@ -67,5 +70,11 @@
     "typescript-eslint": "^8.67.0",
     "vite": "^7.3.6",
     "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true,
+    "core-js": false
   }
 }

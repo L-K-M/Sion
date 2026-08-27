@@ -113,6 +113,18 @@
         windowController.checkpointPendingEdits()
       }
 
+      // The preview pipeline only runs here: edits invalidate it, and the
+      // first window's canvas re-renders it on demand.
+      if !editingController.document.scene.elements.isEmpty,
+        !editingController.hasPreviewPNG,
+        let preview = windowControllers.lazy
+          .compactMap({ $0 as? SionDocumentWindowController })
+          .first
+          .flatMap({ $0.renderPreviewPNG() })
+      {
+        editingController.setPreviewPNG(preview)
+      }
+
       let archive = try SionArchive.encode(
         package: editingController.packageForArchiving(),
         intent: pendingSaveIntent

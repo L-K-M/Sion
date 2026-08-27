@@ -731,6 +731,57 @@
       return inlineTextUndoManager
     }
 
+    /// Preview rendering draws every element and no interaction chrome.
+    private var rendersOffscreenPreview = false
+
+    /// Renders the document content into a bounded PNG for the archive's
+    /// recovery preview. Grid and selection chrome are omitted.
+    ///
+    /// Raw bitmap contexts are unflipped (y-up) while the model and this
+    /// view are y-down. NSString drawing honors only the context's reported
+    /// flippedness — not a manually flipped CTM — so the render goes through
+    /// lockFocusFlipped, which sets that flag correctly.
+    func renderPreviewPNG(maximumDimension: CGFloat = 768) -> Data? {
+      let content = editorController.contentBounds()
+      guard content.isFinite, content.width > 0, content.height > 0 else { return nil }
+
+      let scale = min(1, maximumDimension / max(content.width, content.height))
+      let pointSize = NSSize(
+        width: max(1, content.width * scale),
+        height: max(1, content.height * scale)
+      )
+      let image = NSImage(size: pointSize)
+
+      rendersOffscreenPreview = true
+      defer { rendersOffscreenPreview = false }
+
+      image.lockFocusFlipped(true)
+      // Model coordinates map into the point space: translate, then scale.
+      // Concat order is point order: p * T * S.
+      let translate = NSAffineTransform()
+      translate.translateX(by: -content.minX, yBy: -content.minY)
+      translate.concat()
+      let scaleTransform = NSAffineTransform()
+      scaleTransform.scale(by: scale)
+      scaleTransform.concat()
+
+      nsColor(editorController.document.scene.canvas.background).setFill()
+      NSBezierPath(rect: nsRect(content)).fill()
+      for element in editorController.document.scene.elements
+      where element.visibility == .visible {
+        draw(element)
+      }
+      image.unlockFocus()
+
+      guard let tiff = image.tiffRepresentation,
+        let bitmap = NSBitmapImageRep(data: tiff)
+      else {
+        return nil
+      }
+
+      return bitmap.representation(using: .png, properties: [:])
+    }
+
     private func beginSelection(at point: SionPoint, event: NSEvent) {
       if let element = editorController.selectedElement,
         element.lockState == .editable,
@@ -1281,7 +1332,10 @@
 
       NSGraphicsContext.restoreGraphicsState()
 
-      guard editorController.selection.contains(element.id) else { return }
+      // Selection chrome is interaction state, not document content.
+      guard !rendersOffscreenPreview, editorController.selection.contains(element.id) else {
+        return
+      }
 
       drawSelection(for: element)
     }
@@ -1448,7 +1502,11 @@
       NSGraphicsContext.saveGraphicsState()
       NSBezierPath(rect: bounds).addClip()
 
-      let drawingBounds = bounds.intersection(visibleModelRect())
+      // Offscreen previews cover the whole tile; on screen we cull.
+      let drawingBounds =
+        rendersOffscreenPreview
+        ? bounds
+        : bounds.intersection(visibleModelRect())
       guard !drawingBounds.isEmpty else {
         NSGraphicsContext.restoreGraphicsState()
         return
@@ -1532,7 +1590,9 @@
         drawText(label, frame: frame)
       }
 
-      guard editorController.selection.contains(element.id) else { return }
+      guard !rendersOffscreenPreview, editorController.selection.contains(element.id) else {
+        return
+      }
 
       NSColor.controlAccentColor.setStroke()
       guard let selected = path.copy() as? NSBezierPath else { return }

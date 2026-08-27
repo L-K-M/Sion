@@ -1,5 +1,4 @@
 import AppKit
-import ObjectiveC.runtime
 import XCTest
 
 @testable import SionCore
@@ -28,26 +27,20 @@ final class SionCanvasInteractionTests: XCTestCase {
 
   func testCanvasCreationBeepsWhenInsertionFails() throws {
     let controller = try makeController()
-    let fixture = makeCanvas(controller: controller)
+    var feedbackCount = 0
+    let fixture = makeCanvas(
+      controller: controller,
+      creationFailureFeedback: { feedbackCount += 1 }
+    )
     defer { fixture.window.close() }
     controller.setTool(.rectangle)
-
-    let original = try XCTUnwrap(
-      class_getClassMethod(NSSound.self, #selector(NSSound.beep))
-    )
-    let recorder = try XCTUnwrap(
-      class_getClassMethod(NSSound.self, #selector(NSSound.sionRecordBeep))
-    )
-    BeepRecorder.count = 0
-    method_exchangeImplementations(original, recorder)
-    defer { method_exchangeImplementations(recorder, original) }
 
     try click(
       canvas: fixture.canvas,
       at: SionPoint(x: SceneLimits.maximumCoordinateMagnitude + 100, y: 40)
     )
 
-    XCTAssertEqual(BeepRecorder.count, 1)
+    XCTAssertEqual(feedbackCount, 1)
     XCTAssertTrue(controller.document.scene.elements.isEmpty)
   }
 
@@ -63,14 +56,20 @@ final class SionCanvasInteractionTests: XCTestCase {
     )
   }
 
-  private func makeCanvas(controller: SionEditorController) -> CanvasFixture {
+  private func makeCanvas(
+    controller: SionEditorController,
+    creationFailureFeedback: @escaping @MainActor () -> Void = {}
+  ) -> CanvasFixture {
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
       styleMask: .borderless,
       backing: .buffered,
       defer: false
     )
-    let canvas = SionCanvasView(editorController: controller)
+    let canvas = SionCanvasView(
+      editorController: controller,
+      creationFailureFeedback: creationFailureFeedback
+    )
     window.contentView = canvas
 
     return CanvasFixture(canvas: canvas, window: window)
@@ -108,14 +107,4 @@ final class SionCanvasInteractionTests: XCTestCase {
 private struct CanvasFixture {
   let canvas: SionCanvasView
   let window: NSWindow
-}
-
-private enum BeepRecorder {
-  nonisolated(unsafe) static var count = 0
-}
-
-extension NSSound {
-  @objc fileprivate class func sionRecordBeep() {
-    BeepRecorder.count += 1
-  }
 }

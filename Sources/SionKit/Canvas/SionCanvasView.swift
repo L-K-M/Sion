@@ -50,6 +50,7 @@
     }
 
     private let editorController: SionEditorController
+    private let creationFailureFeedback: @MainActor () -> Void
     private var observerID: UUID?
     private var drag: Drag?
     private var textEditor: NSScrollView?
@@ -58,8 +59,12 @@
     private var editingCanvasBounds: SionRect
     private var canvasExtent: CanvasExtent
 
-    init(editorController: SionEditorController) {
+    init(
+      editorController: SionEditorController,
+      creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() }
+    ) {
       self.editorController = editorController
+      self.creationFailureFeedback = creationFailureFeedback
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
         of: scene,

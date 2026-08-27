@@ -8,19 +8,16 @@ import XCTest
 final class SionCanvasInteractionTests: XCTestCase {
   func testCanvasCreationSelectsEachNewElement() throws {
     let controller = try makeController()
-    let fixture = makeCanvas(controller: controller)
-    defer {
-      fixture.canvas.commitPendingEdits()
-      fixture.window.close()
-    }
+    let canvas = makeCanvas(controller: controller)
+    defer { canvas.commitPendingEdits() }
 
     controller.setTool(.rectangle)
-    try click(canvas: fixture.canvas, at: SionPoint(x: 80, y: 70))
+    try click(canvas: canvas, at: SionPoint(x: 80, y: 70))
     let shape = try XCTUnwrap(controller.document.scene.elements.last)
     XCTAssertEqual(controller.selection, [shape.id])
 
     controller.setTool(.text)
-    try click(canvas: fixture.canvas, at: SionPoint(x: 300, y: 200))
+    try click(canvas: canvas, at: SionPoint(x: 300, y: 200))
     let text = try XCTUnwrap(controller.document.scene.elements.last)
     XCTAssertEqual(controller.selection, [text.id])
   }
@@ -28,15 +25,14 @@ final class SionCanvasInteractionTests: XCTestCase {
   func testCanvasCreationBeepsWhenInsertionFails() throws {
     let controller = try makeController()
     var feedbackCount = 0
-    let fixture = makeCanvas(
+    let canvas = makeCanvas(
       controller: controller,
       creationFailureFeedback: { feedbackCount += 1 }
     )
-    defer { fixture.window.close() }
     controller.setTool(.rectangle)
 
     try click(
-      canvas: fixture.canvas,
+      canvas: canvas,
       at: SionPoint(x: SceneLimits.maximumCoordinateMagnitude + 100, y: 40)
     )
 
@@ -59,21 +55,11 @@ final class SionCanvasInteractionTests: XCTestCase {
   private func makeCanvas(
     controller: SionEditorController,
     creationFailureFeedback: @escaping @MainActor () -> Void = {}
-  ) -> CanvasFixture {
-    _ = NSApplication.shared
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-      styleMask: .borderless,
-      backing: .buffered,
-      defer: false
-    )
-    let canvas = SionCanvasView(
+  ) -> SionCanvasView {
+    SionCanvasView(
       editorController: controller,
       creationFailureFeedback: creationFailureFeedback
     )
-    window.contentView = canvas
-
-    return CanvasFixture(canvas: canvas, window: window)
   }
 
   private func click(canvas: SionCanvasView, at point: SionPoint) throws {
@@ -86,16 +72,13 @@ final class SionCanvasInteractionTests: XCTestCase {
     canvas: SionCanvasView,
     at point: SionPoint
   ) throws -> NSEvent {
-    let viewPoint = canvas.viewPoint(for: point)
-    let windowPoint = canvas.convert(viewPoint, to: nil)
-
     return try XCTUnwrap(
       NSEvent.mouseEvent(
         with: type,
-        location: windowPoint,
+        location: canvas.viewPoint(for: point),
         modifierFlags: [],
         timestamp: 0,
-        windowNumber: canvas.window?.windowNumber ?? 0,
+        windowNumber: 0,
         context: nil,
         eventNumber: 0,
         clickCount: 1,
@@ -103,9 +86,4 @@ final class SionCanvasInteractionTests: XCTestCase {
       )
     )
   }
-}
-
-private struct CanvasFixture {
-  let canvas: SionCanvasView
-  let window: NSWindow
 }

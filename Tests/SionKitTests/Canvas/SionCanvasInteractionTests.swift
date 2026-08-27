@@ -222,6 +222,17 @@ final class SionCanvasInteractionTests: XCTestCase {
       controller.document.scene.element(withID: element.id)?.geometry.frame,
       frame
     )
+    canvas.mouseDragged(
+      with: try mouseEvent(
+        .leftMouseDragged,
+        canvas: canvas,
+        at: frame.center + SionVector(dx: 80, dy: 40)
+      )
+    )
+    XCTAssertEqual(
+      controller.document.scene.element(withID: element.id)?.geometry.frame,
+      frame
+    )
     canvas.cancelOperation(nil)
     XCTAssertTrue(controller.selection.isEmpty)
   }
@@ -238,6 +249,10 @@ final class SionCanvasInteractionTests: XCTestCase {
     )
     controller.undoSceneEdit()
 
+    XCTAssertEqual(
+      controller.document.scene.element(withID: element.id)?.geometry.frame,
+      frame
+    )
     canvas.cancelOperation(nil)
     XCTAssertTrue(controller.selection.isEmpty)
   }

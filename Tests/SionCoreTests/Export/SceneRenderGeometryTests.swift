@@ -125,6 +125,34 @@ final class SceneRenderGeometryTests: XCTestCase {
     )
   }
 
+  func testRotatedShadowBoundsCoverCanvasAndSVGOffsets() {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 100, y: 80, width: 40, height: 80),
+      kind: .rectangle
+    )
+    shape.geometry.rotationRadians = .pi / 2
+    shape.style = ElementStyle(
+      fill: .solid(.black),
+      shadows: [
+        ShadowStyle(
+          color: .black,
+          offset: SionVector(dx: 80, dy: 0),
+          blurRadius: 0
+        )
+      ]
+    )
+
+    let bounds = SceneRenderGeometry.contentBounds(
+      of: SionScene(elements: [shape])
+    )
+    let canvasShadowMaximumX = 240.0
+    let svgShadowMaximumY = 220.0
+
+    // Canvas keeps the offset in base space; SVG rotates it with the group.
+    XCTAssertGreaterThanOrEqual(bounds.maxX, canvasShadowMaximumX + contentPadding)
+    XCTAssertGreaterThanOrEqual(bounds.maxY, svgShadowMaximumY + contentPadding)
+  }
+
   func testContentBoundsIncludeLocalPathCommandsOutsideFrame() {
     let path = VectorPath(
       coordinateSpace: .localPoints,

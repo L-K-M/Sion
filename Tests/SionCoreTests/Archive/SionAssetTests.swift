@@ -21,6 +21,13 @@ final class SionAssetTests: XCTestCase {
   }
 
   func testRejectsDisplayPNGWithMismatchedPixelSize() {
+    XCTAssertNoThrow(
+      try SionAsset.safeDisplayPNG(
+        data: testPNGData(),
+        pixelSize: SionSize(width: 1, height: 1)
+      )
+    )
+
     XCTAssertThrowsError(
       try SionAsset.safeDisplayPNG(
         data: testPNGData(),
@@ -31,6 +38,28 @@ final class SionAssetTests: XCTestCase {
         XCTFail("Expected invalid display asset")
         return
       }
+    }
+  }
+
+  func testPackageRejectsDisplayPNGWithMismatchedPixelSize() throws {
+    let display = try SionAsset(
+      data: testPNGData(),
+      mediaType: "image/png",
+      fileExtension: "png",
+      pixelSize: SionSize(width: 2, height: 1)
+    )
+    let image = SceneElement.image(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+      assetID: display.id,
+      displayAssetID: display.id
+    )
+    let package = SionPackage(
+      document: SionDocument(scene: SionScene(elements: [image])),
+      assets: [display.id: display]
+    )
+
+    XCTAssertThrowsError(try package.validate()) { error in
+      XCTAssertEqual(error as? SionPackageError, .invalidDisplayAsset(display.id))
     }
   }
 

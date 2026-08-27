@@ -32,13 +32,13 @@ enum SafeDisplayImage {
     asset.mediaType == mediaType
       && asset.fileExtension == fileExtension
       && asset.data.count <= SionArchiveConstants.maximumEntryByteCount
-      && PNGFile.validates(asset.data)
+      && PNGFile.validates(asset.data, expectedPixelSize: asset.pixelSize)
   }
 }
 
 /// Parses PNG structure without decoding attacker-controlled pixels.
 private enum PNGFile {
-  static func validates(_ data: Data) -> Bool {
+  static func validates(_ data: Data, expectedPixelSize: SionSize?) -> Bool {
     data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> Bool in
       guard hasSignature(bytes) else { return false }
 
@@ -74,7 +74,8 @@ private enum PNGFile {
         switch type {
         case ChunkType.header:
           guard header == nil, offset == signature.count, length == headerLength,
-            let decoded = Header(bytes, at: dataOffset)
+            let decoded = Header(bytes, at: dataOffset),
+            decoded.matches(expectedPixelSize)
           else {
             return false
           }
@@ -192,6 +193,16 @@ private enum PNGFile {
 
     var allowsPalette: Bool {
       colorType != grayscaleColorType && colorType != grayscaleAlphaColorType
+    }
+
+    // Layout metadata must describe the trusted pixels exactly.
+    func matches(_ expectedPixelSize: SionSize?) -> Bool {
+      guard let expectedPixelSize else {
+        return true
+      }
+
+      return expectedPixelSize.width == Double(width)
+        && expectedPixelSize.height == Double(height)
     }
   }
 

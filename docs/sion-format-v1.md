@@ -164,6 +164,7 @@ Every image has an `assetID` for its exact imported bytes and a
 `displayAssetID` for an inert PNG rendition. The display asset MUST use the
 `image/png` media type, a `png` extension, valid chunk checksums, and a valid,
 bounded zlib pixel stream with PNG scanline filters.
+When present, its recorded pixel dimensions MUST equal the PNG IHDR dimensions.
 The IDs MAY match when the original is already a valid PNG. Editors and exports
 MUST render only the display asset; original PDF, TIFF, SVG, or other bytes are
 never embedded into generated SVG. A display rendition is limited to 8,192

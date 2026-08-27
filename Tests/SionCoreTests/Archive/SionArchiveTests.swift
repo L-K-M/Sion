@@ -871,7 +871,7 @@ final class SionArchiveTests: XCTestCase {
       mediaType: "image/png",
       fileExtension: "png",
       originalFilename: "source.png",
-      pixelSize: SionSize(width: 32, height: 24)
+      pixelSize: SionSize(width: 1, height: 1)
     )
     let shapeA = SceneElement.shape(
       id: elementID("00000000-0000-0000-0000-000000000001"),

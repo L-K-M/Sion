@@ -731,6 +731,76 @@
       return inlineTextUndoManager
     }
 
+    /// Preview rendering draws every element and no interaction chrome.
+    private var rendersOffscreenPreview = false
+
+    /// Renders the document content into a bounded PNG for the archive's
+    /// recovery preview. Grid and selection chrome are omitted.
+    ///
+    /// The explicit flipped context keeps text upright without inheriting a
+    /// display's backing scale.
+    func renderPreviewPNG(
+      maximumDimension: CGFloat = PreviewMetrics.maximumDimension
+    ) -> Data? {
+      guard maximumDimension.isFinite, maximumDimension > 0 else { return nil }
+
+      let content = editorController.contentBounds()
+      guard content.isFinite, content.width > 0, content.height > 0 else { return nil }
+
+      let scale = min(
+        1,
+        Double(maximumDimension) / max(content.width, content.height)
+      )
+      let pixelWidth = max(1, Int((content.width * scale).rounded()))
+      let pixelHeight = max(1, Int((content.height * scale).rounded()))
+      guard
+        let bitmap = NSBitmapImageRep(
+          bitmapDataPlanes: nil,
+          pixelsWide: pixelWidth,
+          pixelsHigh: pixelHeight,
+          bitsPerSample: PreviewMetrics.bitsPerSample,
+          samplesPerPixel: PreviewMetrics.samplesPerPixel,
+          hasAlpha: true,
+          isPlanar: false,
+          colorSpaceName: .calibratedRGB,
+          bytesPerRow: 0,
+          bitsPerPixel: 0
+        ),
+        let bitmapContext = NSGraphicsContext(bitmapImageRep: bitmap)
+      else {
+        return nil
+      }
+
+      let previousContext = NSGraphicsContext.current
+      defer { NSGraphicsContext.current = previousContext }
+
+      // Map the y-down model into the bitmap's y-up pixel coordinates.
+      bitmapContext.cgContext.translateBy(x: 0, y: CGFloat(pixelHeight))
+      bitmapContext.cgContext.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
+      bitmapContext.cgContext.translateBy(
+        x: CGFloat(-content.minX),
+        y: CGFloat(-content.minY)
+      )
+      let renderContext = NSGraphicsContext(
+        cgContext: bitmapContext.cgContext,
+        flipped: true
+      )
+      NSGraphicsContext.current = renderContext
+
+      rendersOffscreenPreview = true
+      defer { rendersOffscreenPreview = false }
+
+      nsColor(editorController.document.scene.canvas.background).setFill()
+      NSBezierPath(rect: nsRect(content)).fill()
+      for element in editorController.document.scene.elements
+      where element.visibility == .visible {
+        draw(element)
+      }
+
+      renderContext.flushGraphics()
+      return bitmap.representation(using: .png, properties: [:])
+    }
+
     private func beginSelection(at point: SionPoint, event: NSEvent) {
       if let element = editorController.selectedElement,
         element.lockState == .editable,
@@ -1281,7 +1351,10 @@
 
       NSGraphicsContext.restoreGraphicsState()
 
-      guard editorController.selection.contains(element.id) else { return }
+      // Selection chrome is interaction state, not document content.
+      guard !rendersOffscreenPreview, editorController.selection.contains(element.id) else {
+        return
+      }
 
       drawSelection(for: element)
     }
@@ -1448,7 +1521,11 @@
       NSGraphicsContext.saveGraphicsState()
       NSBezierPath(rect: bounds).addClip()
 
-      let drawingBounds = bounds.intersection(visibleModelRect())
+      // Offscreen previews cover the whole tile; on screen we cull.
+      let drawingBounds =
+        rendersOffscreenPreview
+        ? bounds
+        : bounds.intersection(visibleModelRect())
       guard !drawingBounds.isEmpty else {
         NSGraphicsContext.restoreGraphicsState()
         return
@@ -1532,7 +1609,9 @@
         drawText(label, frame: frame)
       }
 
-      guard editorController.selection.contains(element.id) else { return }
+      guard !rendersOffscreenPreview, editorController.selection.contains(element.id) else {
+        return
+      }
 
       NSColor.controlAccentColor.setStroke()
       guard let selected = path.copy() as? NSBezierPath else { return }
@@ -2444,6 +2523,12 @@
     static let textRenderCacheEvictionDivisor = 4
     static let marqueeFillOpacity = 0.08
     static let minimumMarqueeScreenSize = 2.0
+  }
+
+  private enum PreviewMetrics {
+    static let maximumDimension: CGFloat = 768
+    static let bitsPerSample = 8
+    static let samplesPerPixel = 4
   }
 
   private enum PasteboardType {

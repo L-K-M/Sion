@@ -232,6 +232,15 @@
       notifyObservers()
     }
 
+    /// The archive's recovery preview, rendered by the canvas on save.
+    var hasPreviewPNG: Bool {
+      previewPNG != nil
+    }
+
+    func setPreviewPNG(_ data: Data) {
+      previewPNG = data
+    }
+
     func load(_ package: SionPackage) throws {
       editor = try SceneEditor(document: package.document)
       assets = package.assets
@@ -322,7 +331,12 @@
     }
 
     func contentBounds() -> SionRect {
-      SceneRenderGeometry.contentBounds(of: editor.document.scene)
+      SceneRenderGeometry.contentBounds(
+        of: editor.document.scene,
+        connectorRoutes: { [weak self] element in
+          self?.connectorRoute(for: element) ?? nil
+        }
+      )
     }
 
     @discardableResult

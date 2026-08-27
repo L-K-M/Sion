@@ -280,6 +280,32 @@ final class SceneRenderGeometryTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(bounds.maxY, 18 + contentPadding)
   }
 
+  func testContentBoundsUsesProvidedRouteWithExportPadding() {
+    let connector = SceneElement.connector(
+      source: .free(SionPoint(x: 0, y: 0)),
+      target: .free(SionPoint(x: 100, y: 0)),
+      routingStyle: .straight
+    )
+    let route = ConnectorRoute(
+      start: SionPoint(x: -100, y: -50),
+      segments: [.line(to: SionPoint(x: 500, y: 150))]
+    )
+    var providerCalls = 0
+
+    let bounds = SceneRenderGeometry.contentBounds(
+      of: SionScene(elements: [connector]),
+      connectorRoutes: { element in
+        providerCalls += 1
+        return element.id == connector.id ? route : nil
+      }
+    )
+    let expected = SceneRenderGeometry.paintedBounds(of: connector, route: route)
+      .expanded(by: contentPadding)
+
+    XCTAssertEqual(bounds, expected)
+    XCTAssertEqual(providerCalls, 1)
+  }
+
   func testAutomaticBoundaryEndpointFollowsElementRotation() throws {
     var shape = SceneElement.shape(
       frame: SionRect(x: 100, y: 200, width: 200, height: 100)

@@ -81,4 +81,27 @@ final class SionDrawingDocumentTests: XCTestCase {
     XCTAssertTrue(windowController.window?.firstResponder === responder)
     windowController.close()
   }
+
+  func testSerializationPersistsPNGPreview() throws {
+    let document = SionDrawingDocument()
+    _ = try document.editingController.insertShape(at: SionPoint(x: 100, y: 100))
+    document.makeWindowControllers()
+    let windowController = try XCTUnwrap(
+      document.windowControllers.first as? SionDocumentWindowController
+    )
+    defer { windowController.close() }
+
+    let data = try document.data(ofType: SionDrawingDocument.typeIdentifier)
+    let package = try SionArchive.decode(data)
+    let preview = try XCTUnwrap(package.previewPNG)
+
+    XCTAssertEqual(
+      Array(preview.prefix(DocumentPreview.pngSignature.count)),
+      DocumentPreview.pngSignature
+    )
+  }
+}
+
+private enum DocumentPreview {
+  static let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
 }

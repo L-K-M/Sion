@@ -63,13 +63,16 @@ public enum SceneRenderGeometry {
     )
   }
 
-  public static func contentBounds(of scene: SionScene) -> SionRect {
+  public static func contentBounds(
+    of scene: SionScene,
+    connectorRoutes: ConnectorRouteProvider? = nil
+  ) -> SionRect {
     if case .fixed(let size) = scene.canvas.extent {
       return SionRect(origin: .zero, size: size)
     }
 
     let content =
-      visibleElementBounds(of: scene)
+      visibleElementBounds(of: scene, connectorRoutes: connectorRoutes)
       ?? SionRect(
         x: 0,
         y: 0,
@@ -99,25 +102,6 @@ public enum SceneRenderGeometry {
     }
 
     return minimumBounds.union(contentBounds(of: scene, connectorRoutes: connectorRoutes))
-  }
-
-  private static func contentBounds(
-    of scene: SionScene,
-    connectorRoutes: ConnectorRouteProvider?
-  ) -> SionRect {
-    if case .fixed(let size) = scene.canvas.extent {
-      return SionRect(origin: .zero, size: size)
-    }
-
-    let content =
-      visibleElementBounds(of: scene, connectorRoutes: connectorRoutes)
-      ?? SionRect(
-        x: 0,
-        y: 0,
-        width: minimumCanvasDimension,
-        height: minimumCanvasDimension
-      )
-    return content.expanded(by: exportPadding)
   }
 
   private static func visibleElementBounds(

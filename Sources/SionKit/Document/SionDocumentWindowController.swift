@@ -30,6 +30,10 @@
       canvasView.beginTextEditing(id)
     }
 
+    func renderPreviewPNG() -> Data? {
+      canvasView.renderPreviewPNG()
+    }
+
     init(editorController: SionEditorController) {
       self.editorController = editorController
       canvasView = SionCanvasView(editorController: editorController)

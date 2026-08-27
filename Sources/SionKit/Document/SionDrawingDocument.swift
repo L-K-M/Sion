@@ -113,6 +113,15 @@
         windowController.checkpointPendingEdits()
       }
 
+      // The preview pipeline only runs here: edits invalidate it, and the
+      // first window's canvas re-renders it on demand.
+      if !editingController.document.scene.elements.isEmpty,
+        !editingController.hasPreviewPNG,
+        let preview = renderPreviewFromFirstWindow()
+      {
+        editingController.setPreviewPNG(preview)
+      }
+
       let archive = try SionArchive.encode(
         package: editingController.packageForArchiving(),
         intent: pendingSaveIntent
@@ -246,6 +255,16 @@
       for case let windowController as SionDocumentWindowController in windowControllers {
         windowController.commitPendingEdits()
       }
+    }
+
+    private func renderPreviewFromFirstWindow() -> Data? {
+      for case let windowController as SionDocumentWindowController in windowControllers {
+        if let preview = windowController.renderPreviewPNG() {
+          return preview
+        }
+      }
+
+      return nil
     }
 
     private func recordEditorChange(_ change: SionEditorController.DocumentChange) {

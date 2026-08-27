@@ -117,10 +117,7 @@
       // first window's canvas re-renders it on demand.
       if !editingController.document.scene.elements.isEmpty,
         !editingController.hasPreviewPNG,
-        let preview = windowControllers.lazy
-          .compactMap({ $0 as? SionDocumentWindowController })
-          .first
-          .flatMap({ $0.renderPreviewPNG() })
+        let preview = renderPreviewFromFirstWindow()
       {
         editingController.setPreviewPNG(preview)
       }
@@ -258,6 +255,16 @@
       for case let windowController as SionDocumentWindowController in windowControllers {
         windowController.commitPendingEdits()
       }
+    }
+
+    private func renderPreviewFromFirstWindow() -> Data? {
+      for case let windowController as SionDocumentWindowController in windowControllers {
+        if let preview = windowController.renderPreviewPNG() {
+          return preview
+        }
+      }
+
+      return nil
     }
 
     private func recordEditorChange(_ change: SionEditorController.DocumentChange) {

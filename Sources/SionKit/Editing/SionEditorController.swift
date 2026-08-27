@@ -422,7 +422,7 @@
 
     @discardableResult
     func insertShape(in frame: SionRect, kind: ShapeKind) throws -> ElementID {
-      let element = SceneElement.shape(frame: frame, kind: kind)
+      let element = SceneElement.shape(frame: frame.standardized, kind: kind)
 
       try perform(name: "Add Shape", command: .insert(elements: [element], at: nil))
       select(element.id)
@@ -454,7 +454,7 @@
 
     @discardableResult
     func insertText(_ text: String, in frame: SionRect) throws -> ElementID {
-      let element = SceneElement.text(frame: frame, text: text)
+      let element = SceneElement.text(frame: frame.standardized, text: text)
 
       try perform(name: "Add Text", command: .insert(elements: [element], at: nil))
       select(element.id)

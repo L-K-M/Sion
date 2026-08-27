@@ -76,11 +76,12 @@ extension SceneCommand {
       }
     case .setRotation(let elementID, let radians):
       let element = try editableElement(elementID, in: scene)
+      let previousRotation = element.geometry.rotationRadians
       try updateEditableElement(elementID, in: &scene) { element in
         element.geometry.rotationRadians = radians
       }
 
-      if element.content.connector == nil, radians != element.geometry.rotationRadians {
+      if element.content.connector == nil, radians != previousRotation {
         invalidateResolvedConnectorRoutes(in: &scene)
       }
     case .setShapeKind(let elementID, let kind):

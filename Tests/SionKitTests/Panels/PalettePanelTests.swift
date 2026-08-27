@@ -67,7 +67,7 @@ final class PalettePanelTests: XCTestCase {
     PalettePanel(
       definition: PaletteDefinition(
         kind: PaletteKind("tests.inspector"),
-        title: "Inspector",
+        title: "Palette Panel Test",
         contentSize: NSSize(width: 300, height: 320)
       )
     )

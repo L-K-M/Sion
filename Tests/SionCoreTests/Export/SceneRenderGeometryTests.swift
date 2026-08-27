@@ -26,8 +26,9 @@ final class SceneRenderGeometryTests: XCTestCase {
 
     XCTAssertEqual(route.start.x, 250, accuracy: pointAccuracy)
     XCTAssertEqual(route.start.y, 250, accuracy: pointAccuracy)
-    XCTAssertGreaterThan(route.polylinePoints[1].x, route.start.x)
-    XCTAssertEqual(route.polylinePoints[1].y, route.start.y, accuracy: pointAccuracy)
+    let firstLegEnd = try XCTUnwrap(route.polylinePoints.dropFirst().first)
+    XCTAssertGreaterThan(firstLegEnd.x, route.start.x)
+    XCTAssertEqual(firstLegEnd.y, route.start.y, accuracy: pointAccuracy)
   }
 
   func testOrthogonalRouteAvoidsRotatedObstacleBounds() throws {

@@ -81,11 +81,13 @@ final class SionEditorControllerAnchorEditingTests: XCTestCase {
     controller.setTool(.rectangle)
     XCTAssertEqual(controller.anchorEditingState, .inactive)
 
+    controller.setTool(.select)
     controller.beginAnchorEditing(on: first.id)
     controller.select(second.id)
     XCTAssertEqual(controller.anchorEditingState, .inactive)
 
     controller.select(first.id)
+    controller.setTool(.select)
     controller.beginAnchorEditing(on: first.id)
     controller.endAnchorEditing()
     XCTAssertEqual(controller.anchorEditingState, .inactive)

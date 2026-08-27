@@ -295,6 +295,8 @@
       case .zoomIn:
         zoomIn(sender)
       }
+
+      window?.makeFirstResponder(canvasView)
     }
 
     private func synchronizeUI() {

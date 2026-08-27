@@ -27,6 +27,20 @@ final class DocumentHistoryTests: XCTestCase {
     XCTAssertEqual(history.revisions.map(\.sceneData), [Data("one".utf8)])
   }
 
+  func testFutureRevisionDoesNotSuppressAutosave() {
+    let futureData = Data("future".utf8)
+    let currentData = Data("current".utf8)
+    let history = DocumentHistory()
+      .appending(
+        sceneData: futureData,
+        at: referenceDate.addingTimeInterval(DocumentHistory.autosaveCheckpointInterval),
+        intent: .manual
+      )
+      .appending(sceneData: currentData, at: referenceDate, intent: .autosave)
+
+    XCTAssertEqual(history.revisions.map(\.sceneData), [futureData, currentData])
+  }
+
   func testNewestRevisionsSurviveThinning() {
     let revisions = (0..<200).map { index in
       let data = Data("scene-\(index)".utf8)

@@ -146,8 +146,10 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     // The 100x40 frame rotated 90 degrees paints 40x100 around its center,
     // so its painted top sits 30pt above the frame origin, at y=-30. Frame-
     // based alignment would put the plain element at 0; bounds-based at -30.
-    XCTAssertEqual(controller.frame(of: rotated.id)?.minY, 0, accuracy: 1e-6)
-    XCTAssertEqual(controller.frame(of: plain.id)?.minY, -30, accuracy: 1e-6)
+    let rotatedFrame = try XCTUnwrap(controller.frame(of: rotated.id))
+    let plainFrame = try XCTUnwrap(controller.frame(of: plain.id))
+    XCTAssertEqual(rotatedFrame.minY, 0, accuracy: 1e-6)
+    XCTAssertEqual(plainFrame.minY, -30, accuracy: 1e-6)
   }
 
   func testHidePrunesSelectionAndRevealRestores() throws {

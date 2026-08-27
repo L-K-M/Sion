@@ -221,6 +221,13 @@ extension SceneCommand {
     var translatedIDs = requestedIDs
     translatedIDs.formUnion(descendants(of: requestedIDs, in: scene))
 
+    // Validate the full move before mutating any element.
+    for element in scene.elements where translatedIDs.contains(element.id) {
+      guard element.lockState == .editable else {
+        throw SceneEditingError.elementLocked(element.id)
+      }
+    }
+
     for index in scene.elements.indices {
       guard translatedIDs.contains(scene.elements[index].id) else { continue }
 

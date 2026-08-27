@@ -49,7 +49,6 @@ final class SionEditorControllerArrangeTests: XCTestCase {
       fill: .none,
       stroke: StrokeStyle(color: .primaryInk, width: 20)
     )
-    let document = SionDocument(scene: SionScene(elements: [thin, thick]))
     let undoManager = UndoManager()
     undoManager.groupsByEvent = false
     var changes = 0
@@ -58,6 +57,7 @@ final class SionEditorControllerArrangeTests: XCTestCase {
       undoManager: undoManager,
       didChange: { _ in changes += 1 }
     )
+    let document = controller.document
     controller.select([thin.id, thick.id])
 
     try controller.alignSelection(.leading)
@@ -124,7 +124,6 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     var locked = shape(id: "00000000-0000-0000-0000-000000000001", x: 0, y: 0)
     locked.lockState = .locked
     let other = shape(id: "00000000-0000-0000-0000-000000000002", x: 200, y: 0)
-    let document = SionDocument(scene: SionScene(elements: [locked, other]))
     let undoManager = UndoManager()
     var changes = 0
     let controller = try makeController(
@@ -132,6 +131,7 @@ final class SionEditorControllerArrangeTests: XCTestCase {
       undoManager: undoManager,
       didChange: { _ in changes += 1 }
     )
+    let document = controller.document
     controller.select(locked.id)
 
     XCTAssertNoThrow(try controller.moveSelectionInZOrder(.front))
@@ -231,22 +231,25 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     var child = shape(id: "00000000-0000-0000-0000-00000000000B", x: 10, y: 10)
     child.parentID = group.id
     let outside = shape(id: "00000000-0000-0000-0000-00000000000C", x: 200, y: 10)
-    let document = SionDocument(scene: SionScene(elements: [group, child, outside]))
+    let elements = [group, child, outside]
 
-    let zOrderController = try makeController(elements: document.scene.elements)
+    let zOrderController = try makeController(elements: elements)
+    let zOrderDocument = zOrderController.document
     zOrderController.select(group.id)
     try zOrderController.moveSelectionInZOrder(.front)
-    XCTAssertEqual(zOrderController.document, document)
+    XCTAssertEqual(zOrderController.document, zOrderDocument)
 
-    let lockController = try makeController(elements: document.scene.elements)
+    let lockController = try makeController(elements: elements)
+    let lockDocument = lockController.document
     lockController.select(group.id)
     try lockController.setSelectionLockState(.locked)
-    XCTAssertEqual(lockController.document, document)
+    XCTAssertEqual(lockController.document, lockDocument)
 
-    let hideController = try makeController(elements: document.scene.elements)
+    let hideController = try makeController(elements: elements)
+    let hideDocument = hideController.document
     hideController.select(group.id)
     try hideController.hideSelection()
-    XCTAssertEqual(hideController.document, document)
+    XCTAssertEqual(hideController.document, hideDocument)
   }
 
   func testAlignUsesRotatedPaintedBounds() throws {
@@ -286,7 +289,6 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     var element = shape(id: "00000000-0000-0000-0000-000000000001", x: 0, y: 0)
     element.visibility = .hidden
     element.lockState = .locked
-    let document = SionDocument(scene: SionScene(elements: [element]))
     let undoManager = UndoManager()
     undoManager.groupsByEvent = false
     var changes = 0
@@ -295,6 +297,7 @@ final class SionEditorControllerArrangeTests: XCTestCase {
       undoManager: undoManager,
       didChange: { _ in changes += 1 }
     )
+    let document = controller.document
 
     try controller.revealHiddenElements()
 

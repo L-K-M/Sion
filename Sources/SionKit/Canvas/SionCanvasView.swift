@@ -68,7 +68,9 @@
 
       init(content: TextContent, width: CGFloat) {
         self.content = content
-        self.widthBucket = Int((width * 2).rounded())
+        // Non-trapping conversion: a degenerate width collapses to the last
+        // bucket instead of crashing on NaN or infinity.
+        self.widthBucket = Int(exactly: (width * 2).rounded()) ?? .max
       }
     }
 

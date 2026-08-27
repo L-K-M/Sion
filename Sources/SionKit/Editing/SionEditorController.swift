@@ -132,6 +132,7 @@
       routeCache = [:]
       imageCache = NSCache()
       imageCache.countLimit = EditorDefaults.imageCacheLimit
+      imageCache.totalCostLimit = EditorDefaults.imageCacheTotalCostLimit
       self.undoManagerProvider = undoManagerProvider
       self.didChange = didChange
 
@@ -252,7 +253,7 @@
         return nil
       }
 
-      imageCache.setObject(image, forKey: key)
+      imageCache.setObject(image, forKey: key, cost: asset.data.count)
       return image
     }
 
@@ -1131,6 +1132,7 @@
     static let elementHitSlop = 2.0
     static let customAnchorIDPrefix = "custom-"
     static let imageCacheLimit = 256
+    static let imageCacheTotalCostLimit = 128 * 1024 * 1024
   }
 
   private struct AnchorPlacement {

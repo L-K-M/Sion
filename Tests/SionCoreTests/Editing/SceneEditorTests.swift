@@ -434,6 +434,107 @@ final class SceneEditorTests: XCTestCase {
     )
   }
 
+  func testTranslatingNestedGroupsAcrossTwoRootsMovesEachDescendantOnce() throws {
+    let firstGroupID = elementID("20000000-0000-0000-0000-000000000030")
+    let firstChildID = elementID("20000000-0000-0000-0000-000000000031")
+    let secondGroupID = elementID("20000000-0000-0000-0000-000000000032")
+    let secondChildID = elementID("20000000-0000-0000-0000-000000000033")
+    let firstGroup = SceneElement.group(
+      id: firstGroupID,
+      frame: SionRect(x: 0, y: 0, width: 300, height: 200),
+      parentID: nil
+    )
+    let firstChild = SceneElement.shape(
+      id: firstChildID,
+      frame: SionRect(x: 20, y: 20, width: 100, height: 60),
+      parentID: firstGroupID
+    )
+    let secondGroup = SceneElement.group(
+      id: secondGroupID,
+      frame: SionRect(x: 400, y: 0, width: 300, height: 200),
+      parentID: nil
+    )
+    let secondChild = SceneElement.shape(
+      id: secondChildID,
+      frame: SionRect(x: 420, y: 20, width: 100, height: 60),
+      parentID: secondGroupID
+    )
+    var editor = try SceneEditor(
+      document: SionDocument(
+        scene: SionScene(elements: [firstGroup, firstChild, secondGroup, secondChild])
+      )
+    )
+
+    try editor.perform(
+      SceneTransaction(
+        name: "Move both groups",
+        command: .translate(
+          elementIDs: [firstGroupID, secondGroupID],
+          by: SionVector(dx: 10, dy: -4)
+        )
+      )
+    )
+
+    let scene = editor.document.scene
+    XCTAssertEqual(
+      scene.element(withID: firstChildID)?.geometry.frame.origin,
+      SionPoint(x: 30, y: 16)
+    )
+    XCTAssertEqual(
+      scene.element(withID: secondChildID)?.geometry.frame.origin,
+      SionPoint(x: 430, y: 16)
+    )
+  }
+
+  func testRemovingTwoSiblingGroupsRemovesAllDescendantsInOneCommand() throws {
+    let firstGroupID = elementID("20000000-0000-0000-0000-000000000034")
+    let firstChildID = elementID("20000000-0000-0000-0000-000000000035")
+    let secondGroupID = elementID("20000000-0000-0000-0000-000000000036")
+    let secondChildID = elementID("20000000-0000-0000-0000-000000000037")
+    let survivorID = elementID("20000000-0000-0000-0000-000000000038")
+    let firstGroup = SceneElement.group(
+      id: firstGroupID,
+      frame: SionRect(x: 0, y: 0, width: 300, height: 200)
+    )
+    let firstChild = SceneElement.shape(
+      id: firstChildID,
+      frame: SionRect(x: 20, y: 20, width: 100, height: 60),
+      parentID: firstGroupID
+    )
+    let secondGroup = SceneElement.group(
+      id: secondGroupID,
+      frame: SionRect(x: 400, y: 0, width: 300, height: 200)
+    )
+    let secondChild = SceneElement.shape(
+      id: secondChildID,
+      frame: SionRect(x: 420, y: 20, width: 100, height: 60),
+      parentID: secondGroupID
+    )
+    let survivor = SceneElement.shape(
+      id: survivorID,
+      frame: SionRect(x: 0, y: 300, width: 100, height: 60)
+    )
+    var editor = try SceneEditor(
+      document: SionDocument(
+        scene: SionScene(
+          elements: [firstGroup, firstChild, secondGroup, secondChild, survivor]
+        )
+      )
+    )
+
+    try editor.perform(
+      SceneTransaction(
+        name: "Delete groups",
+        command: .remove(elementIDs: [firstGroupID, secondGroupID])
+      )
+    )
+
+    XCTAssertEqual(
+      Set(editor.document.scene.elements.map(\.id)),
+      [survivorID]
+    )
+  }
+
   private func elementID(_ string: String) -> ElementID {
     ElementID(string)!
   }

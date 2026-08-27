@@ -88,6 +88,55 @@ final class SionCanvasInteractionTests: XCTestCase {
     XCTAssertTrue(controller.document.scene.elements.isEmpty)
   }
 
+  func testCanvasRejectsConnectorDraggedBackToSource() throws {
+    let frame = SionRect(x: 100, y: 100, width: 160, height: 96)
+    let shape = SceneElement.shape(frame: frame, kind: .rectangle)
+    let controller = try makeController(elements: [shape])
+    var feedbackCount = 0
+    let canvas = makeCanvas(
+      controller: controller,
+      creationFailureFeedback: { feedbackCount += 1 }
+    )
+    controller.setTool(.connector)
+
+    try drag(
+      canvas: canvas,
+      from: SionPoint(x: frame.maxX - 1, y: frame.center.y),
+      to: SionPoint(x: frame.minX + 1, y: frame.center.y)
+    )
+
+    XCTAssertEqual(controller.document.scene.elements, [shape])
+    XCTAssertEqual(feedbackCount, 1)
+  }
+
+  func testCanvasCreatesConnectorBetweenDistinctElements() throws {
+    let sourceFrame = SionRect(x: 100, y: 100, width: 160, height: 96)
+    let targetFrame = SionRect(x: 400, y: 100, width: 160, height: 96)
+    let source = SceneElement.shape(frame: sourceFrame, kind: .rectangle)
+    let target = SceneElement.shape(frame: targetFrame, kind: .rectangle)
+    let controller = try makeController(elements: [source, target])
+    var feedbackCount = 0
+    let canvas = makeCanvas(
+      controller: controller,
+      creationFailureFeedback: { feedbackCount += 1 }
+    )
+    controller.setTool(.connector)
+
+    try drag(
+      canvas: canvas,
+      from: SionPoint(x: sourceFrame.maxX - 1, y: sourceFrame.center.y),
+      to: SionPoint(x: targetFrame.minX + 1, y: targetFrame.center.y)
+    )
+
+    let connector = try XCTUnwrap(
+      controller.document.scene.elements.last?.content.connector
+    )
+    XCTAssertEqual(controller.document.scene.elements.count, 3)
+    XCTAssertEqual(connector.source.elementID, source.id)
+    XCTAssertEqual(connector.target.elementID, target.id)
+    XCTAssertEqual(feedbackCount, 0)
+  }
+
   func testMarqueeUsesMouseUpPointForNegativeDrag() throws {
     let element = SceneElement.shape(
       frame: SionRect(x: 100, y: 100, width: 60, height: 40),

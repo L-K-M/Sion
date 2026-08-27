@@ -46,7 +46,7 @@ public enum ShapeKind: Codable, Equatable, Sendable {
   case custom(VectorPath)
 }
 
-public struct TextContent: Codable, Equatable, Sendable {
+public struct TextContent: Codable, Equatable, Hashable, Sendable {
   public var string: String
   public var style: TextStyle
 

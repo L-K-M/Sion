@@ -112,6 +112,8 @@
     private var history: DocumentHistory
     private var previewPNG: Data?
     private var pendingTextEdit: PendingTextEdit?
+    private var routeCache: [ElementID: ConnectorRoute]
+    private let imageCache: NSCache<NSString, NSImage>
 
     private let undoManagerProvider: () -> UndoManager?
     private let didChange: (DocumentChange) -> Void
@@ -127,6 +129,10 @@
       history = package.history
       previewPNG = package.previewPNG
       pendingTextEdit = nil
+      routeCache = [:]
+      imageCache = NSCache()
+      imageCache.countLimit = EditorDefaults.imageCacheLimit
+      imageCache.totalCostLimit = EditorDefaults.imageCacheTotalCostLimit
       self.undoManagerProvider = undoManagerProvider
       self.didChange = didChange
 
@@ -222,6 +228,8 @@
       previewPNG = package.previewPNG
       pendingTextEdit = nil
       anchorEditingState = .inactive
+      routeCache.removeAll()
+      imageCache.removeAllObjects()
       selection.removeAll()
       undoManagerProvider()?.removeAllActions(withTarget: self)
       notifyObservers()
@@ -231,8 +239,56 @@
       assets[id]
     }
 
+    /// Decodes display renditions once; IDs are content addressed, so entries
+    /// stay valid until the asset is dropped. NSCache evicts under pressure.
+    func image(for content: ImageContent) -> NSImage? {
+      let key = NSString(string: content.displayAssetID.rawValue)
+      if let cached = imageCache.object(forKey: key) {
+        return cached
+      }
+
+      guard let asset = asset(for: content.displayAssetID),
+        let image = NSImage(data: asset.data)
+      else {
+        return nil
+      }
+
+      // Charge the cache by decoded pixels; compressed bytes understate
+      // what a rendition actually retains.
+      let decodedCost = image.representations.reduce(asset.data.count) {
+        $0 + ($1.pixelsWide * $1.pixelsHigh * 4)
+      }
+      imageCache.setObject(image, forKey: key, cost: decodedCost)
+      return image
+    }
+
     func connectorRoute(for element: SceneElement) -> ConnectorRoute? {
-      SceneRenderGeometry.connectorRoute(for: element, in: editor.document.scene)
+      if let cached = routeCache[element.id] {
+        return cached
+      }
+
+      guard
+        let route = SceneRenderGeometry.connectorRoute(
+          for: element,
+          in: editor.document.scene
+        )
+      else {
+        return nil
+      }
+
+      routeCache[element.id] = route
+      return route
+    }
+
+    /// Routes once per scene state; bounds, drawing, and hit testing share it.
+    func editingCanvasBounds(minimumInfiniteSize: SionSize) -> SionRect {
+      SceneRenderGeometry.editingCanvasBounds(
+        of: editor.document.scene,
+        minimumInfiniteSize: minimumInfiniteSize,
+        connectorRoutes: { [weak self] element in
+          self?.connectorRoute(for: element) ?? nil
+        }
+      )
     }
 
     func connectorPreview(
@@ -809,13 +865,12 @@
       for element in editor.document.scene.elements.reversed() {
         guard element.visibility == .visible else { continue }
 
-        if let route = SceneRenderGeometry.connectorRoute(
-          for: element,
-          in: editor.document.scene
-        ) {
-          if route.polylineSegments.contains(where: {
-            distance(from: point, to: $0) <= EditorDefaults.connectorHitTolerance
-          }) {
+        if element.content.connector != nil {
+          if let route = connectorRoute(for: element),
+            route.polylineSegments.contains(where: {
+              distance(from: point, to: $0) <= EditorDefaults.connectorHitTolerance
+            })
+          {
             return element
           }
           continue
@@ -906,8 +961,11 @@
     }
 
     private func notifyModelChange(notification: DocumentChangeNotification) {
-      // Any edit invalidates the archive's optional rendered preview.
+      // Every notification reaching this funnel mutates the document, so the
+      // rendered preview and cached routes are stale. Selection-only changes
+      // notify observers directly and keep both caches.
       previewPNG = nil
+      routeCache.removeAll()
 
       switch notification {
       case .done:
@@ -1039,6 +1097,7 @@
     private func removeAssets(_ ids: Set<AssetID>) {
       for id in ids {
         assets[id] = nil
+        imageCache.removeObject(forKey: NSString(string: id.rawValue))
       }
     }
 
@@ -1077,6 +1136,8 @@
     static let connectorMagnetSnapTolerance = 10.0
     static let elementHitSlop = 2.0
     static let customAnchorIDPrefix = "custom-"
+    static let imageCacheLimit = 256
+    static let imageCacheTotalCostLimit = 128 * 1024 * 1024
   }
 
   private struct AnchorPlacement {

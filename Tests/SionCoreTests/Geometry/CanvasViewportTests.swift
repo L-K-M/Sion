@@ -71,4 +71,49 @@ final class CanvasViewportTests: XCTestCase {
     XCTAssertGreaterThan(bounds.maxX, distant.geometry.frame.maxX)
     XCTAssertGreaterThan(bounds.maxY, distant.geometry.frame.maxY)
   }
+
+  func testRouteProviderSuppliesConnectorBoundsWithoutReRouting() {
+    let source = SceneElement.shape(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 60),
+      kind: .rectangle
+    )
+    let target = SceneElement.shape(
+      frame: SionRect(x: 400, y: 200, width: 100, height: 60),
+      kind: .rectangle
+    )
+    let connector = SceneElement.connector(
+      source: .element(
+        source.id,
+        attachment: .automatic,
+        fallbackPoint: SionPoint(x: 100, y: 30)
+      ),
+      target: .element(
+        target.id,
+        attachment: .automatic,
+        fallbackPoint: SionPoint(x: 400, y: 230)
+      )
+    )
+    let scene = SionScene(elements: [source, target, connector])
+
+    let expected = SceneRenderGeometry.editingCanvasBounds(
+      of: scene,
+      minimumInfiniteSize: minimumInfiniteSize
+    )
+
+    let routed = SceneRenderGeometry.connectorRoute(for: connector, in: scene)
+    XCTAssertNotNil(routed)
+
+    var providerCalls = 0
+    let providerBounds = SceneRenderGeometry.editingCanvasBounds(
+      of: scene,
+      minimumInfiniteSize: minimumInfiniteSize,
+      connectorRoutes: { element in
+        providerCalls += 1
+        return element.id == connector.id ? routed : nil
+      }
+    )
+
+    XCTAssertEqual(providerBounds, expected)
+    XCTAssertGreaterThan(providerCalls, 0)
+  }
 }

@@ -58,6 +58,25 @@
     private var inlineTextUndoManager: UndoManager?
     private var editingCanvasBounds: SionRect
     private var canvasExtent: CanvasExtent
+    private var textRenderCache: [TextRenderKey: TextRender] = [:]
+
+    /// Everything that determines one measured text layout. Widths quantize
+    /// to half points so a resize drag does not thrash the cache per pixel.
+    private struct TextRenderKey: Hashable {
+      let content: TextContent
+      let widthBucket: Int
+
+      init(content: TextContent, width: CGFloat) {
+        self.content = content
+        // Floor defines a stable lower edge used by measurement below.
+        self.widthBucket = Int(exactly: (width * 2).rounded(.down)) ?? .max
+      }
+    }
+
+    private struct TextRender {
+      let attributed: NSAttributedString
+      let measuredHeight: CGFloat
+    }
 
     init(
       editorController: SionEditorController,
@@ -1059,6 +1078,24 @@
         width: max(0, bounds.width - leading - trailing),
         height: max(0, bounds.height - top - bottom)
       )
+      let rendered = cachedTextRender(for: content, width: rect.width)
+      let drawingRect = verticallyAlignedRect(
+        NSRect(x: 0, y: 0, width: rect.width, height: rendered.measuredHeight),
+        in: rect,
+        alignment: style.verticalAlignment)
+      rendered.attributed.draw(
+        with: drawingRect, options: [.usesLineFragmentOrigin, .usesFontLeading])
+    }
+
+    /// Text measurement dominates redraws once routing is cached, so keep one
+    /// layout per (text, style, width). Keys carry everything that affects it.
+    private func cachedTextRender(for content: TextContent, width: CGFloat) -> TextRender {
+      let key = TextRenderKey(content: content, width: width)
+      if let cached = textRenderCache[key] {
+        return cached
+      }
+
+      let style = content.style
       let paragraph = NSMutableParagraphStyle()
       paragraph.alignment = textAlignment(style.horizontalAlignment)
       paragraph.lineSpacing = finiteNonnegative(style.lineSpacing)
@@ -1071,18 +1108,36 @@
       ]
       let attributed = NSAttributedString(string: content.string, attributes: attributes)
       let measured = attributed.boundingRect(
-        with: rect.size,
+        with: NSSize(
+          // The bucket's lower edge is safe for every width mapped to it.
+          width: CGFloat(key.widthBucket) / 2,
+          height: .greatestFiniteMagnitude
+        ),
         options: [.usesLineFragmentOrigin, .usesFontLeading]
       )
-      let drawingRect = verticallyAlignedRect(
-        measured, in: rect, alignment: style.verticalAlignment)
-      attributed.draw(with: drawingRect, options: [.usesLineFragmentOrigin, .usesFontLeading])
+      let render = TextRender(
+        attributed: attributed,
+        measuredHeight: ceil(measured.height)
+      )
+
+      if textRenderCache.count >= CanvasMetrics.textRenderCacheLimit {
+        let evictionCount = max(
+          1,
+          CanvasMetrics.textRenderCacheLimit
+            / CanvasMetrics.textRenderCacheEvictionDivisor
+        )
+        // Arbitrary partial eviction avoids a full-cache miss spike.
+        let evictedKeys = Array(textRenderCache.keys.prefix(evictionCount))
+        for evictedKey in evictedKeys {
+          textRenderCache.removeValue(forKey: evictedKey)
+        }
+      }
+      textRenderCache[key] = render
+      return render
     }
 
     private func drawImage(_ content: ImageContent, frame: SionRect) {
-      guard let asset = editorController.asset(for: content.displayAssetID),
-        let image = NSImage(data: asset.data)
-      else {
+      guard let image = editorController.image(for: content) else {
         drawMissingImage(in: frame)
         return
       }
@@ -1684,8 +1739,7 @@
     /// Infinite canvases grow monotonically so a drag cannot move the viewport under the pointer.
     private func synchronizeCanvasBounds() {
       let scene = editorController.document.scene
-      let requiredBounds = SceneRenderGeometry.editingCanvasBounds(
-        of: scene,
+      let requiredBounds = editorController.editingCanvasBounds(
         minimumInfiniteSize: CanvasMetrics.minimumInfiniteSize
       )
       let nextBounds: SionRect
@@ -2058,6 +2112,8 @@
     static let connectorLabelSize = SionSize(width: 120, height: 36)
     static let nudgeDistance = 1.0
     static let largeNudgeDistance = 10.0
+    static let textRenderCacheLimit = 512
+    static let textRenderCacheEvictionDivisor = 4
   }
 
   private enum PasteboardType {

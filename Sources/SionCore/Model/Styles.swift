@@ -1,6 +1,6 @@
 import Foundation
 
-public struct SionColor: Codable, Equatable, Sendable {
+public struct SionColor: Codable, Equatable, Hashable, Sendable {
   public var red: Double
   public var green: Double
   public var blue: Double
@@ -156,7 +156,7 @@ public struct ElementStyle: Codable, Equatable, Sendable {
   )
 }
 
-public enum FontFamily: Codable, Equatable, Sendable {
+public enum FontFamily: Codable, Equatable, Hashable, Sendable {
   case system
   case named(String)
 }
@@ -169,7 +169,7 @@ public enum FontWeight: String, Codable, CaseIterable, Sendable {
   case bold
 }
 
-public struct FontDescriptor: Codable, Equatable, Sendable {
+public struct FontDescriptor: Codable, Equatable, Hashable, Sendable {
   public var family: FontFamily
   public var size: Double
   public var weight: FontWeight
@@ -200,7 +200,7 @@ public enum TextAutoSizing: String, Codable, CaseIterable, Sendable {
   case fitWidthAndHeight
 }
 
-public struct TextInsets: Codable, Equatable, Sendable {
+public struct TextInsets: Codable, Equatable, Hashable, Sendable {
   public var top: Double
   public var leading: Double
   public var bottom: Double
@@ -218,7 +218,7 @@ public struct TextInsets: Codable, Equatable, Sendable {
   }
 }
 
-public struct TextStyle: Codable, Equatable, Sendable {
+public struct TextStyle: Codable, Equatable, Hashable, Sendable {
   public var font: FontDescriptor
   public var color: SionColor
   public var horizontalAlignment: HorizontalTextAlignment

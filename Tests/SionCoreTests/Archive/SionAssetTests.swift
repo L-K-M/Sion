@@ -23,19 +23,31 @@ final class SionAssetTests: XCTestCase {
   func testRejectsDisplayPNGWithMismatchedPixelSize() {
     XCTAssertNoThrow(
       try SionAsset.safeDisplayPNG(
-        data: testPNGData(),
+        data: testPNGData(width: 1, height: 1),
         pixelSize: SionSize(width: 1, height: 1)
       )
     )
 
     XCTAssertThrowsError(
       try SionAsset.safeDisplayPNG(
-        data: testPNGData(),
+        data: testPNGData(width: 1, height: 1),
         pixelSize: SionSize(width: 2, height: 1)
       )
     ) { error in
       guard case .invalidDisplayAsset = error as? SionPackageError else {
-        XCTFail("Expected invalid display asset")
+        XCTFail("Expected invalidDisplayAsset, got \(error)")
+        return
+      }
+    }
+
+    XCTAssertThrowsError(
+      try SionAsset.safeDisplayPNG(
+        data: testPNGData(width: 1, height: 1),
+        pixelSize: SionSize(width: 1, height: 2)
+      )
+    ) { error in
+      guard case .invalidDisplayAsset = error as? SionPackageError else {
+        XCTFail("Expected invalidDisplayAsset, got \(error)")
         return
       }
     }
@@ -43,7 +55,7 @@ final class SionAssetTests: XCTestCase {
 
   func testPackageRejectsDisplayPNGWithMismatchedPixelSize() throws {
     let display = try SionAsset(
-      data: testPNGData(),
+      data: testPNGData(width: 1, height: 1),
       mediaType: "image/png",
       fileExtension: "png",
       pixelSize: SionSize(width: 2, height: 1)

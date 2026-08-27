@@ -762,7 +762,7 @@
           samplesPerPixel: PreviewMetrics.samplesPerPixel,
           hasAlpha: true,
           isPlanar: false,
-          colorSpaceName: .deviceRGB,
+          colorSpaceName: .calibratedRGB,
           bytesPerRow: 0,
           bitsPerPixel: 0
         ),
@@ -771,8 +771,8 @@
         return nil
       }
 
-      NSGraphicsContext.saveGraphicsState()
-      defer { NSGraphicsContext.restoreGraphicsState() }
+      let previousContext = NSGraphicsContext.current
+      defer { NSGraphicsContext.current = previousContext }
 
       // Map the y-down model into the bitmap's y-up pixel coordinates.
       bitmapContext.cgContext.translateBy(x: 0, y: CGFloat(pixelHeight))

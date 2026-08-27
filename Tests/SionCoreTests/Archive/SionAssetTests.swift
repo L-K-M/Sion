@@ -9,6 +9,7 @@ final class SionAssetTests: XCTestCase {
 
     XCTAssertEqual(display.mediaType, "image/png")
     XCTAssertEqual(display.fileExtension, "png")
+    XCTAssertNil(display.pixelSize)
 
     XCTAssertThrowsError(
       try SionAsset.safeDisplayPNG(data: Data("not a PNG".utf8))
@@ -17,6 +18,61 @@ final class SionAssetTests: XCTestCase {
         XCTFail("Expected invalid display asset")
         return
       }
+    }
+  }
+
+  func testRejectsDisplayPNGWithMismatchedPixelSize() {
+    XCTAssertNoThrow(
+      try SionAsset.safeDisplayPNG(
+        data: testPNGData(width: 1, height: 1),
+        pixelSize: SionSize(width: 1, height: 1)
+      )
+    )
+
+    XCTAssertThrowsError(
+      try SionAsset.safeDisplayPNG(
+        data: testPNGData(width: 1, height: 1),
+        pixelSize: SionSize(width: 2, height: 1)
+      )
+    ) { error in
+      guard case .invalidDisplayAsset = error as? SionPackageError else {
+        XCTFail("Expected invalidDisplayAsset, got \(error)")
+        return
+      }
+    }
+
+    XCTAssertThrowsError(
+      try SionAsset.safeDisplayPNG(
+        data: testPNGData(width: 1, height: 1),
+        pixelSize: SionSize(width: 1, height: 2)
+      )
+    ) { error in
+      guard case .invalidDisplayAsset = error as? SionPackageError else {
+        XCTFail("Expected invalidDisplayAsset, got \(error)")
+        return
+      }
+    }
+  }
+
+  func testPackageRejectsDisplayPNGWithMismatchedPixelSize() throws {
+    let display = try SionAsset(
+      data: testPNGData(width: 1, height: 1),
+      mediaType: "image/png",
+      fileExtension: "png",
+      pixelSize: SionSize(width: 2, height: 1)
+    )
+    let image = SceneElement.image(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+      assetID: display.id,
+      displayAssetID: display.id
+    )
+    let package = SionPackage(
+      document: SionDocument(scene: SionScene(elements: [image])),
+      assets: [display.id: display]
+    )
+
+    XCTAssertThrowsError(try package.validate()) { error in
+      XCTAssertEqual(error as? SionPackageError, .invalidDisplayAsset(display.id))
     }
   }
 
@@ -39,7 +95,10 @@ final class SionAssetTests: XCTestCase {
 
   func testAcceptsDisplayPNGWithDynamicHuffmanPixels() {
     XCTAssertNoThrow(
-      try SionAsset.safeDisplayPNG(data: testDynamicPNGData())
+      try SionAsset.safeDisplayPNG(
+        data: testDynamicPNGData(),
+        pixelSize: SionSize(width: 17, height: 17)
+      )
     )
   }
 

@@ -201,7 +201,7 @@ final class SionArchiveTests: XCTestCase {
     )
 
     XCTAssertTrue(svg.contains("<pattern id=\"image-pattern-"))
-    XCTAssertTrue(svg.contains("patternUnits=\"userSpaceOnUse\" width=\"32\" height=\"24\""))
+    XCTAssertTrue(svg.contains("patternUnits=\"userSpaceOnUse\" width=\"1\" height=\"1\""))
     XCTAssertTrue(svg.contains("fill=\"url(#image-pattern-"))
     XCTAssertFalse(svg.lowercased().contains("nan"))
     XCTAssertFalse(svg.lowercased().contains("inf"))
@@ -871,7 +871,7 @@ final class SionArchiveTests: XCTestCase {
       mediaType: "image/png",
       fileExtension: "png",
       originalFilename: "source.png",
-      pixelSize: SionSize(width: 32, height: 24)
+      pixelSize: SionSize(width: 1, height: 1)
     )
     let shapeA = SceneElement.shape(
       id: elementID("00000000-0000-0000-0000-000000000001"),

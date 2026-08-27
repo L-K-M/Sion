@@ -56,6 +56,8 @@
     private var history: DocumentHistory
     private var previewPNG: Data?
     private var pendingTextEdit: PendingTextEdit?
+    /// Routes are replayed across redraws; `notifyModelChange` invalidates.
+    private var routeCache = SceneRouteCache()
 
     private let undoManagerProvider: () -> UndoManager?
     private let didChange: (DocumentChange) -> Void
@@ -165,6 +167,7 @@
       history = package.history
       previewPNG = package.previewPNG
       pendingTextEdit = nil
+      routeCache.invalidate()
       selection.removeAll()
       undoManagerProvider()?.removeAllActions(withTarget: self)
       notifyObservers()
@@ -175,7 +178,7 @@
     }
 
     func connectorRoute(for element: SceneElement) -> ConnectorRoute? {
-      SceneRenderGeometry.connectorRoute(for: element, in: editor.document.scene)
+      routeCache.route(for: element, in: editor.document.scene)
     }
 
     func connectorPreview(
@@ -654,10 +657,7 @@
       for element in editor.document.scene.elements.reversed() {
         guard element.visibility == .visible else { continue }
 
-        if let route = SceneRenderGeometry.connectorRoute(
-          for: element,
-          in: editor.document.scene
-        ) {
+        if let route = connectorRoute(for: element) {
           if route.polylineSegments.contains(where: {
             distance(from: point, to: $0) <= EditorDefaults.connectorHitTolerance
           }) {
@@ -739,6 +739,7 @@
     private func notifyModelChange(notification: DocumentChangeNotification) {
       // Any edit invalidates the archive's optional rendered preview.
       previewPNG = nil
+      routeCache.invalidate()
 
       switch notification {
       case .done:

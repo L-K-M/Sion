@@ -63,6 +63,13 @@
       XCTAssertEqual(
         orderedIDs(controller), [scene.elements[0].id, scene.elements[3].id] + middleTwo)
 
+      // One slot back lands on the original arrangement.
+      try controller.changeSelectionZOrder(.backward)
+      XCTAssertEqual(
+        orderedIDs(controller),
+        [scene.elements[0].id] + middleTwo + [scene.elements[3].id])
+
+      // A second slot back crosses the first element.
       try controller.changeSelectionZOrder(.backward)
       XCTAssertEqual(
         orderedIDs(controller), middleTwo + [scene.elements[0].id, scene.elements[3].id])

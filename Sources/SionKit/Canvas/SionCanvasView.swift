@@ -650,15 +650,16 @@
     ) {
       let placement = creationPlacement(creation, from: start, to: end)
 
-      switch creation {
-      case .shape(let kind):
-        _ = try? editorController.insertShape(in: placement.frame, kind: kind)
-      case .text:
-        guard let id = try? editorController.insertText("Text", in: placement.frame) else {
-          return
+      do {
+        switch creation {
+        case .shape(let kind):
+          _ = try editorController.insertShape(in: placement.frame, kind: kind)
+        case .text:
+          let id = try editorController.insertText("Text", in: placement.frame)
+          beginTextEditing(id)
         }
-
-        beginTextEditing(id)
+      } catch {
+        creationFailureFeedback()
       }
 
       needsDisplay = true
@@ -1301,7 +1302,12 @@
       )
       path.stroke()
 
-      guard element.lockState == .editable, element.content.connector == nil else { return }
+      guard editorController.selectedElement?.id == element.id,
+        element.lockState == .editable,
+        element.content.connector == nil
+      else {
+        return
+      }
 
       for handle in ResizeHandle.allCases {
         drawSquareHandle(at: resizeHandlePoint(handle, for: element))

@@ -5,6 +5,15 @@ import XCTest
 final class SceneRenderGeometryTests: XCTestCase {
   private let canvasArrowLength = 12.0
   private let contentPadding = SceneRenderGeometry.exportPadding
+  private let svgMarkerViewportScale = 7.0 / 10.0
+  private let svgFilledArrowFarCorners = [
+    SionVector(dx: -9, dy: -5),
+    SionVector(dx: -9, dy: 5),
+  ]
+  private let svgOpenArrowFarCorners = [
+    SionVector(dx: -8, dy: -4),
+    SionVector(dx: -8, dy: 4),
+  ]
 
   func testContentBoundsIncludeWideStroke() {
     var shape = SceneElement.shape(
@@ -195,6 +204,55 @@ final class SceneRenderGeometryTests: XCTestCase {
       bounds.minX,
       1 - canvasArrowLength - strokeRadius - contentPadding
     )
+  }
+
+  func testContentBoundsIncludeStrokeScaledArrowsOnShortDiagonalConnector() {
+    let start = SionPoint(x: 0, y: 0)
+    let end = SionPoint(x: 1, y: 1)
+    let strokeWidth = 20.0
+    let markerScale = strokeWidth * svgMarkerViewportScale
+    let angle = atan2(end.y - start.y, end.x - start.x)
+    let fixtures: [(ConnectorDecoration, [SionVector])] = [
+      (.openArrow, svgOpenArrowFarCorners),
+      (.filledArrow, svgFilledArrowFarCorners),
+    ]
+
+    for (decoration, corners) in fixtures {
+      var connector = SceneElement.connector(
+        source: .free(start),
+        target: .free(end),
+        routingStyle: .straight
+      )
+      connector.content = .connector(
+        ConnectorContent(
+          source: .free(start),
+          target: .free(end),
+          routingStyle: .straight,
+          targetDecoration: decoration
+        )
+      )
+      connector.style.stroke = StrokeStyle(color: .primaryInk, width: strokeWidth)
+
+      let bounds = SceneRenderGeometry.contentBounds(
+        of: SionScene(elements: [connector])
+      )
+      let paintedCorners = corners.map { corner in
+        let scaled = corner * markerScale
+        let rotated = InteractionGeometry.rotated(scaled, by: angle)
+        return end + rotated
+      }
+
+      XCTAssertLessThanOrEqual(
+        bounds.minX,
+        (paintedCorners.map(\.x).min() ?? end.x) - contentPadding,
+        "\(decoration)"
+      )
+      XCTAssertLessThanOrEqual(
+        bounds.minY,
+        (paintedCorners.map(\.y).min() ?? end.y) - contentPadding,
+        "\(decoration)"
+      )
+    }
   }
 
   func testContentBoundsIncludeConnectorLabel() {

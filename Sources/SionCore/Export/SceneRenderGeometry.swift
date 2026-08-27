@@ -287,19 +287,23 @@ public enum SceneRenderGeometry {
     strokeWidth: Double
   ) -> Double {
     let nativeRadius: Double
+    let svgRadiusFactor: Double
     switch decoration {
     case .none:
       return 0
     case .openArrow, .filledArrow:
       nativeRadius = PaintedBounds.nativeArrowRadius
+      svgRadiusFactor = PaintedBounds.svgArrowMarkerRadiusFactor
     case .circle:
       nativeRadius = PaintedBounds.nativeCircleRadius
+      svgRadiusFactor = PaintedBounds.svgCompactMarkerRadiusFactor
     case .diamond:
       nativeRadius = PaintedBounds.nativeDiamondRadius
+      svgRadiusFactor = PaintedBounds.svgCompactMarkerRadiusFactor
     }
 
     let nativePaintedRadius = nativeRadius + (strokeWidth / 2)
-    let svgRadius = strokeWidth * PaintedBounds.svgMarkerRadiusFactor
+    let svgRadius = strokeWidth * svgRadiusFactor
     return max(nativePaintedRadius, svgRadius)
   }
 
@@ -544,7 +548,16 @@ private enum PaintedBounds {
   static let nativeDefaultConnectorWidth = 1.5
   static let nativeMiterLimit = 10.0
   static let shadowBlurExtentMultiplier = 3.0
-  static let svgMarkerRadiusFactor = 4.0
+  static let svgCompactMarkerRadiusFactor = 4.0
+
+  // SVG markers scale a 10-unit viewBox into seven stroke-width units.
+  static let svgMarkerViewportScale = 7.0 / 10.0
+  static let svgFilledArrowReferenceOffset = SionVector(dx: 9, dy: 5)
+  static let svgArrowMarkerRadiusFactor =
+    hypot(
+      svgFilledArrowReferenceOffset.dx,
+      svgFilledArrowReferenceOffset.dy
+    ) * svgMarkerViewportScale
 }
 
 extension ConnectorRoute {

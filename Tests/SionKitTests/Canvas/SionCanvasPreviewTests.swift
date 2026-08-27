@@ -111,6 +111,20 @@ final class SionCanvasPreviewTests: XCTestCase {
     XCTAssertEqual(selected, unselected)
   }
 
+  func testPreviewRestoresCurrentGraphicsContext() throws {
+    let previousContext = NSGraphicsContext.current
+    defer { NSGraphicsContext.current = previousContext }
+
+    let element = SceneElement.shape(id: TestPreview.elementID, frame: TestPreview.defaultFrame)
+    let controller = try makeController(elements: [element])
+    let canvas = SionCanvasView(editorController: controller)
+
+    XCTAssertNotNil(
+      canvas.renderPreviewPNG(maximumDimension: TestPreview.selectionDimension)
+    )
+    XCTAssertTrue(NSGraphicsContext.current === previousContext)
+  }
+
   private func makeController(elements: [SceneElement]) throws -> SionEditorController {
     try SionEditorController(
       package: SionPackage(document: SionDocument(scene: SionScene(elements: elements))),
@@ -144,7 +158,6 @@ final class SionCanvasPreviewTests: XCTestCase {
 
     return SionPoint(x: xTotal / count, y: yTotal / count)
   }
-
 }
 
 private enum TestPreview {

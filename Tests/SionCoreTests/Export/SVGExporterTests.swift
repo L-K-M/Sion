@@ -204,12 +204,17 @@ final class SVGExporterTests: XCTestCase {
   }
 
   private func numberAttribute(_ name: String, in tag: Substring) -> Double? {
-    guard let valueStart = tag.range(of: "\(name)=\"")?.upperBound,
-      let valueEnd = tag[valueStart...].firstIndex(of: "\"")
+    let prefix = "\(name)=\""
+    guard
+      let attribute = tag
+        .split(whereSeparator: \Character.isWhitespace)
+        .first(where: { $0.hasPrefix(prefix) }),
+      let valueEnd = attribute.dropFirst(prefix.count).firstIndex(of: "\"")
     else {
       return nil
     }
 
-    return Double(tag[valueStart..<valueEnd])
+    let valueStart = attribute.index(attribute.startIndex, offsetBy: prefix.count)
+    return Double(attribute[valueStart..<valueEnd])
   }
 }

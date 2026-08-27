@@ -2,6 +2,23 @@
   import AppKit
   import SionCore
 
+  /// Shared placement defaults keep click and drag creation consistent.
+  enum SionCreationDefaults {
+    static let rectangleSize = SionSize(width: 160, height: 96)
+    static let circleSize = SionSize(width: 120, height: 120)
+    static let textSize = SionSize(width: 220, height: 56)
+
+    static func shapeSize(for kind: ShapeKind) -> SionSize {
+      switch kind {
+      case .ellipse:
+        circleSize
+      case .rectangle, .roundedRectangle, .diamond, .triangle, .hexagon, .capsule,
+        .cylinder, .custom:
+        rectangleSize
+      }
+    }
+  }
+
   @MainActor
   /// The sole UI gateway to scene edits, selection, assets, and native undo.
   final class SionEditorController: NSObject {
@@ -21,36 +38,75 @@
       case backward
     }
 
+    enum AnchorEditingState: Equatable {
+      case inactive
+      case editing(ElementID)
+
+      var elementID: ElementID? {
+        guard case .editing(let id) = self else { return nil }
+
+        return id
+      }
+    }
+
+    enum AnchorEditResult: Equatable {
+      case changed
+      case outsideElement
+      case unavailable
+    }
+
     enum Tool: Int, CaseIterable {
       case select
-      case shape
+      case rectangle
+      case circle
       case text
       case connector
-      case magnets
 
       var title: String {
         switch self {
         case .select: "Select"
-        case .shape: "Shape"
+        case .rectangle: "Rectangle"
+        case .circle: "Circle"
         case .text: "Text"
         case .connector: "Connector"
-        case .magnets: "Connection Points"
         }
       }
 
       var symbolName: String {
         switch self {
         case .select: "arrow.up.left"
-        case .shape: "square.on.circle"
+        case .rectangle: "rectangle"
+        case .circle: "circle"
         case .text: "textformat"
         case .connector: "point.topleft.down.to.point.bottomright.curvepath"
-        case .magnets: "scope"
+        }
+      }
+
+      var help: String {
+        switch self {
+        case .select: "Select and transform objects"
+        case .rectangle: "Click or drag to create a rectangle"
+        case .circle: "Click or drag to create a circle"
+        case .text: "Click or drag to create a text box"
+        case .connector: "Drag between objects or connection points"
+        }
+      }
+
+      var shapeKind: ShapeKind? {
+        switch self {
+        case .rectangle:
+          .roundedRectangle(radius: SceneElementDefaults.cornerRadius)
+        case .circle:
+          .ellipse
+        case .select, .text, .connector:
+          nil
         }
       }
     }
 
     private(set) var selection = Set<ElementID>()
     private(set) var tool = Tool.select
+    private(set) var anchorEditingState = AnchorEditingState.inactive
     private var editor: SceneEditor
     private var assets: [AssetID: SionAsset]
     private var history: DocumentHistory
@@ -165,6 +221,7 @@
       history = package.history
       previewPNG = package.previewPNG
       pendingTextEdit = nil
+      anchorEditingState = .inactive
       selection.removeAll()
       undoManagerProvider()?.removeAllActions(withTarget: self)
       notifyObservers()
@@ -201,10 +258,6 @@
       SceneRenderGeometry.contentBounds(of: editor.document.scene)
     }
 
-    func magnetPoints(for element: SceneElement) -> [SionPoint] {
-      element.resolvedMagnets.map(\.endpoint.point)
-    }
-
     @discardableResult
     func observeChanges(_ observer: @escaping () -> Void) -> UUID {
       let id = UUID()
@@ -220,7 +273,76 @@
       guard tool != newTool else { return }
 
       tool = newTool
+      anchorEditingState = .inactive
       notifyObservers()
+    }
+
+    func beginAnchorEditing(on id: ElementID) {
+      guard selectedElement?.id == id,
+        let element = editor.document.scene.element(withID: id),
+        element.lockState == .editable,
+        element.content.connector == nil
+      else {
+        endAnchorEditing()
+        return
+      }
+
+      let nextState = AnchorEditingState.editing(id)
+      guard anchorEditingState != nextState else { return }
+
+      anchorEditingState = nextState
+      notifyObservers()
+    }
+
+    func endAnchorEditing() {
+      guard anchorEditingState != .inactive else { return }
+
+      anchorEditingState = .inactive
+      notifyObservers()
+    }
+
+    @discardableResult
+    func editAnchor(
+      at point: SionPoint,
+      on id: ElementID,
+      hitTolerance: Double
+    ) throws -> AnchorEditResult {
+      guard anchorEditingState == .editing(id),
+        let element = editor.document.scene.element(withID: id),
+        element.lockState == .editable,
+        element.content.connector == nil
+      else {
+        return .unavailable
+      }
+
+      let frame = element.geometry.frame.standardized
+      guard frame.width > 0, frame.height > 0 else { return .unavailable }
+
+      var anchors = element.expandedMagnets
+      let nearest = element.resolvedMagnets.enumerated().min { first, second in
+        point.distance(to: first.element.endpoint.point)
+          < point.distance(to: second.element.endpoint.point)
+      }
+      let tolerance = hitTolerance.isFinite ? max(0, hitTolerance) : 0
+      if let nearest,
+        point.distance(to: nearest.element.endpoint.point) <= tolerance
+      {
+        anchors.remove(at: nearest.offset)
+        try setMagnetConfiguration(.custom(anchors), on: id)
+        return .changed
+      }
+
+      let localPoint = InteractionGeometry.unrotated(
+        point,
+        around: frame.center,
+        by: element.geometry.rotationRadians
+      )
+      guard frame.contains(localPoint) else { return .outsideElement }
+      guard anchors.count < SceneLimits.maximumMagnetsPerElement else { return .unavailable }
+
+      anchors.append(customAnchor(for: element, at: localPoint, in: frame))
+      try setMagnetConfiguration(.custom(anchors), on: id)
+      return .changed
     }
 
     func select(_ id: ElementID?, mode: SelectionMode = .replace) {
@@ -283,19 +405,23 @@
     func insertShape(at point: SionPoint) throws -> ElementID {
       try insertShape(
         at: point,
-        kind: .roundedRectangle(radius: EditorDefaults.cornerRadius)
+        kind: .roundedRectangle(radius: SceneElementDefaults.cornerRadius)
       )
     }
 
     @discardableResult
     func insertShape(at point: SionPoint, kind: ShapeKind) throws -> ElementID {
-      let size = EditorDefaults.shapeSize
+      // Click insertion anchors the default frame at the pointer.
       let frame = SionRect(
-        x: point.x - (size.width / 2),
-        y: point.y - (size.height / 2),
-        width: size.width,
-        height: size.height
+        origin: point,
+        size: SionCreationDefaults.shapeSize(for: kind)
       )
+
+      return try insertShape(in: frame, kind: kind)
+    }
+
+    @discardableResult
+    func insertShape(in frame: SionRect, kind: ShapeKind) throws -> ElementID {
       let element = SceneElement.shape(frame: frame, kind: kind)
 
       try perform(name: "Add Shape", command: .insert(elements: [element], at: nil))
@@ -304,18 +430,48 @@
     }
 
     @discardableResult
+    func insertShape(centeredAt point: SionPoint, kind: ShapeKind) throws -> ElementID {
+      let size = SionCreationDefaults.shapeSize(for: kind)
+      let frame = SionRect(
+        x: point.x - (size.width / 2),
+        y: point.y - (size.height / 2),
+        width: size.width,
+        height: size.height
+      )
+
+      return try insertShape(in: frame, kind: kind)
+    }
+
+    @discardableResult
     func insertText(_ text: String, at point: SionPoint) throws -> ElementID {
       let frame = SionRect(
-        x: point.x - (EditorDefaults.textSize.width / 2),
-        y: point.y - (EditorDefaults.textSize.height / 2),
-        width: EditorDefaults.textSize.width,
-        height: EditorDefaults.textSize.height
+        origin: point,
+        size: SionCreationDefaults.textSize
       )
+
+      return try insertText(text, in: frame)
+    }
+
+    @discardableResult
+    func insertText(_ text: String, in frame: SionRect) throws -> ElementID {
       let element = SceneElement.text(frame: frame, text: text)
 
       try perform(name: "Add Text", command: .insert(elements: [element], at: nil))
       select(element.id)
       return element.id
+    }
+
+    @discardableResult
+    func insertText(_ text: String, centeredAt point: SionPoint) throws -> ElementID {
+      let size = SionCreationDefaults.textSize
+      let frame = SionRect(
+        x: point.x - (size.width / 2),
+        y: point.y - (size.height / 2),
+        width: size.width,
+        height: size.height
+      )
+
+      return try insertText(text, in: frame)
     }
 
     @discardableResult
@@ -389,7 +545,7 @@
     func insertMermaid(_ source: String, at point: SionPoint) throws -> [ElementID] {
       let elements = MermaidImporter.elements(from: source, centeredAt: point)
       guard !elements.isEmpty else {
-        _ = try insertText(source, at: point)
+        _ = try insertText(source, centeredAt: point)
         return Array(selection)
       }
 
@@ -496,52 +652,6 @@
       )
     }
 
-    func toggleMagnet(at point: SionPoint, on id: ElementID, hitTolerance: Double) throws {
-      guard let element = editor.document.scene.element(withID: id),
-        element.lockState == .editable,
-        element.content.connector == nil
-      else {
-        return
-      }
-
-      let frame = element.geometry.frame.standardized
-      guard frame.width > 0, frame.height > 0 else { return }
-
-      var magnets = element.expandedMagnets
-      let resolvedMagnets = element.resolvedMagnets
-      let nearest = resolvedMagnets.enumerated().min { first, second in
-        point.distance(to: first.element.endpoint.point)
-          < point.distance(to: second.element.endpoint.point)
-      }
-
-      if let nearest,
-        point.distance(to: nearest.element.endpoint.point)
-          <= max(0, hitTolerance)
-      {
-        magnets.remove(at: nearest.offset)
-      } else {
-        guard magnets.count < SceneLimits.maximumMagnetsPerElement else { return }
-
-        let localPoint = unrotated(
-          point, around: frame.center, radians: element.geometry.rotationRadians)
-        let normalizedPosition = SionPoint(
-          x: min(1, max(0, (localPoint.x - frame.minX) / frame.width)),
-          y: min(1, max(0, (localPoint.y - frame.minY) / frame.height))
-        )
-        let radialDirection = normalizedPosition - SionPoint(x: 0.5, y: 0.5)
-        let outwardDirection = radialDirection == .zero ? SionVector.north : radialDirection
-        magnets.append(
-          Magnet(
-            id: MagnetID("\(EditorDefaults.customMagnetIDPrefix)\(UUID().uuidString.lowercased())"),
-            normalizedPosition: normalizedPosition,
-            outwardDirection: outwardDirection
-          )
-        )
-      }
-
-      try setMagnetConfiguration(.custom(magnets), on: id)
-    }
-
     func setFillColor(_ color: SionColor, on id: ElementID) throws {
       guard var element = editor.document.scene.element(withID: id) else { return }
 
@@ -601,7 +711,7 @@
       let removed = selection
       try perform(name: "Delete", command: .remove(elementIDs: removed))
       selection.removeAll()
-      notifyObservers()
+      notifySelectionChange(from: removed)
     }
 
     func beginMove() throws {
@@ -628,7 +738,7 @@
     func beginResize() throws {
       guard selectedElement != nil else { return }
 
-      try editor.beginGesture(named: "Resize")
+      try beginTransform(.resize)
     }
 
     func resize(_ id: ElementID, to frame: SionRect) throws {
@@ -637,10 +747,55 @@
     }
 
     func endResize() throws {
+      try endTransform(.resize)
+    }
+
+    func beginRotation() throws {
+      guard selectedElement != nil else { return }
+
+      try beginTransform(.rotate)
+    }
+
+    func rotate(_ id: ElementID, to radians: Double) throws {
+      _ = try editor.updateGesture(
+        with: .setRotation(elementID: id, radians: radians)
+      )
+      notifyModelChange(notification: .skip)
+    }
+
+    func endRotation() throws {
+      try endTransform(.rotate)
+    }
+
+    func beginCornerRadiusChange() throws {
+      guard selectedElement != nil else { return }
+
+      try beginTransform(.cornerRadius)
+    }
+
+    func setCornerRadius(_ radius: Double, on id: ElementID) throws {
+      _ = try editor.updateGesture(
+        with: .setShapeKind(
+          elementID: id,
+          kind: .roundedRectangle(radius: max(0, radius))
+        )
+      )
+      notifyModelChange(notification: .skip)
+    }
+
+    func endCornerRadiusChange() throws {
+      try endTransform(.cornerRadius)
+    }
+
+    private func beginTransform(_ transform: ElementTransform) throws {
+      try editor.beginGesture(named: transform.actionName)
+    }
+
+    private func endTransform(_ transform: ElementTransform) throws {
       let result = try editor.endGesture()
       guard result == .applied else { return }
 
-      registerUndo(actionName: "Resize")
+      registerUndo(actionName: transform.actionName)
       notifyModelChange(notification: .done)
     }
 
@@ -666,7 +821,13 @@
           continue
         }
 
-        if element.geometry.frame.expanded(by: EditorDefaults.elementHitSlop).contains(point) {
+        let frame = element.geometry.frame.standardized
+        let localPoint = InteractionGeometry.unrotated(
+          point,
+          around: frame.center,
+          by: element.geometry.rotationRadians
+        )
+        if frame.expanded(by: EditorDefaults.elementHitSlop).contains(localPoint) {
           return element
         }
       }
@@ -676,9 +837,17 @@
 
     func connectableElement(at point: SionPoint) -> SceneElement? {
       editor.document.scene.elements.reversed().first { element in
-        element.visibility == .visible
-          && element.content.connector == nil
-          && element.geometry.frame.expanded(by: EditorDefaults.elementHitSlop).contains(point)
+        guard element.visibility == .visible, element.content.connector == nil else {
+          return false
+        }
+
+        let frame = element.geometry.frame.standardized
+        let localPoint = InteractionGeometry.unrotated(
+          point,
+          around: frame.center,
+          by: element.geometry.rotationRadians
+        )
+        return frame.expanded(by: EditorDefaults.elementHitSlop).contains(localPoint)
       }
     }
 
@@ -756,6 +925,7 @@
     private func notifySelectionChange(from previous: Set<ElementID>) {
       guard selection != previous else { return }
 
+      anchorEditingState = .inactive
       notifyObservers()
     }
 
@@ -768,6 +938,65 @@
     private func pruneSelection() {
       let existing = Set(editor.document.scene.elements.map(\.id))
       selection.formIntersection(existing)
+
+      guard let editedID = anchorEditingState.elementID,
+        selection.contains(editedID),
+        let element = editor.document.scene.element(withID: editedID),
+        element.lockState == .editable,
+        element.content.connector == nil
+      else {
+        anchorEditingState = .inactive
+        return
+      }
+    }
+
+    private func customAnchor(
+      for element: SceneElement,
+      at localPoint: SionPoint,
+      in frame: SionRect
+    ) -> Magnet {
+      let placement = anchorPlacement(for: element, at: localPoint, in: frame)
+      let normalizedPosition = SionPoint(
+        x: (placement.point.x - frame.minX) / frame.width,
+        y: (placement.point.y - frame.minY) / frame.height
+      )
+
+      return Magnet(
+        id: MagnetID(
+          "\(EditorDefaults.customAnchorIDPrefix)\(UUID().uuidString.lowercased())"
+        ),
+        normalizedPosition: normalizedPosition,
+        outwardDirection: placement.outwardDirection
+      )
+    }
+
+    private func anchorPlacement(
+      for element: SceneElement,
+      at point: SionPoint,
+      in frame: SionRect
+    ) -> AnchorPlacement {
+      if case .shape(let content) = element.content {
+        switch content.kind {
+        case .rectangle, .roundedRectangle:
+          let edge = RectangleAnchorEdge.nearest(to: point, in: frame)
+          return AnchorPlacement(
+            point: edge.project(point, onto: frame),
+            outwardDirection: edge.outwardDirection
+          )
+        case .ellipse, .diamond, .triangle, .hexagon, .capsule, .cylinder, .custom:
+          break
+        }
+      }
+
+      let clampedPoint = SionPoint(
+        x: min(frame.maxX, max(frame.minX, point.x)),
+        y: min(frame.maxY, max(frame.minY, point.y))
+      )
+      let radialDirection = clampedPoint - frame.center
+      return AnchorPlacement(
+        point: clampedPoint,
+        outwardDirection: radialDirection == .zero ? .north : radialDirection
+      )
     }
 
     private func endpoint(
@@ -776,23 +1005,14 @@
       use: MagnetUse
     ) -> ConnectionEndpoint {
       guard let elementID else { return .free(point) }
+      let element = editor.document.scene.element(withID: elementID)
 
-      if let element = editor.document.scene.element(withID: elementID),
-        let nearest = element.resolvedMagnets
-          .filter({ $0.magnet.connectionDirection.allows(use) })
-          .min(by: {
-            point.distance(to: $0.endpoint.point) < point.distance(to: $1.endpoint.point)
-          }),
-        point.distance(to: nearest.endpoint.point) <= EditorDefaults.connectorMagnetSnapTolerance
-      {
-        return .element(
-          elementID,
-          attachment: .magnet(nearest.magnet.id),
-          fallbackPoint: nearest.endpoint.point
-        )
-      }
-
-      return .element(elementID, attachment: .automatic, fallbackPoint: point)
+      return ConnectorAttachmentResolver.endpoint(
+        attachingTo: element,
+        at: point,
+        use: use,
+        magnetSnapDistance: EditorDefaults.connectorMagnetSnapTolerance
+      )
     }
 
     private func mergeAssets(_ incomingAssets: [AssetID: SionAsset]) throws -> Set<AssetID> {
@@ -847,34 +1067,65 @@
       return point.distance(to: nearest)
     }
 
-    private func unrotated(
-      _ point: SionPoint,
-      around center: SionPoint,
-      radians: Double
-    ) -> SionPoint {
-      guard radians.isFinite, radians != 0 else { return point }
-
-      let cosine = cos(-radians)
-      let sine = sin(-radians)
-      let offset = point - center
-      return SionPoint(
-        x: center.x + (offset.dx * cosine) - (offset.dy * sine),
-        y: center.y + (offset.dx * sine) + (offset.dy * cosine)
-      )
-    }
   }
 
   private enum EditorDefaults {
-    static let cornerRadius = 12.0
-    static let shapeSize = SionSize(width: 160, height: 96)
-    static let textSize = SionSize(width: 220, height: 56)
     static let imageSize = SionSize(width: 240, height: 180)
     static let maximumImageDimension = 480.0
     static let strokeWidth = 1.5
     static let connectorHitTolerance = 6.0
     static let connectorMagnetSnapTolerance = 10.0
     static let elementHitSlop = 2.0
-    static let customMagnetIDPrefix = "custom-"
+    static let customAnchorIDPrefix = "custom-"
+  }
+
+  private struct AnchorPlacement {
+    let point: SionPoint
+    let outwardDirection: SionVector
+  }
+
+  private enum RectangleAnchorEdge: CaseIterable {
+    case north
+    case east
+    case south
+    case west
+
+    static func nearest(to point: SionPoint, in frame: SionRect) -> RectangleAnchorEdge {
+      allCases.min {
+        $0.distance(to: point, in: frame) < $1.distance(to: point, in: frame)
+      } ?? .north
+    }
+
+    var outwardDirection: SionVector {
+      switch self {
+      case .north: .north
+      case .east: .east
+      case .south: .south
+      case .west: .west
+      }
+    }
+
+    func distance(to point: SionPoint, in frame: SionRect) -> Double {
+      switch self {
+      case .north: abs(point.y - frame.minY)
+      case .east: abs(frame.maxX - point.x)
+      case .south: abs(frame.maxY - point.y)
+      case .west: abs(point.x - frame.minX)
+      }
+    }
+
+    func project(_ point: SionPoint, onto frame: SionRect) -> SionPoint {
+      switch self {
+      case .north:
+        SionPoint(x: point.x, y: frame.minY)
+      case .east:
+        SionPoint(x: frame.maxX, y: point.y)
+      case .south:
+        SionPoint(x: point.x, y: frame.maxY)
+      case .west:
+        SionPoint(x: frame.minX, y: point.y)
+      }
+    }
   }
 
   private enum EditorActionName {
@@ -896,6 +1147,20 @@
   private enum UndoDirection {
     case undo
     case redo
+  }
+
+  private enum ElementTransform {
+    case resize
+    case rotate
+    case cornerRadius
+
+    var actionName: String {
+      switch self {
+      case .resize: "Resize"
+      case .rotate: "Rotate"
+      case .cornerRadius: "Change Corner Radius"
+      }
+    }
   }
 
   private enum EditorTransferError: Error {

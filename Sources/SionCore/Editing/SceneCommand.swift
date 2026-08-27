@@ -10,6 +10,8 @@ public enum SceneCommand: Equatable, Sendable {
   /// The destination is measured after the selected elements are removed.
   case reorder(elementIDs: [ElementID], destinationIndex: Int)
   case setFrame(elementID: ElementID, frame: SionRect)
+  case setRotation(elementID: ElementID, radians: Double)
+  case setShapeKind(elementID: ElementID, kind: ShapeKind)
   case setParent(elementID: ElementID, parentID: ElementID?)
   case setText(elementID: ElementID, text: String)
   case setStyle(elementID: ElementID, style: ElementStyle)
@@ -72,6 +74,27 @@ extension SceneCommand {
       if element.content.connector == nil, frame != previousFrame {
         invalidateResolvedConnectorRoutes(in: &scene)
       }
+    case .setRotation(let elementID, let radians):
+      let element = try editableElement(elementID, in: scene)
+      try updateEditableElement(elementID, in: &scene) { element in
+        element.geometry.rotationRadians = radians
+      }
+
+      if element.content.connector == nil, radians != element.geometry.rotationRadians {
+        invalidateResolvedConnectorRoutes(in: &scene)
+      }
+    case .setShapeKind(let elementID, let kind):
+      let element = try editableElement(elementID, in: scene)
+      guard case .shape(var content) = element.content else {
+        throw SceneEditingError.elementIsNotShape(elementID)
+      }
+      guard content.kind != kind else { return }
+
+      content.kind = kind
+      try updateEditableElement(elementID, in: &scene) { element in
+        element.content = .shape(content)
+      }
+      invalidateResolvedConnectorRoutes(in: &scene)
     case .setParent(let elementID, let parentID):
       try updateEditableElement(elementID, in: &scene) { element in
         element.parentID = parentID
@@ -618,6 +641,7 @@ public enum SceneEditingError: Error, Equatable, Sendable {
   case elementLocked(ElementID)
   case elementDoesNotContainText(ElementID)
   case elementIsNotConnector(ElementID)
+  case elementIsNotShape(ElementID)
   case invalidDestinationIndex(Int)
   case duplicateReorderID
   case invalidHistoryLimit(Int)

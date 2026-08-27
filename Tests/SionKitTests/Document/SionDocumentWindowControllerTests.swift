@@ -6,6 +6,37 @@ import XCTest
 
 @MainActor
 final class SionDocumentWindowControllerTests: XCTestCase {
+  func testToolbarConfigurationVersionMakesZoomVisibleAfterUpgrade() throws {
+    _ = NSApplication.shared
+    let editorController = try SionEditorController(
+      package: SionPackage(document: SionDocument()),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+    let windowController = SionDocumentWindowController(editorController: editorController)
+
+    XCTAssertEqual(
+      windowController.window?.toolbar?.identifier,
+      NSToolbar.Identifier("SionDocumentToolbar.v2")
+    )
+    windowController.close()
+  }
+
+  func testDefaultToolbarIncludesVisibleZoomControl() throws {
+    _ = NSApplication.shared
+    let editorController = try SionEditorController(
+      package: SionPackage(document: SionDocument()),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    let toolbar = NSToolbar(identifier: "Sion.Tests.Toolbar")
+    let identifiers = windowController.toolbarDefaultItemIdentifiers(toolbar)
+
+    XCTAssertTrue(identifiers.contains(NSToolbarItem.Identifier("Sion.Zoom")))
+    windowController.close()
+  }
+
   func testZoomToFitIsIndependentOfCurrentMagnification() throws {
     _ = NSApplication.shared
     let scene = SionScene(

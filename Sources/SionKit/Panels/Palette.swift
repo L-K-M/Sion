@@ -102,12 +102,20 @@
     public func close() {
       popoverFollowUp = nil
 
+      // A detached panel can briefly coexist with its closing popover.
+      let hasPresentedPanel = presentation == .panel || panel?.isVisible == true
+      if hasPresentedPanel {
+        panel?.close()
+      }
+
       if let popover {
         popover.close()
         return
       }
 
-      panel?.close()
+      if !hasPresentedPanel {
+        panel?.close()
+      }
     }
 
     /// Re-resolves the target after front-document or selection changes.
@@ -158,9 +166,12 @@
 
     public func windowWillClose(_ notification: Notification) {
       guard notification.object as? NSWindow === panel else { return }
-      guard presentation == .panel else { return }
 
-      panelContent?.dismissed(from: .panel)
+      if presentation == .panel {
+        panelContent?.dismissed(from: .panel)
+      }
+
+      detachmentPrepared = false
       panelContent?.releaseTarget()
       transition(to: nil)
     }

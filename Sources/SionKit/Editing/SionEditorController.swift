@@ -301,6 +301,7 @@
       let hidden = editor.document.scene.elements.filter { $0.visibility == .hidden }
       guard !hidden.isEmpty else { return }
 
+      endAnchorEditing()
       try perform(
         name: "Reveal All",
         commands: hidden.flatMap(revealCommands)

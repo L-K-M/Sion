@@ -28,7 +28,7 @@ final class SceneArrangementTests: XCTestCase {
     XCTAssertEqual(offsets[1], .zero)
   }
 
-  func testAlignCenterYAlignsBothCentersToTheUnionCenter() {
+  func testAlignCenterYAlignsToUnionCenter() {
     let frames = [
       SionRect(x: 0, y: 0, width: 10, height: 20),
       SionRect(x: 0, y: 100, width: 10, height: 40),
@@ -42,6 +42,23 @@ final class SceneArrangementTests: XCTestCase {
     // The union spans y 0...140, so both centers land on 70.
     XCTAssertEqual(centers[0], 70, accuracy: 0.000_001)
     XCTAssertEqual(centers[1], 70, accuracy: 0.000_001)
+  }
+
+  func testAlignTopMovesAllToMinimumY() {
+    let frames = [
+      SionRect(x: 0, y: 25, width: 20, height: 30),
+      SionRect(x: 40, y: 100, width: 20, height: 10),
+    ]
+
+    let offsets = SceneArrangement.alignedOffsets(frames, edge: .top)
+
+    XCTAssertEqual(offsets[0], .zero)
+    XCTAssertEqual(offsets[1], SionVector(dx: 0, dy: -75))
+  }
+
+  func testEmptyInputReturnsEmptyOffsets() {
+    XCTAssertEqual(SceneArrangement.alignedOffsets([], edge: .leading), [])
+    XCTAssertEqual(SceneArrangement.distributedOffsets([], axis: .horizontal), [])
   }
 
   func testAlignWithASingleFrameIsANoOp() {

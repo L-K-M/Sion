@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 @testable import SionCore
@@ -5,11 +6,15 @@ import XCTest
 
 @MainActor
 final class SionEditorControllerArrangeTests: XCTestCase {
-  private func makeController(elements: [SceneElement]) throws -> SionEditorController {
+  private func makeController(
+    elements: [SceneElement],
+    undoManager: UndoManager? = nil,
+    didChange: @escaping (SionEditorController.DocumentChange) -> Void = { _ in }
+  ) throws -> SionEditorController {
     try SionEditorController(
       package: SionPackage(document: SionDocument(scene: SionScene(elements: elements))),
-      undoManagerProvider: { nil },
-      didChange: { _ in }
+      undoManagerProvider: { undoManager },
+      didChange: didChange
     )
   }
 
@@ -31,6 +36,47 @@ final class SionEditorControllerArrangeTests: XCTestCase {
 
     XCTAssertEqual(controller.frame(of: first.id)?.minX, 10)
     XCTAssertEqual(controller.frame(of: second.id)?.minX, 10)
+  }
+
+  func testAlignUsesPaintedBoundsAndCommitsOneUndo() throws {
+    var thin = shape(id: "00000000-0000-0000-0000-000000000001", x: 10, y: 0)
+    thin.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .primaryInk, width: 2)
+    )
+    var thick = shape(id: "00000000-0000-0000-0000-000000000002", x: 200, y: 90)
+    thick.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .primaryInk, width: 20)
+    )
+    let document = SionDocument(scene: SionScene(elements: [thin, thick]))
+    let undoManager = UndoManager()
+    undoManager.groupsByEvent = false
+    var changes = 0
+    let controller = try makeController(
+      elements: [thin, thick],
+      undoManager: undoManager,
+      didChange: { _ in changes += 1 }
+    )
+    controller.select([thin.id, thick.id])
+
+    try controller.alignSelection(.leading)
+
+    let alignedThin = try XCTUnwrap(controller.document.scene.element(withID: thin.id))
+    let alignedThick = try XCTUnwrap(controller.document.scene.element(withID: thick.id))
+    XCTAssertEqual(
+      SceneRenderGeometry.paintedBounds(of: alignedThin).minX,
+      SceneRenderGeometry.paintedBounds(of: alignedThick).minX,
+      accuracy: 1e-6
+    )
+    XCTAssertEqual(changes, 1)
+    XCTAssertTrue(undoManager.canUndo)
+
+    undoManager.undo()
+
+    XCTAssertEqual(controller.document, document)
+    XCTAssertEqual(changes, 2)
+    XCTAssertFalse(undoManager.canUndo)
   }
 
   func testDistributeHorizontallyEqualizesGaps() throws {
@@ -74,7 +120,29 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     XCTAssertEqual(controller.orderedIDs(), [first.id, second.id, third.id])
   }
 
+  func testLockedSelectionCannotMoveInZOrder() throws {
+    var locked = shape(id: "00000000-0000-0000-0000-000000000001", x: 0, y: 0)
+    locked.lockState = .locked
+    let other = shape(id: "00000000-0000-0000-0000-000000000002", x: 200, y: 0)
+    let document = SionDocument(scene: SionScene(elements: [locked, other]))
+    let undoManager = UndoManager()
+    var changes = 0
+    let controller = try makeController(
+      elements: [locked, other],
+      undoManager: undoManager,
+      didChange: { _ in changes += 1 }
+    )
+    controller.select(locked.id)
+
+    XCTAssertNoThrow(try controller.moveSelectionInZOrder(.front))
+    XCTAssertEqual(controller.document, document)
+    XCTAssertEqual(changes, 0)
+    XCTAssertFalse(undoManager.canUndo)
+  }
+
   func testDuplicateCopiesWithOffsetAndRepeatsManualOffset() throws {
+    let defaultOffset = 16.0
+    let manualOffset = SionVector(dx: 100, dy: 0)
     let element = shape(id: "00000000-0000-0000-0000-000000000001", x: 100, y: 100)
     let controller = try makeController(elements: [element])
     controller.select(element.id)
@@ -83,19 +151,39 @@ final class SionEditorControllerArrangeTests: XCTestCase {
 
     XCTAssertEqual(firstIDs.count, 1)
     let firstCopyFrame = try XCTUnwrap(controller.frame(of: firstIDs[0]))
-    XCTAssertEqual(firstCopyFrame.minX, 116, accuracy: 1e-6)
-    XCTAssertEqual(firstCopyFrame.minY, 116, accuracy: 1e-6)
+    XCTAssertEqual(firstCopyFrame.minX, element.geometry.frame.minX + defaultOffset, accuracy: 1e-6)
+    XCTAssertEqual(firstCopyFrame.minY, element.geometry.frame.minY + defaultOffset, accuracy: 1e-6)
     XCTAssertEqual(controller.selectedElementIDs(), Set(firstIDs))
 
     // Move the copy by hand, then duplicate again: the manual offset repeats.
     try controller.beginMove()
-    try controller.moveSelection(by: SionVector(dx: 100, dy: 0))
+    try controller.moveSelection(by: manualOffset)
     try controller.endMove()
+    let movedCopyFrame = try XCTUnwrap(controller.frame(of: firstIDs[0]))
 
     let secondIDs = try controller.duplicateSelection()
     let secondCopyFrame = try XCTUnwrap(controller.frame(of: secondIDs[0]))
-    XCTAssertEqual(secondCopyFrame.minX, firstCopyFrame.minX + 200, accuracy: 1e-6)
-    XCTAssertEqual(secondCopyFrame.minY, firstCopyFrame.minY, accuracy: 1e-6)
+    XCTAssertEqual(secondCopyFrame.minX, movedCopyFrame.minX + manualOffset.dx, accuracy: 1e-6)
+    XCTAssertEqual(secondCopyFrame.minY, movedCopyFrame.minY + manualOffset.dy, accuracy: 1e-6)
+  }
+
+  func testDuplicateCopiesGroupHierarchy() throws {
+    let group = SceneElement.group(
+      id: ElementID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!),
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100)
+    )
+    var child = shape(id: "00000000-0000-0000-0000-00000000000B", x: 10, y: 10)
+    child.parentID = group.id
+    let controller = try makeController(elements: [group, child])
+    controller.select(group.id)
+
+    let insertedIDs = try controller.duplicateSelection()
+
+    XCTAssertEqual(insertedIDs.count, 2)
+    let inserted = insertedIDs.compactMap(controller.document.scene.element(withID:))
+    let copiedGroup = try XCTUnwrap(inserted.first { $0.content.isGroup })
+    let copiedChild = try XCTUnwrap(inserted.first { !$0.content.isGroup })
+    XCTAssertEqual(copiedChild.parentID, copiedGroup.id)
   }
 
   func testLockPreventsMoveUntilUnlock() throws {
@@ -114,23 +202,51 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     XCTAssertTrue(controller.canMoveSelection)
   }
 
-  func testAlignWithGroupAndChildSelectedDoesNotDoubleMoveChild() throws {
+  func testAlignExcludesGroupRecordButMovesSelectedChild() throws {
     let group = SceneElement.group(
       id: ElementID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!),
       frame: SionRect(x: 0, y: 0, width: 100, height: 100)
     )
     var child = shape(id: "00000000-0000-0000-0000-00000000000B", x: 10, y: 10)
     child.parentID = group.id
-    let controller = try makeController(elements: [group, child])
-    controller.select(group.id)
-    controller.select(child.id, mode: .extend)
+    let outside = shape(id: "00000000-0000-0000-0000-00000000000C", x: 200, y: 10)
+    let controller = try makeController(elements: [group, child, outside])
+    controller.select([group.id, child.id, outside.id])
 
-    try controller.alignSelection(.trailing)
+    XCTAssertEqual(controller.arrangeableSelectionCount, 2)
 
-    // The child rides its parent exactly once; a second translate would
-    // move it past the parent's edge.
+    try controller.alignSelection(.leading)
+
+    // Groups have no painted content; explicitly selected children still act.
     XCTAssertEqual(controller.frame(of: child.id)?.minX, 10)
     XCTAssertEqual(controller.frame(of: group.id)?.minX, 0)
+    XCTAssertEqual(controller.frame(of: outside.id)?.minX, 10)
+  }
+
+  func testGroupRecordIsExcludedFromZOrderLockAndHide() throws {
+    let group = SceneElement.group(
+      id: ElementID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!),
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100)
+    )
+    var child = shape(id: "00000000-0000-0000-0000-00000000000B", x: 10, y: 10)
+    child.parentID = group.id
+    let outside = shape(id: "00000000-0000-0000-0000-00000000000C", x: 200, y: 10)
+    let document = SionDocument(scene: SionScene(elements: [group, child, outside]))
+
+    let zOrderController = try makeController(elements: document.scene.elements)
+    zOrderController.select(group.id)
+    try zOrderController.moveSelectionInZOrder(.front)
+    XCTAssertEqual(zOrderController.document, document)
+
+    let lockController = try makeController(elements: document.scene.elements)
+    lockController.select(group.id)
+    try lockController.setSelectionLockState(.locked)
+    XCTAssertEqual(lockController.document, document)
+
+    let hideController = try makeController(elements: document.scene.elements)
+    hideController.select(group.id)
+    try hideController.hideSelection()
+    XCTAssertEqual(hideController.document, document)
   }
 
   func testAlignUsesRotatedPaintedBounds() throws {
@@ -165,6 +281,66 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     try controller.revealHiddenElements()
     XCTAssertEqual(controller.visibility(of: element.id), .visible)
   }
+
+  func testRevealAllRestoresLockedHiddenElementAndOneUndo() throws {
+    var element = shape(id: "00000000-0000-0000-0000-000000000001", x: 0, y: 0)
+    element.visibility = .hidden
+    element.lockState = .locked
+    let document = SionDocument(scene: SionScene(elements: [element]))
+    let undoManager = UndoManager()
+    undoManager.groupsByEvent = false
+    var changes = 0
+    let controller = try makeController(
+      elements: [element],
+      undoManager: undoManager,
+      didChange: { _ in changes += 1 }
+    )
+
+    try controller.revealHiddenElements()
+
+    XCTAssertEqual(controller.visibility(of: element.id), .visible)
+    XCTAssertEqual(controller.lockState(of: element.id), .locked)
+    XCTAssertEqual(changes, 1)
+    XCTAssertTrue(undoManager.canUndo)
+
+    undoManager.undo()
+
+    XCTAssertEqual(controller.document, document)
+    XCTAssertEqual(changes, 2)
+    XCTAssertFalse(undoManager.canUndo)
+  }
+
+  func testArrangeMenuValidationMatchesExecutableSelection() throws {
+    _ = NSApplication.shared
+    let editable = shape(id: "00000000-0000-0000-0000-000000000001", x: 0, y: 0)
+    var locked = shape(id: "00000000-0000-0000-0000-000000000002", x: 100, y: 0)
+    locked.lockState = .locked
+    let group = SceneElement.group(
+      id: ElementID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!),
+      frame: SionRect(x: 200, y: 0, width: 100, height: 100)
+    )
+    let controller = try makeController(elements: [editable, locked, group])
+    let canvas = SionCanvasView(editorController: controller)
+
+    controller.select(editable.id)
+    XCTAssertTrue(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.lockSelection(_:))))
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.unlockSelection(_:))))
+    XCTAssertTrue(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.hideSelection(_:))))
+    XCTAssertTrue(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.bringForward(_:))))
+
+    controller.select(locked.id)
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.lockSelection(_:))))
+    XCTAssertTrue(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.unlockSelection(_:))))
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.hideSelection(_:))))
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.bringForward(_:))))
+
+    controller.select(group.id)
+    XCTAssertTrue(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.duplicate(_:))))
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.lockSelection(_:))))
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.unlockSelection(_:))))
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.hideSelection(_:))))
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.bringToFront(_:))))
+  }
 }
 
 extension SionEditorController {
@@ -182,5 +358,15 @@ extension SionEditorController {
 
   fileprivate func visibility(of id: ElementID) -> ElementVisibility? {
     document.scene.element(withID: id)?.visibility
+  }
+
+  fileprivate func lockState(of id: ElementID) -> ElementLockState? {
+    document.scene.element(withID: id)?.lockState
+  }
+}
+
+extension SionCanvasView {
+  fileprivate func menuItemIsEnabled(action: Selector) -> Bool {
+    validateMenuItem(NSMenuItem(title: "Test", action: action, keyEquivalent: ""))
   }
 }

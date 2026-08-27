@@ -6,6 +6,60 @@ import XCTest
 
 @MainActor
 final class InspectorPaletteTests: XCTestCase {
+  func testLockedSelectionDisablesAndCanUnlockInspector() throws {
+    _ = NSApplication.shared
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 40, y: 40, width: 160, height: 90)
+    )
+    shape.name = "Process"
+    shape.lockState = .locked
+    let editor = try SionEditorController(
+      package: SionPackage(
+        document: SionDocument(scene: SionScene(elements: [shape]))
+      ),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+    editor.select(shape.id)
+    let documentController = SionDocumentWindowController(editorController: editor)
+    defer { documentController.close() }
+
+    let documentWindow = try XCTUnwrap(documentController.window)
+    documentWindow.orderFrontRegardless()
+    let inspector = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.inspector.paletteKind)
+    )
+    defer { inspector.close() }
+    inspector.showPanel()
+
+    let panel = try XCTUnwrap(
+      NSApp.windows.first { $0.title == "Inspector" && $0.isVisible }
+    )
+    let descendants = try XCTUnwrap(panel.contentView).inspectorTestDescendants
+    let lockButton = try XCTUnwrap(
+      descendants.compactMap { $0 as? NSButton }.first { $0.title == "Locked" }
+    )
+    let colorWells = descendants.compactMap { $0 as? NSColorWell }
+    let widthSlider = try XCTUnwrap(descendants.compactMap { $0 as? NSSlider }.first)
+    let anchorPopup = try XCTUnwrap(
+      descendants.compactMap { $0 as? NSPopUpButton }.first {
+        $0.toolTip == "Choose where connectors attach to the selected object."
+      }
+    )
+
+    XCTAssertEqual(lockButton.state, .on)
+    XCTAssertTrue(colorWells.allSatisfy { !$0.isEnabled })
+    XCTAssertFalse(widthSlider.isEnabled)
+    XCTAssertFalse(anchorPopup.isEnabled)
+
+    lockButton.performClick(nil)
+
+    XCTAssertEqual(editor.document.scene.element(withID: shape.id)?.lockState, .editable)
+    XCTAssertTrue(colorWells.allSatisfy { $0.isEnabled })
+    XCTAssertTrue(widthSlider.isEnabled)
+    XCTAssertTrue(anchorPopup.isEnabled)
+  }
+
   func testFloatingInspectorObservesDocumentSelection() throws {
     _ = NSApplication.shared
     var shape = SceneElement.shape(

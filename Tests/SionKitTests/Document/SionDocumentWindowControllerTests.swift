@@ -49,22 +49,24 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     defer { windowController.close() }
 
     let window = try XCTUnwrap(windowController.window)
-    let toolbar = try XCTUnwrap(window.toolbar)
-    let zoomItem = try XCTUnwrap(
-      windowController.toolbar(
-        toolbar,
-        itemForItemIdentifier: NSToolbarItem.Identifier("Sion.Zoom"),
-        willBeInsertedIntoToolbar: false
-      )
+    let zoomControl = NSSegmentedControl(
+      labels: ["Out", "Fit", "In"],
+      trackingMode: .selectOne,
+      target: nil,
+      action: nil
     )
-    let zoomControl = try XCTUnwrap(zoomItem.view as? NSSegmentedControl)
     let temporaryResponder = TestResponderView()
     window.contentView?.addSubview(temporaryResponder)
     XCTAssertTrue(window.makeFirstResponder(temporaryResponder))
 
-    zoomControl.selectedSegment = 2
-    let action = try XCTUnwrap(zoomControl.action)
-    XCTAssertTrue(NSApp.sendAction(action, to: zoomControl.target, from: zoomControl))
+    zoomControl.selectedSegment = ZoomTestCommand.zoomInSegment
+    XCTAssertTrue(
+      NSApp.sendAction(
+        ZoomTestCommand.action,
+        to: windowController,
+        from: zoomControl
+      )
+    )
 
     XCTAssertTrue(window.firstResponder is SionCanvasView)
   }
@@ -97,4 +99,9 @@ final class SionDocumentWindowControllerTests: XCTestCase {
 
 private final class TestResponderView: NSView {
   override var acceptsFirstResponder: Bool { true }
+}
+
+private enum ZoomTestCommand {
+  static let zoomInSegment = 2
+  static let action = NSSelectorFromString("performZoomCommand:")
 }

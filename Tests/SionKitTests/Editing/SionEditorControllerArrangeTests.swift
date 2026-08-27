@@ -8,11 +8,14 @@ import XCTest
 final class SionEditorControllerArrangeTests: XCTestCase {
   private func makeController(
     elements: [SceneElement],
+    canvas: SionCanvas = SionCanvas(),
     undoManager: UndoManager? = nil,
     didChange: @escaping (SionEditorController.DocumentChange) -> Void = { _ in }
   ) throws -> SionEditorController {
     try SionEditorController(
-      package: SionPackage(document: SionDocument(scene: SionScene(elements: elements))),
+      package: SionPackage(
+        document: SionDocument(scene: SionScene(canvas: canvas, elements: elements))
+      ),
       undoManagerProvider: { undoManager },
       didChange: didChange
     )
@@ -187,6 +190,30 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     let copiedGroup = try XCTUnwrap(inserted.first { $0.content.isGroup })
     let copiedChild = try XCTUnwrap(inserted.first { !$0.content.isGroup })
     XCTAssertEqual(copiedChild.parentID, copiedGroup.id)
+  }
+
+  func testDuplicateCapsImportedGridSpacing() throws {
+    let maximumAutomaticOffset = CanvasDefaults.gridSpacing * 4
+    let element = shape(id: "00000000-0000-0000-0000-000000000001", x: 100, y: 100)
+    let canvas = SionCanvas(
+      grid: CanvasGrid(spacing: SceneLimits.maximumCoordinateMagnitude)
+    )
+    let controller = try makeController(elements: [element], canvas: canvas)
+    controller.select(element.id)
+
+    let insertedIDs = try controller.duplicateSelection()
+    let copyFrame = try XCTUnwrap(controller.frame(of: insertedIDs[0]))
+
+    XCTAssertEqual(
+      copyFrame.minX,
+      element.geometry.frame.minX + maximumAutomaticOffset,
+      accuracy: 1e-6
+    )
+    XCTAssertEqual(
+      copyFrame.minY,
+      element.geometry.frame.minY + maximumAutomaticOffset,
+      accuracy: 1e-6
+    )
   }
 
   func testLockPreventsMoveUntilUnlock() throws {

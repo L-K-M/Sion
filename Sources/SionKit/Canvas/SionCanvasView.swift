@@ -96,6 +96,7 @@
         self.updateAccessibilitySummary()
         self.updateAccessibilityHelp()
         self.window?.invalidateCursorRects(for: self)
+        self.refreshCursorForCurrentPointer()
       }
       updateAccessibilitySummary()
     }
@@ -212,7 +213,7 @@
         let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
           .withSymbolConfiguration(configuration)
       else {
-        return .crosshair
+        return .arrow
       }
 
       return NSCursor(

@@ -55,6 +55,10 @@
       case unavailable
     }
 
+    enum ConnectorInsertionError: Error, Equatable {
+      case selfLoopNotSupported(ElementID)
+    }
+
     enum Tool: Int, CaseIterable {
       case select
       case rectangle
@@ -634,6 +638,14 @@
     ) throws -> ElementID {
       let source = endpoint(elementID: sourceID, point: sourcePoint, use: .outgoing)
       let target = endpoint(elementID: targetID, point: targetPoint, use: .incoming)
+
+      // Automatic routing cannot produce a visible same-object route yet.
+      if let sourceElementID = source.elementID,
+        sourceElementID == target.elementID
+      {
+        throw ConnectorInsertionError.selfLoopNotSupported(sourceElementID)
+      }
+
       let element = SceneElement.connector(source: source, target: target)
 
       try perform(name: "Add Connector", command: .insert(elements: [element], at: nil))

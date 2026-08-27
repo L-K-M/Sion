@@ -169,7 +169,12 @@ final class SionEditorControllerTransformTests: XCTestCase {
         to: shape.id,
         targetPoint: targetMagnet.endpoint.point
       )
-    )
+    ) { error in
+      XCTAssertEqual(
+        error as? SionEditorController.ConnectorInsertionError,
+        .selfLoopNotSupported(shape.id)
+      )
+    }
 
     XCTAssertEqual(controller.document, document)
     XCTAssertEqual(controller.selection, [shape.id])

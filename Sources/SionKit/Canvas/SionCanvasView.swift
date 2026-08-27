@@ -475,12 +475,17 @@
           return
         }
 
-        _ = try? editorController.insertConnector(
-          from: sourceID,
-          sourcePoint: start,
-          to: target.elementID,
-          targetPoint: end
-        )
+        do {
+          _ = try editorController.insertConnector(
+            from: sourceID,
+            sourcePoint: start,
+            to: target.elementID,
+            targetPoint: end
+          )
+        } catch {
+          creationFailureFeedback()
+          needsDisplay = true
+        }
       case .marquee(let origin, _):
         // Modifier state at release decides replace versus extend, matching
         // the gesture the user believes they performed.

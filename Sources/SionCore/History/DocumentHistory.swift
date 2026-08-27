@@ -53,9 +53,10 @@ public struct DocumentHistory: Equatable, Sendable {
       return self
     }
 
+    // Future timestamps must not disable checkpoints after clock correction.
     if intent == .autosave,
-      let newest = revisions.first,
-      date.timeIntervalSince(newest.savedAt) < Self.autosaveCheckpointInterval
+      let newestEligible = revisions.first(where: { $0.savedAt <= date }),
+      date.timeIntervalSince(newestEligible.savedAt) < Self.autosaveCheckpointInterval
     {
       return self
     }

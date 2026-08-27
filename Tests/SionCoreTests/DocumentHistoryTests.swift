@@ -30,6 +30,7 @@ final class DocumentHistoryTests: XCTestCase {
   func testFutureRevisionDoesNotSuppressAutosave() {
     let futureData = Data("future".utf8)
     let currentData = Data("current".utf8)
+    let throttledData = Data("throttled".utf8)
     let history = DocumentHistory()
       .appending(
         sceneData: futureData,
@@ -37,8 +38,21 @@ final class DocumentHistoryTests: XCTestCase {
         intent: .manual
       )
       .appending(sceneData: currentData, at: referenceDate, intent: .autosave)
+      .appending(
+        sceneData: throttledData,
+        at: referenceDate.addingTimeInterval(DocumentHistory.autosaveCheckpointInterval / 2),
+        intent: .autosave
+      )
 
     XCTAssertEqual(history.revisions.map(\.sceneData), [futureData, currentData])
+  }
+
+  func testAutosavesAtSameDateAreRateLimited() {
+    let history = DocumentHistory()
+      .appending(sceneData: Data("one".utf8), at: referenceDate, intent: .autosave)
+      .appending(sceneData: Data("two".utf8), at: referenceDate, intent: .autosave)
+
+    XCTAssertEqual(history.revisions.map(\.sceneData), [Data("one".utf8)])
   }
 
   func testNewestRevisionsSurviveThinning() {

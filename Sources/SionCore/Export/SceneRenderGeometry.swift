@@ -49,7 +49,8 @@ public enum SceneRenderGeometry {
         return nil
       }
 
-      return candidate.geometry.frame
+      // Routing uses a conservative box so rotated content never becomes traversable.
+      return rotatedBounds(of: candidate.geometry)
     }
     return ConnectorRouter.route(
       from: source,
@@ -124,19 +125,16 @@ public enum SceneRenderGeometry {
     }
 
     let center = frame.center
-    let cosine = cos(geometry.rotationRadians)
-    let sine = sin(geometry.rotationRadians)
     let corners = [
       SionPoint(x: frame.minX, y: frame.minY),
       SionPoint(x: frame.maxX, y: frame.minY),
       SionPoint(x: frame.maxX, y: frame.maxY),
       SionPoint(x: frame.minX, y: frame.maxY),
     ].map { point in
-      let dx = point.x - center.x
-      let dy = point.y - center.y
-      return SionPoint(
-        x: center.x + (dx * cosine) - (dy * sine),
-        y: center.y + (dx * sine) + (dy * cosine)
+      InteractionGeometry.rotated(
+        point,
+        around: center,
+        by: geometry.rotationRadians
       )
     }
 
@@ -181,7 +179,6 @@ public enum SceneRenderGeometry {
         )
       }
 
-      let frame = element.geometry.frame.standardized
       let magnets = element.resolvedMagnets
       switch attachment {
       case .magnet(let magnetID):
@@ -201,7 +198,7 @@ public enum SceneRenderGeometry {
         }
       }
 
-      return boundaryEndpoint(of: frame, toward: reference)
+      return boundaryEndpoint(of: element.geometry, toward: reference)
     }
   }
 
@@ -225,6 +222,37 @@ public enum SceneRenderGeometry {
     }
 
     return nearest
+  }
+
+  private static func boundaryEndpoint(
+    of geometry: ElementGeometry,
+    toward reference: SionPoint
+  ) -> ResolvedConnectorEndpoint {
+    let frame = geometry.frame.standardized
+    let rotation = geometry.rotationRadians
+    guard rotation != 0 else {
+      return boundaryEndpoint(of: frame, toward: reference)
+    }
+
+    // Intersect in local space, then restore the element's canvas rotation.
+    let localReference = InteractionGeometry.rotated(
+      reference,
+      around: frame.center,
+      by: -rotation
+    )
+    let localEndpoint = boundaryEndpoint(of: frame, toward: localReference)
+
+    return ResolvedConnectorEndpoint(
+      point: InteractionGeometry.rotated(
+        localEndpoint.point,
+        around: frame.center,
+        by: rotation
+      ),
+      outwardDirection: InteractionGeometry.rotated(
+        localEndpoint.outwardDirection,
+        by: rotation
+      )
+    )
   }
 
   private static func boundaryEndpoint(

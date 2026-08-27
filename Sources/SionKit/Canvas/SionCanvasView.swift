@@ -10,20 +10,47 @@
       case discard
     }
 
-    private enum ResizeCorner: CaseIterable {
-      case topLeft
-      case topRight
-      case bottomLeft
-      case bottomRight
+    private enum Creation {
+      case shape(ShapeKind)
+      case text
+
+      var defaultSize: SionSize {
+        switch self {
+        case .shape(let kind):
+          SionCreationDefaults.shapeSize(for: kind)
+        case .text:
+          SionCreationDefaults.textSize
+        }
+      }
     }
 
     private enum Drag {
       case move(lastPoint: SionPoint)
-      case resize(elementID: ElementID, corner: ResizeCorner, startFrame: SionRect)
+      case resize(
+        elementID: ElementID,
+        handle: ResizeHandle,
+        startFrame: SionRect,
+        rotationRadians: Double
+      )
+      case rotate(
+        elementID: ElementID,
+        center: SionPoint,
+        startPoint: SionPoint,
+        startRotation: Double
+      )
+      case cornerRadius(
+        elementID: ElementID,
+        frame: SionRect,
+        rotationRadians: Double,
+        startPoint: SionPoint,
+        startRadius: Double
+      )
+      case create(creation: Creation, start: SionPoint, current: SionPoint)
       case connector(sourceID: ElementID?, start: SionPoint, current: SionPoint)
     }
 
     private let editorController: SionEditorController
+    private let creationFailureFeedback: @MainActor () -> Void
     private var observerID: UUID?
     private var drag: Drag?
     private var textEditor: NSScrollView?
@@ -32,8 +59,12 @@
     private var editingCanvasBounds: SionRect
     private var canvasExtent: CanvasExtent
 
-    init(editorController: SionEditorController) {
+    init(
+      editorController: SionEditorController,
+      creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() }
+    ) {
       self.editorController = editorController
+      self.creationFailureFeedback = creationFailureFeedback
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
         of: scene,
@@ -56,13 +87,15 @@
       setAccessibilityElement(true)
       setAccessibilityRole(.group)
       setAccessibilityLabel("Diagram canvas")
-      setAccessibilityHelp("Use Tab to select elements and arrow keys to move them")
+      updateAccessibilityHelp()
       observerID = editorController.observeChanges { [weak self] in
         guard let self else { return }
 
         self.synchronizeCanvasBounds()
         self.needsDisplay = true
         self.updateAccessibilitySummary()
+        self.updateAccessibilityHelp()
+        self.window?.invalidateCursorRects(for: self)
       }
       updateAccessibilitySummary()
     }
@@ -74,6 +107,17 @@
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+
+    override func resetCursorRects() {
+      super.resetCursorRects()
+
+      let editsAnchors = editorController.anchorEditingState != .inactive
+      let cursor: NSCursor =
+        editorController.tool == .select && !editsAnchors
+        ? .arrow
+        : .crosshair
+      addCursorRect(bounds, cursor: cursor)
+    }
 
     var visibleCenter: SionPoint { visibleCanvasCenter() }
 
@@ -116,6 +160,8 @@
       applyCanvasTransform()
       drawGrid()
       drawElements()
+      drawConnectionMagnets()
+      drawCreationPreview()
       drawConnectorPreview()
       NSGraphicsContext.restoreGraphicsState()
     }
@@ -125,25 +171,31 @@
       window?.makeFirstResponder(self)
 
       let point = modelPoint(from: event)
+      if handleAnchorEditing(at: point) {
+        return
+      }
+
+      // Visible connection points remain draggable while a placement tool stays active.
+      if editorController.tool != .select,
+        let selected = editorController.selectedElement,
+        selected.content.connector == nil,
+        let source = magnetTarget(at: point, use: .outgoing, elements: [selected])
+      {
+        beginConnector(from: source)
+        return
+      }
+
       switch editorController.tool {
       case .select:
         beginSelection(at: point, event: event)
-      case .shape:
-        if let id = try? editorController.insertShape(at: point) {
-          editorController.setTool(.select)
-          editorController.select(id)
-        }
+      case .rectangle, .circle:
+        guard let shapeKind = editorController.tool.shapeKind else { return }
+
+        drag = .create(creation: .shape(shapeKind), start: point, current: point)
       case .text:
-        if let id = try? editorController.insertText("Text", at: point) {
-          editorController.setTool(.select)
-          beginTextEditing(id)
-        }
+        drag = .create(creation: .text, start: point, current: point)
       case .connector:
-        let source = editorController.connectableElement(at: point)
-        editorController.select(source?.id)
-        drag = .connector(sourceID: source?.id, start: point, current: point)
-      case .magnets:
-        editMagnets(at: point)
+        beginConnector(at: point)
       }
     }
 
@@ -156,11 +208,59 @@
         let offset = point - lastPoint
         try? editorController.moveSelection(by: offset)
         self.drag = .move(lastPoint: point)
-      case .resize(let elementID, let corner, let startFrame):
-        let frame = resizedFrame(startFrame, moving: corner, to: point)
+      case .resize(let elementID, let handle, let startFrame, let rotationRadians):
+        let frame = InteractionGeometry.resizedFrame(
+          startFrame,
+          moving: handle,
+          to: point,
+          minimumSize: CanvasMetrics.minimumElementSize,
+          rotationRadians: rotationRadians
+        )
         try? editorController.resize(elementID, to: frame)
+      case .rotate(let elementID, let center, let startPoint, let startRotation):
+        let delta = InteractionGeometry.rotationDelta(
+          from: startPoint,
+          to: point,
+          around: center
+        )
+        let rotation = snappedRotation(
+          startRotation + delta,
+          modifierFlags: event.modifierFlags
+        )
+        try? editorController.rotate(elementID, to: rotation)
+      case .cornerRadius(
+        let elementID,
+        let frame,
+        let rotationRadians,
+        let startPoint,
+        let startRadius
+      ):
+        let initialPointerRadius = InteractionGeometry.roundedRectangleCornerRadius(
+          in: frame,
+          draggedTo: startPoint,
+          rotationRadians: rotationRadians
+        )
+        let pointerRadius = InteractionGeometry.roundedRectangleCornerRadius(
+          in: frame,
+          draggedTo: point,
+          rotationRadians: rotationRadians
+        )
+        let maximumRadius = min(frame.width, frame.height) / 2
+        let radius = min(
+          maximumRadius,
+          max(0, startRadius + pointerRadius - initialPointerRadius)
+        )
+        try? editorController.setCornerRadius(radius, on: elementID)
+      case .create(let creation, let start, _):
+        self.drag = .create(creation: creation, start: start, current: point)
+        needsDisplay = true
       case .connector(let sourceID, let start, _):
-        self.drag = .connector(sourceID: sourceID, start: start, current: point)
+        let target = connectorTarget(at: point, use: .incoming)
+        self.drag = .connector(
+          sourceID: sourceID,
+          start: start,
+          current: target.point
+        )
         needsDisplay = true
       }
     }
@@ -174,24 +274,37 @@
         try? editorController.endMove()
       case .resize:
         try? editorController.endResize()
+      case .rotate:
+        try? editorController.endRotation()
+      case .cornerRadius:
+        try? editorController.endCornerRadiusChange()
+      case .create(let creation, let start, _):
+        finishCreation(creation, from: start, to: modelPoint(from: event))
       case .connector(let sourceID, let start, _):
-        let end = modelPoint(from: event)
+        let target = connectorTarget(at: modelPoint(from: event), use: .incoming)
+        let end = target.point
         guard start.distance(to: end) >= CanvasMetrics.minimumConnectorLength else {
           needsDisplay = true
           return
         }
 
-        let targetID = editorController.connectableElement(at: end)?.id
         _ = try? editorController.insertConnector(
           from: sourceID,
           sourcePoint: start,
-          to: targetID,
+          to: target.elementID,
           targetPoint: end
         )
       }
     }
 
     override func keyDown(with event: NSEvent) {
+      if event.keyCode == CanvasKeyCode.escape,
+        editorController.anchorEditingState != .inactive
+      {
+        editorController.endAnchorEditing()
+        return
+      }
+
       if event.keyCode == CanvasKeyCode.returnKey,
         let element = editorController.selectedElement,
         element.editableText != nil
@@ -255,7 +368,7 @@
         return
       }
 
-      _ = try? editorController.insertText(text, at: point)
+      _ = try? editorController.insertText(text, centeredAt: point)
     }
 
     @objc func copy(_ sender: Any?) {
@@ -389,19 +502,33 @@
     private func beginSelection(at point: SionPoint, event: NSEvent) {
       if let element = editorController.selectedElement,
         element.lockState == .editable,
-        element.content.connector == nil,
-        let corner = resizeCorner(at: point, frame: element.geometry.frame)
+        element.content.connector == nil
       {
-        do {
-          try editorController.beginResize()
-          drag = .resize(
-            elementID: element.id,
-            corner: corner,
-            startFrame: element.geometry.frame.standardized
-          )
-        } catch {
-          drag = nil
+        if isRotationHandle(point, for: element) {
+          beginRotation(of: element, at: point)
+          return
         }
+
+        if isCornerRadiusHandle(point, for: element) {
+          beginCornerRadiusChange(of: element, at: point)
+          return
+        }
+
+        if let handle = resizeHandle(at: point, for: element) {
+          beginResize(of: element, using: handle)
+          return
+        }
+      }
+
+      let selectedConnectableElements = editorController.selectedElements.filter {
+        $0.content.connector == nil
+      }
+      if let source = magnetTarget(
+        at: point,
+        use: .outgoing,
+        elements: selectedConnectableElements
+      ) {
+        beginConnector(from: source)
         return
       }
 
@@ -435,22 +562,143 @@
       }
     }
 
-    private func editMagnets(at point: SionPoint) {
-      guard let element = editorController.element(at: point),
-        element.lockState == .editable,
-        element.content.connector == nil
-      else {
-        editorController.select(nil)
-        return
+    private func handleAnchorEditing(at point: SionPoint) -> Bool {
+      guard let id = editorController.anchorEditingState.elementID else { return false }
+
+      do {
+        let result = try editorController.editAnchor(
+          at: point,
+          on: id,
+          hitTolerance: CanvasMetrics.anchorEditingHitTolerance * inverseMagnification
+        )
+        switch result {
+        case .changed:
+          return true
+        case .outsideElement, .unavailable:
+          editorController.endAnchorEditing()
+          return false
+        }
+      } catch {
+        NSSound.beep()
+        return true
+      }
+    }
+
+    private func beginResize(of element: SceneElement, using handle: ResizeHandle) {
+      do {
+        try editorController.beginResize()
+        drag = .resize(
+          elementID: element.id,
+          handle: handle,
+          startFrame: element.geometry.frame.standardized,
+          rotationRadians: element.geometry.rotationRadians
+        )
+      } catch {
+        drag = nil
+      }
+    }
+
+    private func beginRotation(of element: SceneElement, at point: SionPoint) {
+      do {
+        try editorController.beginRotation()
+        drag = .rotate(
+          elementID: element.id,
+          center: element.geometry.frame.standardized.center,
+          startPoint: point,
+          startRotation: element.geometry.rotationRadians
+        )
+      } catch {
+        drag = nil
+      }
+    }
+
+    private func beginCornerRadiusChange(of element: SceneElement, at point: SionPoint) {
+      guard let radius = cornerRadius(of: element) else { return }
+
+      do {
+        try editorController.beginCornerRadiusChange()
+        drag = .cornerRadius(
+          elementID: element.id,
+          frame: element.geometry.frame.standardized,
+          rotationRadians: element.geometry.rotationRadians,
+          startPoint: point,
+          startRadius: radius
+        )
+      } catch {
+        drag = nil
+      }
+    }
+
+    private func beginConnector(at point: SionPoint) {
+      beginConnector(from: connectorTarget(at: point, use: .outgoing))
+    }
+
+    private func beginConnector(from source: ConnectorTarget) {
+      editorController.select(source.elementID)
+      drag = .connector(
+        sourceID: source.elementID,
+        start: source.point,
+        current: source.point
+      )
+      needsDisplay = true
+    }
+
+    private func finishCreation(
+      _ creation: Creation,
+      from start: SionPoint,
+      to end: SionPoint
+    ) {
+      let placement = creationPlacement(creation, from: start, to: end)
+
+      do {
+        switch creation {
+        case .shape(let kind):
+          _ = try editorController.insertShape(in: placement.frame, kind: kind)
+        case .text:
+          let id = try editorController.insertText("Text", in: placement.frame)
+          beginTextEditing(id)
+        }
+      } catch {
+        creationFailureFeedback()
       }
 
-      editorController.select(element.id)
-      let magnification = max(enclosingScrollView?.magnification ?? 1, 0.01)
-      try? editorController.toggleMagnet(
-        at: point,
-        on: element.id,
-        hitTolerance: CanvasMetrics.magnetHitTolerance / Double(magnification)
+      needsDisplay = true
+    }
+
+    private func creationPlacement(
+      _ creation: Creation,
+      from start: SionPoint,
+      to end: SionPoint
+    ) -> CreationPlacement {
+      let placement = InteractionGeometry.creationFrame(
+        from: start,
+        to: end,
+        dragThreshold: CanvasMetrics.creationDragThreshold * inverseMagnification,
+        defaultSize: creation.defaultSize,
+        minimumSize: CanvasMetrics.minimumElementSize
       )
+      guard case .shape(.ellipse) = creation, placement.mode == .drag else {
+        return placement
+      }
+
+      return CreationPlacement(
+        frame: circularFrame(from: start, to: end),
+        mode: .drag
+      )
+    }
+
+    private func circularFrame(from start: SionPoint, to end: SionPoint) -> SionRect {
+      let width = abs(end.x - start.x)
+      let height = abs(end.y - start.y)
+      let minimumSide = max(
+        CanvasMetrics.minimumElementSize.width,
+        CanvasMetrics.minimumElementSize.height
+      )
+      let side = max(minimumSide, max(width, height))
+      let x = end.x < start.x ? start.x - side : start.x
+      let y = end.y < start.y ? start.y - side : start.y
+
+      return SionRect(x: x, y: y, width: side, height: side)
     }
 
     private func commitTextEditing() {
@@ -1026,46 +1274,197 @@
     }
 
     private func drawSelection(for element: SceneElement) {
-      let rect = nsRect(element.geometry.frame).insetBy(
-        dx: -CanvasMetrics.selectionInset,
-        dy: -CanvasMetrics.selectionInset
+      let selectionFrame = element.geometry.frame.standardized.expanded(
+        by: CanvasMetrics.selectionInset * inverseMagnification
       )
-      let path = NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5)
+      let selectionCorners = [
+        ResizeHandle.northWest,
+        .northEast,
+        .southEast,
+        .southWest,
+      ].map {
+        InteractionGeometry.resizeHandlePoint(
+          $0,
+          in: selectionFrame,
+          rotationRadians: element.geometry.rotationRadians
+        )
+      }
+      let path = polygonPath(selectionCorners.map(nsPoint))
       NSColor.controlAccentColor.setStroke()
-      path.lineWidth = CanvasMetrics.selectionLineWidth
+      path.lineWidth = CanvasMetrics.selectionLineWidth * inverseMagnification
+      let selectionDash = CanvasMetrics.selectionDash.map {
+        $0 * CGFloat(inverseMagnification)
+      }
       path.setLineDash(
-        CanvasMetrics.selectionDash, count: CanvasMetrics.selectionDash.count, phase: 0)
+        selectionDash,
+        count: selectionDash.count,
+        phase: 0
+      )
       path.stroke()
 
-      guard element.lockState == .editable, element.content.connector == nil else { return }
-
-      for corner in ResizeCorner.allCases {
-        let point = resizePoint(corner, frame: element.geometry.frame)
-        let handle = NSRect(
-          x: point.x - CanvasMetrics.resizeHandleRadius,
-          y: point.y - CanvasMetrics.resizeHandleRadius,
-          width: CanvasMetrics.resizeHandleRadius * 2,
-          height: CanvasMetrics.resizeHandleRadius * 2
-        )
-        NSColor.controlBackgroundColor.setFill()
-        NSColor.controlAccentColor.setStroke()
-        NSBezierPath(rect: handle).fill()
-        NSBezierPath(rect: handle).stroke()
+      guard editorController.selectedElement?.id == element.id,
+        element.lockState == .editable,
+        element.content.connector == nil
+      else {
+        return
       }
 
-      for point in editorController.magnetPoints(for: element) {
-        let center = nsPoint(point)
-        let dot = NSRect(
-          x: center.x - CanvasMetrics.magnetRadius,
-          y: center.y - CanvasMetrics.magnetRadius,
-          width: CanvasMetrics.magnetRadius * 2,
-          height: CanvasMetrics.magnetRadius * 2
-        )
-        NSColor.controlBackgroundColor.setFill()
-        NSColor.controlAccentColor.setStroke()
-        NSBezierPath(ovalIn: dot).fill()
-        NSBezierPath(ovalIn: dot).stroke()
+      for handle in ResizeHandle.allCases {
+        drawSquareHandle(at: resizeHandlePoint(handle, for: element))
       }
+
+      let north = resizeHandlePoint(.north, for: element)
+      let rotation = rotationHandlePoint(for: element)
+      let stem = NSBezierPath()
+      stem.move(to: nsPoint(north))
+      stem.line(to: nsPoint(rotation))
+      stem.lineWidth = CanvasMetrics.selectionLineWidth * inverseMagnification
+      stem.stroke()
+      drawRoundHandle(at: rotation)
+
+      if let radiusHandle = cornerRadiusHandlePoint(for: element) {
+        drawDiamondHandle(at: radiusHandle)
+      }
+    }
+
+    private func drawSquareHandle(at point: SionPoint) {
+      let radius = CanvasMetrics.resizeHandleRadius * inverseMagnification
+      let rect = NSRect(
+        x: point.x - radius,
+        y: point.y - radius,
+        width: radius * 2,
+        height: radius * 2
+      )
+      NSColor.controlBackgroundColor.setFill()
+      NSColor.controlAccentColor.setStroke()
+      NSBezierPath(rect: rect).fill()
+      NSBezierPath(rect: rect).stroke()
+    }
+
+    private func drawRoundHandle(at point: SionPoint) {
+      let radius = CanvasMetrics.rotationHandleRadius * inverseMagnification
+      let rect = NSRect(
+        x: point.x - radius,
+        y: point.y - radius,
+        width: radius * 2,
+        height: radius * 2
+      )
+      NSColor.controlBackgroundColor.setFill()
+      NSColor.controlAccentColor.setStroke()
+      NSBezierPath(ovalIn: rect).fill()
+      NSBezierPath(ovalIn: rect).stroke()
+    }
+
+    private func drawDiamondHandle(at point: SionPoint) {
+      let radius = CanvasMetrics.cornerRadiusHandleRadius * inverseMagnification
+      let path = polygonPath([
+        NSPoint(x: point.x, y: point.y - radius),
+        NSPoint(x: point.x + radius, y: point.y),
+        NSPoint(x: point.x, y: point.y + radius),
+        NSPoint(x: point.x - radius, y: point.y),
+      ])
+      NSColor.systemYellow.setFill()
+      NSColor.controlAccentColor.setStroke()
+      path.fill()
+      path.stroke()
+    }
+
+    private func drawConnectionMagnets() {
+      let scene = editorController.document.scene
+      if let id = editorController.anchorEditingState.elementID {
+        guard let element = scene.element(withID: id), element.visibility == .visible else {
+          return
+        }
+
+        for resolved in element.resolvedMagnets {
+          drawEditableAnchor(resolved)
+        }
+        return
+      }
+
+      let showsAll = editorController.tool == .connector || isCreatingConnector
+      let elements = scene.elements.filter { element in
+        guard element.visibility == .visible, element.content.connector == nil else {
+          return false
+        }
+
+        return showsAll || editorController.selection.contains(element.id)
+      }
+
+      for element in elements {
+        for resolved in element.resolvedMagnets {
+          drawConnectionMagnet(resolved)
+        }
+      }
+    }
+
+    private var isCreatingConnector: Bool {
+      guard case .connector = drag else { return false }
+
+      return true
+    }
+
+    private func drawConnectionMagnet(_ resolved: ResolvedMagnet) {
+      let endpoint = resolved.endpoint.point
+      let displayPoint = magnetDisplayPoint(resolved)
+      let line = NSBezierPath()
+      line.move(to: nsPoint(endpoint))
+      line.line(to: nsPoint(displayPoint))
+      NSColor.controlAccentColor.withAlphaComponent(CanvasMetrics.magnetStemOpacity).setStroke()
+      line.lineWidth = CanvasMetrics.magnetStemWidth * inverseMagnification
+      line.stroke()
+
+      let radius = CanvasMetrics.magnetRadius * inverseMagnification
+      let dot = NSRect(
+        x: displayPoint.x - radius,
+        y: displayPoint.y - radius,
+        width: radius * 2,
+        height: radius * 2
+      )
+      NSColor.controlBackgroundColor.setFill()
+      NSColor.controlAccentColor.setStroke()
+      NSBezierPath(ovalIn: dot).fill()
+      NSBezierPath(ovalIn: dot).stroke()
+    }
+
+    private func drawEditableAnchor(_ resolved: ResolvedMagnet) {
+      let point = resolved.endpoint.point
+      let radius = CanvasMetrics.anchorEditingRadius * inverseMagnification
+      let dot = NSRect(
+        x: point.x - radius,
+        y: point.y - radius,
+        width: radius * 2,
+        height: radius * 2
+      )
+      NSColor.systemOrange.setFill()
+      NSColor.controlBackgroundColor.setStroke()
+      let path = NSBezierPath(ovalIn: dot)
+      path.lineWidth = CanvasMetrics.selectionLineWidth * inverseMagnification
+      path.fill()
+      path.stroke()
+    }
+
+    private func drawCreationPreview() {
+      guard case .create(let creation, let start, let current) = drag else { return }
+
+      let frame = creationPlacement(creation, from: start, to: current).frame
+      let path: NSBezierPath
+      switch creation {
+      case .shape(let kind):
+        path = shapePath(kind, frame: frame)
+      case .text:
+        path = NSBezierPath(rect: nsRect(frame))
+      }
+
+      NSColor.controlAccentColor.withAlphaComponent(CanvasMetrics.creationFillOpacity).setFill()
+      NSColor.controlAccentColor.setStroke()
+      path.fill()
+      path.lineWidth = CanvasMetrics.selectionLineWidth * inverseMagnification
+      let previewDash = CanvasMetrics.previewDash.map {
+        $0 * CGFloat(inverseMagnification)
+      }
+      path.setLineDash(previewDash, count: previewDash.count, phase: 0)
+      path.stroke()
     }
 
     private func drawConnectorPreview() {
@@ -1403,49 +1802,174 @@
       )
     }
 
+    private func updateAccessibilityHelp() {
+      if editorController.anchorEditingState != .inactive {
+        setAccessibilityHelp(
+          "Edit connector anchors. Click the object to add; click an anchor to remove; Escape ends."
+        )
+        return
+      }
+
+      setAccessibilityHelp(
+        "\(editorController.tool.help). Use Tab to select; use arrow keys to move."
+      )
+    }
+
     private func modelPoint(from event: NSEvent) -> SionPoint {
       modelPoint(from: convert(event.locationInWindow, from: nil))
     }
 
-    private func resizeCorner(at point: SionPoint, frame: SionRect) -> ResizeCorner? {
-      ResizeCorner.allCases.first { corner in
-        point.distance(to: resizePoint(corner, frame: frame)) <= CanvasMetrics.resizeHitRadius
+    private var inverseMagnification: Double {
+      1 / max(Double(enclosingScrollView?.magnification ?? 1), 0.01)
+    }
+
+    private func resizeHandle(at point: SionPoint, for element: SceneElement) -> ResizeHandle? {
+      ResizeHandle.allCases.first { handle in
+        let handlePoint = InteractionGeometry.resizeHandlePoint(
+          handle,
+          in: element.geometry.frame,
+          rotationRadians: element.geometry.rotationRadians
+        )
+        return point.distance(to: handlePoint)
+          <= CanvasMetrics.handleHitRadius * inverseMagnification
       }
     }
 
-    private func resizePoint(_ corner: ResizeCorner, frame: SionRect) -> SionPoint {
-      let rect = frame.standardized
-      switch corner {
-      case .topLeft: return SionPoint(x: rect.minX, y: rect.minY)
-      case .topRight: return SionPoint(x: rect.maxX, y: rect.minY)
-      case .bottomLeft: return SionPoint(x: rect.minX, y: rect.maxY)
-      case .bottomRight: return SionPoint(x: rect.maxX, y: rect.maxY)
+    private func isRotationHandle(_ point: SionPoint, for element: SceneElement) -> Bool {
+      let handlePoint = InteractionGeometry.rotationHandlePoint(
+        in: element.geometry.frame,
+        rotationRadians: element.geometry.rotationRadians,
+        offset: CanvasMetrics.rotationHandleOffset * inverseMagnification
+      )
+
+      return point.distance(to: handlePoint)
+        <= CanvasMetrics.handleHitRadius * inverseMagnification
+    }
+
+    private func isCornerRadiusHandle(_ point: SionPoint, for element: SceneElement) -> Bool {
+      guard let handlePoint = cornerRadiusHandlePoint(for: element) else { return false }
+
+      return point.distance(to: handlePoint)
+        <= CanvasMetrics.handleHitRadius * inverseMagnification
+    }
+
+    private func cornerRadius(of element: SceneElement) -> Double? {
+      guard case .shape(let shape) = element.content else { return nil }
+
+      switch shape.kind {
+      case .rectangle:
+        return 0
+      case .roundedRectangle(let radius):
+        return radius
+      case .ellipse, .diamond, .triangle, .hexagon, .capsule, .cylinder, .custom:
+        return nil
       }
     }
 
-    private func resizedFrame(
-      _ start: SionRect,
-      moving corner: ResizeCorner,
-      to point: SionPoint
-    ) -> SionRect {
-      let opposite: SionPoint
-      switch corner {
-      case .topLeft:
-        opposite = SionPoint(x: start.maxX, y: start.maxY)
-      case .topRight:
-        opposite = SionPoint(x: start.minX, y: start.maxY)
-      case .bottomLeft:
-        opposite = SionPoint(x: start.maxX, y: start.minY)
-      case .bottomRight:
-        opposite = SionPoint(x: start.minX, y: start.minY)
+    private func connectorTarget(at point: SionPoint, use: MagnetUse) -> ConnectorTarget {
+      let elements = editorController.document.scene.elements.filter {
+        $0.visibility == .visible && $0.content.connector == nil
+      }
+      if let target = magnetTarget(at: point, use: use, elements: elements) {
+        return target
       }
 
-      let width = max(CanvasMetrics.minimumElementSize, abs(point.x - opposite.x))
-      let height = max(CanvasMetrics.minimumElementSize, abs(point.y - opposite.y))
-      let x = point.x < opposite.x ? opposite.x - width : opposite.x
-      let y = point.y < opposite.y ? opposite.y - height : opposite.y
-      return SionRect(x: x, y: y, width: width, height: height)
+      let element = editorController.connectableElement(at: point)
+      return ConnectorTarget(elementID: element?.id, point: point)
     }
+
+    private func magnetTarget(
+      at point: SionPoint,
+      use: MagnetUse,
+      elements: [SceneElement]
+    ) -> ConnectorTarget? {
+      let tolerance = CanvasMetrics.magnetHitTolerance * inverseMagnification
+      var nearest: (distance: Double, target: ConnectorTarget)?
+
+      for element in elements.reversed() {
+        for resolved in element.resolvedMagnets
+        where resolved.magnet.connectionDirection.allows(use) {
+          let displayPoint = magnetDisplayPoint(resolved)
+          let distance = point.distance(to: displayPoint)
+          guard distance <= tolerance,
+            nearest.map({ distance < $0.distance }) ?? true
+          else {
+            continue
+          }
+
+          nearest = (
+            distance,
+            ConnectorTarget(
+              elementID: element.id,
+              point: resolved.endpoint.point
+            )
+          )
+        }
+      }
+
+      return nearest?.target
+    }
+
+    private func magnetDisplayPoint(_ resolved: ResolvedMagnet) -> SionPoint {
+      // Keep connector dots separate from the side-resize handles on the outline.
+      let offset = CanvasMetrics.magnetOffset * inverseMagnification
+      return resolved.endpoint.point + (resolved.endpoint.outwardDirection.normalized * offset)
+    }
+
+    private func snappedRotation(
+      _ radians: Double,
+      modifierFlags: NSEvent.ModifierFlags
+    ) -> Double {
+      guard modifierFlags.contains(.shift) else { return radians }
+
+      let step = CanvasMetrics.rotationSnapRadians
+      return (radians / step).rounded() * step
+    }
+
+    private func resizeHandlePoint(
+      _ handle: ResizeHandle,
+      for element: SceneElement
+    ) -> SionPoint {
+      InteractionGeometry.resizeHandlePoint(
+        handle,
+        in: element.geometry.frame,
+        rotationRadians: element.geometry.rotationRadians
+      )
+    }
+
+    private func rotationHandlePoint(for element: SceneElement) -> SionPoint {
+      InteractionGeometry.rotationHandlePoint(
+        in: element.geometry.frame,
+        rotationRadians: element.geometry.rotationRadians,
+        offset: CanvasMetrics.rotationHandleOffset * inverseMagnification
+      )
+    }
+
+    private func cornerRadiusHandlePoint(for element: SceneElement) -> SionPoint? {
+      guard let radius = cornerRadius(of: element) else { return nil }
+      let frame = element.geometry.frame.standardized
+      let maximumRadius = min(frame.width, frame.height) / 2
+      let minimumDisplayRadius =
+        CanvasMetrics.cornerRadiusHandleMinimumInset
+        * inverseMagnification
+      let displayRadius = min(maximumRadius, max(radius, minimumDisplayRadius))
+      let point = InteractionGeometry.roundedRectangleCornerRadiusHandle(
+        in: frame,
+        radius: displayRadius,
+        rotationRadians: element.geometry.rotationRadians
+      )
+      let minimumSeparation = CanvasMetrics.handleHitRadius * inverseMagnification
+      let overlapsResizeHandle = ResizeHandle.allCases.contains {
+        point.distance(to: resizeHandlePoint($0, for: element)) <= minimumSeparation
+      }
+
+      return overlapsResizeHandle ? nil : point
+    }
+  }
+
+  private struct ConnectorTarget {
+    let elementID: ElementID?
+    let point: SionPoint
   }
 
   private enum ImagePasteType {
@@ -1507,11 +2031,23 @@
     static let selectionLineWidth = 1.5
     static let selectionDash: [CGFloat] = [5, 3]
     static let previewDash: [CGFloat] = [7, 4]
+    static let creationFillOpacity = 0.12
+    static let creationDragThreshold = 4.0
     static let magnetRadius = 4.0
+    static let magnetOffset = 12.0
     static let magnetHitTolerance = 10.0
+    static let magnetStemOpacity = 0.55
+    static let magnetStemWidth = 1.0
+    static let anchorEditingRadius = 6.0
+    static let anchorEditingHitTolerance = 9.0
     static let resizeHandleRadius = 4.5
-    static let resizeHitRadius = 9.0
-    static let minimumElementSize = 12.0
+    static let rotationHandleRadius = 5.0
+    static let cornerRadiusHandleRadius = 4.5
+    static let cornerRadiusHandleMinimumInset = 14.0
+    static let handleHitRadius = 9.0
+    static let rotationHandleOffset = 28.0
+    static let rotationSnapRadians = Double.pi / 12
+    static let minimumElementSize = SionSize(width: 12, height: 12)
     static let arrowLength = 12.0
     static let arrowWidth = 6.0
     static let decorationRadius = 5.0
@@ -1530,6 +2066,7 @@
 
   private enum CanvasKeyCode {
     static let returnKey: UInt16 = 36
+    static let escape: UInt16 = 53
     static let tab: UInt16 = 48
     static let delete: UInt16 = 51
     static let forwardDelete: UInt16 = 117

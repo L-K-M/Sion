@@ -54,7 +54,7 @@
     init(definition: PaletteDefinition) {
       paletteViewController = PalettePanelViewController(title: definition.title)
 
-      var styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel]
+      var styleMask: NSWindow.StyleMask = [.borderless, .closable, .nonactivatingPanel]
       if case .resizable = definition.sizing {
         styleMask.insert(.resizable)
       }
@@ -80,6 +80,7 @@
       backgroundColor = .clear
       hasShadow = true
       isReleasedWhenClosed = false
+      isMovable = true
       isMovableByWindowBackground = false
       collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
       animationBehavior = .utilityWindow
@@ -138,7 +139,7 @@
 
     private let header = PaletteHeaderView()
     private let titleLabel: NSTextField
-    private let closeButton = NSButton()
+    private let closeButton = PaletteCloseButton()
     private let contentHost = NSView()
     private weak var embeddedView: NSView?
 
@@ -272,6 +273,12 @@
   private final class PaletteHeaderView: NSVisualEffectView {
     weak var interactiveControl: NSControl?
 
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+      true
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
       guard bounds.contains(point) else { return nil }
       guard let interactiveControl else { return self }
@@ -282,6 +289,14 @@
 
     override func mouseDown(with event: NSEvent) {
       window?.performDrag(with: event)
+    }
+  }
+
+  /// Floating palettes close on the first click without activating the app window.
+  @MainActor
+  private final class PaletteCloseButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+      true
     }
   }
 #endif

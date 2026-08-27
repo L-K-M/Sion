@@ -357,6 +357,17 @@ final class SceneEditorTests: XCTestCase {
         )
       ),
       (
+        "Rotate obstacle",
+        .setRotation(elementID: obstacleID, radians: .pi / 4)
+      ),
+      (
+        "Round obstacle",
+        .setShapeKind(
+          elementID: obstacleID,
+          kind: .roundedRectangle(radius: 24)
+        )
+      ),
+      (
         "Hide obstacle",
         .setVisibility(elementID: obstacleID, visibility: .hidden)
       ),
@@ -400,6 +411,172 @@ final class SceneEditorTests: XCTestCase {
     )
     XCTAssertEqual(connector.manualRoute, manualRoute)
     XCTAssertNil(connector.resolvedRoute)
+  }
+
+  func testNoOpShapeKindPreservesResolvedRoutes() throws {
+    let obstacleID = elementID("20000000-0000-0000-0000-000000000020")
+    var editor = try routeInvalidationEditor(obstacleID: obstacleID)
+    let original = editor.document
+    let obstacle = try XCTUnwrap(original.scene.element(withID: obstacleID))
+    guard case .shape(let content) = obstacle.content else {
+      return XCTFail("Expected shape content")
+    }
+
+    let result = try editor.perform(
+      SceneTransaction(
+        name: "Keep Shape",
+        command: .setShapeKind(elementID: obstacleID, kind: content.kind)
+      )
+    )
+
+    XCTAssertEqual(result, .noChange)
+    XCTAssertEqual(editor.document, original)
+  }
+
+  func testNoOpRotationPreservesResolvedRoutes() throws {
+    let obstacleID = elementID("20000000-0000-0000-0000-000000000021")
+    var editor = try routeInvalidationEditor(obstacleID: obstacleID)
+    let original = editor.document
+
+    let result = try editor.perform(
+      SceneTransaction(
+        name: "Keep Rotation",
+        command: .setRotation(elementID: obstacleID, radians: 0)
+      )
+    )
+
+    XCTAssertEqual(result, .noChange)
+    XCTAssertEqual(editor.document, original)
+  }
+
+  func testRotationAndShapeKindRejectLockedElement() throws {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 20, y: 30, width: 160, height: 96)
+    )
+    shape.lockState = .locked
+    let original = SionDocument(scene: SionScene(elements: [shape]))
+    let commands: [SceneCommand] = [
+      .setRotation(elementID: shape.id, radians: .pi / 2),
+      .setShapeKind(elementID: shape.id, kind: .rectangle),
+    ]
+
+    for command in commands {
+      var editor = try SceneEditor(document: original)
+
+      XCTAssertThrowsError(
+        try editor.perform(SceneTransaction(name: "Transform", command: command))
+      ) { error in
+        XCTAssertEqual(error as? SceneEditingError, .elementLocked(shape.id))
+      }
+      XCTAssertEqual(editor.document, original)
+    }
+  }
+
+  func testShapeKindRejectsNonShape() throws {
+    let text = SceneElement.text(
+      frame: SionRect(x: 20, y: 30, width: 160, height: 56),
+      text: "Text"
+    )
+    let original = SionDocument(scene: SionScene(elements: [text]))
+    var editor = try SceneEditor(document: original)
+
+    XCTAssertThrowsError(
+      try editor.perform(
+        SceneTransaction(
+          name: "Change Shape",
+          command: .setShapeKind(elementID: text.id, kind: .rectangle)
+        )
+      )
+    ) { error in
+      XCTAssertEqual(error as? SceneEditingError, .elementIsNotShape(text.id))
+    }
+    XCTAssertEqual(editor.document, original)
+  }
+
+  func testRotationAndShapeKindRejectInvalidValues() throws {
+    let shape = SceneElement.shape(
+      frame: SionRect(x: 20, y: 30, width: 160, height: 96)
+    )
+    let original = SionDocument(scene: SionScene(elements: [shape]))
+    let cases: [(SceneCommand, SceneValidationError)] = [
+      (
+        .setRotation(elementID: shape.id, radians: .infinity),
+        .invalidGeometry(shape.id)
+      ),
+      (
+        .setShapeKind(elementID: shape.id, kind: .roundedRectangle(radius: -1)),
+        .invalidShape(shape.id)
+      ),
+    ]
+
+    for (command, expectedError) in cases {
+      var editor = try SceneEditor(document: original)
+
+      XCTAssertThrowsError(
+        try editor.perform(SceneTransaction(name: "Transform", command: command))
+      ) { error in
+        XCTAssertEqual(error as? SceneValidationError, expectedError)
+      }
+      XCTAssertEqual(editor.document, original)
+    }
+  }
+
+  func testRotationGestureIsOneUndoableIntent() throws {
+    let shape = SceneElement.shape(
+      frame: SionRect(x: 20, y: 30, width: 160, height: 96)
+    )
+    let original = SionDocument(scene: SionScene(elements: [shape]))
+    var editor = try SceneEditor(document: original)
+
+    try editor.beginGesture(named: "Rotate")
+    try editor.updateGesture(
+      with: .setRotation(elementID: shape.id, radians: .pi / 4)
+    )
+    try editor.updateGesture(
+      with: .setRotation(elementID: shape.id, radians: .pi / 2)
+    )
+    XCTAssertEqual(try editor.endGesture(), .applied)
+
+    XCTAssertEqual(
+      editor.document.scene.element(withID: shape.id)?.geometry.rotationRadians,
+      .pi / 2
+    )
+    XCTAssertEqual(editor.undo(), "Rotate")
+    XCTAssertEqual(editor.document, original)
+  }
+
+  func testChangingRectangleRadiusPreservesElementState() throws {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 20, y: 30, width: 160, height: 96),
+      kind: .rectangle,
+      text: "Label"
+    )
+    shape.name = "Process"
+    var editor = try SceneEditor(
+      document: SionDocument(scene: SionScene(elements: [shape]))
+    )
+
+    try editor.perform(
+      SceneTransaction(
+        name: "Change Corner Radius",
+        command: .setShapeKind(
+          elementID: shape.id,
+          kind: .roundedRectangle(radius: 24)
+        )
+      )
+    )
+
+    let changed = try XCTUnwrap(editor.document.scene.element(withID: shape.id))
+    XCTAssertEqual(changed.name, "Process")
+    XCTAssertEqual(
+      changed.content,
+      .shape(
+        ShapeContent(
+          kind: .roundedRectangle(radius: 24),
+          label: TextContent(string: "Label", style: .shapeLabelDefault)
+        )
+      )
+    )
   }
 
   private func routeInvalidationEditor(

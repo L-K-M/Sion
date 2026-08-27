@@ -90,11 +90,11 @@
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-      [.tools, .flexibleSpace, .inspector, .library, .history]
+      [.tools, .zoom, .flexibleSpace, .inspector, .library, .history]
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-      [.tools, .flexibleSpace, .inspector, .library]
+      [.tools, .zoom, .flexibleSpace, .inspector, .library]
     }
 
     func toolbar(
@@ -105,6 +105,8 @@
       switch itemIdentifier {
       case .tools:
         return toolsItem()
+      case .zoom:
+        return zoomItem()
       case .inspector:
         return buttonItem(
           identifier: .inspector,
@@ -189,7 +191,8 @@
     }
 
     private func configureToolbar() {
-      let toolbar = NSToolbar(identifier: "SionDocumentToolbar")
+      // A new identifier bypasses saved v1 layouts that cannot contain Zoom.
+      let toolbar = NSToolbar(identifier: ToolbarIdentifier.document)
       toolbar.delegate = self
       toolbar.displayMode = .iconOnly
       toolbar.allowsUserCustomization = true
@@ -217,13 +220,35 @@
       control.segmentStyle = .texturedRounded
       control.setAccessibilityLabel("Editing tool")
       for tool in SionEditorController.Tool.allCases {
-        control.setToolTip(tool.title, forSegment: tool.rawValue)
+        control.setToolTip(tool.help, forSegment: tool.rawValue)
       }
       toolControl = control
 
       let item = NSToolbarItem(itemIdentifier: .tools)
       item.label = "Tools"
       item.paletteLabel = "Editing Tools"
+      item.view = control
+      return item
+    }
+
+    private func zoomItem() -> NSToolbarItem {
+      let commands = ZoomCommand.allCases
+      let control = NSSegmentedControl(
+        labels: commands.map(\.label),
+        trackingMode: .momentary,
+        target: self,
+        action: #selector(performZoomCommand(_:))
+      )
+      control.segmentStyle = .texturedRounded
+      control.setAccessibilityLabel("Canvas zoom")
+      for command in commands {
+        control.setToolTip(command.title, forSegment: command.rawValue)
+      }
+
+      let item = NSToolbarItem(itemIdentifier: .zoom)
+      item.label = "Zoom"
+      item.paletteLabel = "Zoom Controls"
+      item.toolTip = "Zoom the canvas"
       item.view = control
       return item
     }
@@ -259,6 +284,21 @@
       window?.makeFirstResponder(canvasView)
     }
 
+    @objc private func performZoomCommand(_ sender: NSSegmentedControl) {
+      guard let command = ZoomCommand(rawValue: sender.selectedSegment) else { return }
+
+      switch command {
+      case .zoomOut:
+        zoomOut(sender)
+      case .fit:
+        zoomToFit(sender)
+      case .zoomIn:
+        zoomIn(sender)
+      }
+
+      window?.makeFirstResponder(canvasView)
+    }
+
     private func synchronizeUI() {
       toolControl?.selectedSegment = editorController.tool.rawValue
     }
@@ -289,6 +329,7 @@
 
   extension NSToolbarItem.Identifier {
     fileprivate static let tools = NSToolbarItem.Identifier("Sion.Tools")
+    fileprivate static let zoom = NSToolbarItem.Identifier("Sion.Zoom")
     fileprivate static let inspector = NSToolbarItem.Identifier("Sion.Inspector")
     fileprivate static let library = NSToolbarItem.Identifier("Sion.Library")
     fileprivate static let history = NSToolbarItem.Identifier("Sion.History")
@@ -300,5 +341,31 @@
     static let maximumMagnification = 8.0
     static let zoomStep = 1.2
     static let fitInsetFactor = 0.88
+  }
+
+  private enum ToolbarIdentifier {
+    static let document = NSToolbar.Identifier("SionDocumentToolbar.v2")
+  }
+
+  private enum ZoomCommand: Int, CaseIterable {
+    case zoomOut
+    case fit
+    case zoomIn
+
+    var label: String {
+      switch self {
+      case .zoomOut: "−"
+      case .fit: "Fit"
+      case .zoomIn: "+"
+      }
+    }
+
+    var title: String {
+      switch self {
+      case .zoomOut: "Zoom Out"
+      case .fit: "Zoom to Fit"
+      case .zoomIn: "Zoom In"
+      }
+    }
   }
 #endif

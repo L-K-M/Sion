@@ -16,6 +16,37 @@
     }
   }
 
+  /// Resolves document targets while a floating palette owns focus.
+  @MainActor
+  private enum SionPaletteTargetResolver {
+    static func frontWindowController(
+      mainWindow: NSWindow?,
+      keyWindow: NSWindow?,
+      orderedWindows: [NSWindow]
+    ) -> SionDocumentWindowController? {
+      let windows = [mainWindow, keyWindow].compactMap { $0 } + orderedWindows
+
+      for window in windows {
+        guard window.isVisible else { continue }
+        guard let controller = window.windowController as? SionDocumentWindowController else {
+          continue
+        }
+
+        return controller
+      }
+
+      return nil
+    }
+
+    static func frontWindowController() -> SionDocumentWindowController? {
+      frontWindowController(
+        mainWindow: NSApp.mainWindow,
+        keyWindow: NSApp.keyWindow,
+        orderedWindows: NSApp.orderedWindows
+      )
+    }
+  }
+
   @MainActor
   final class SionPalettes {
     static let shared = SionPalettes()
@@ -60,11 +91,11 @@
     }
 
     private static func frontEditorController() -> SionEditorController? {
-      (NSApp.mainWindow?.windowController as? SionDocumentWindowController)?.paletteEditorController
+      frontWindowController()?.paletteEditorController
     }
 
     private static func frontWindowController() -> SionDocumentWindowController? {
-      NSApp.mainWindow?.windowController as? SionDocumentWindowController
+      SionPaletteTargetResolver.frontWindowController()
     }
   }
 
@@ -74,12 +105,18 @@
 
     private weak var target: SionEditorController?
     private var observerID: UUID?
+    private var presentation: PalettePresentation?
     private let selectionLabel = NSTextField(labelWithString: "No selection")
     private let fillColorWell = NSColorWell()
     private let strokeColorWell = NSColorWell()
     private let strokeWidthSlider = NSSlider()
     private let routePopup = NSPopUpButton()
     private let magnetPopup = NSPopUpButton()
+    private let anchorEditingControls = NSStackView()
+    private let anchorEditingInstruction = NSTextField(
+      wrappingLabelWithString: AnchorEditingCopy.instruction
+    )
+    private let anchorEditingDoneButton = NSButton()
 
     override func loadView() {
       let stack = NSStackView()
@@ -94,6 +131,7 @@
 
       configureRoutePopup()
       configureMagnetPopup()
+      configureAnchorEditingControls()
       configureAppearanceControls()
       stack.addArrangedSubview(selectionLabel)
       stack.addArrangedSubview(separator())
@@ -102,7 +140,8 @@
       stack.addArrangedSubview(row(label: "Width", control: strokeWidthSlider))
       stack.addArrangedSubview(separator())
       stack.addArrangedSubview(row(label: "Route", control: routePopup))
-      stack.addArrangedSubview(row(label: "Magnets", control: magnetPopup))
+      stack.addArrangedSubview(row(label: "Connector anchors", control: magnetPopup))
+      stack.addArrangedSubview(anchorEditingControls)
       stack.addArrangedSubview(NSView())
       view = stack
     }
@@ -110,6 +149,12 @@
     var paletteInitialFirstResponder: NSView? { routePopup }
 
     func retarget(to target: SionEditorController?) {
+      if let currentTarget = self.target,
+        target.map({ $0 !== currentTarget }) ?? (presentation == .panel)
+      {
+        currentTarget.endAnchorEditing()
+      }
+
       if let observerID {
         self.target?.removeObserver(observerID)
       }
@@ -119,6 +164,20 @@
         self?.refresh()
       }
       refresh()
+    }
+
+    func paletteDidPresent(_ presentation: PalettePresentation) {
+      self.presentation = presentation
+    }
+
+    func paletteDidDismiss(_ presentation: PalettePresentation) {
+      if presentation == .panel {
+        target?.endAnchorEditing()
+      }
+
+      if self.presentation == presentation {
+        self.presentation = nil
+      }
     }
 
     private func configureRoutePopup() {
@@ -157,7 +216,27 @@
       }
       magnetPopup.target = self
       magnetPopup.action = #selector(changeMagnets(_:))
-      magnetPopup.setAccessibilityLabel("Connection magnets")
+      magnetPopup.toolTip = "Choose where connectors attach to the selected object."
+      magnetPopup.setAccessibilityLabel("Connector anchors")
+    }
+
+    private func configureAnchorEditingControls() {
+      anchorEditingInstruction.textColor = .secondaryLabelColor
+      anchorEditingInstruction.maximumNumberOfLines = 0
+      anchorEditingInstruction.preferredMaxLayoutWidth = InspectorMetrics.anchorInstructionWidth
+
+      anchorEditingDoneButton.title = AnchorEditingCopy.doneTitle
+      anchorEditingDoneButton.bezelStyle = .rounded
+      anchorEditingDoneButton.target = self
+      anchorEditingDoneButton.action = #selector(endAnchorEditing)
+      anchorEditingDoneButton.setAccessibilityLabel("Finish editing connector anchors")
+
+      anchorEditingControls.orientation = .vertical
+      anchorEditingControls.alignment = .leading
+      anchorEditingControls.spacing = InspectorMetrics.spacing
+      anchorEditingControls.addArrangedSubview(anchorEditingInstruction)
+      anchorEditingControls.addArrangedSubview(anchorEditingDoneButton)
+      anchorEditingControls.isHidden = true
     }
 
     private func refresh() {
@@ -168,6 +247,7 @@
           : "No selection"
         routePopup.isEnabled = false
         magnetPopup.isEnabled = false
+        anchorEditingControls.isHidden = true
         fillColorWell.isEnabled = false
         strokeColorWell.isEnabled = false
         strokeWidthSlider.isEnabled = false
@@ -182,8 +262,14 @@
       fillColorWell.color = nsColor(element.style.fill.solidColor ?? .clear)
       strokeColorWell.color = nsColor(element.style.stroke?.color ?? .primaryInk)
       strokeWidthSlider.doubleValue = element.style.stroke?.width ?? 0
-      magnetPopup.isEnabled = element.content.connector == nil
-      selectMagnetOption(for: element.magnetConfiguration)
+      let editsAnchors = target?.anchorEditingState == .editing(element.id)
+      magnetPopup.isEnabled = element.content.connector == nil && !editsAnchors
+      anchorEditingControls.isHidden = !editsAnchors
+      if editsAnchors {
+        magnetPopup.selectItem(withTag: MagnetOption.custom.rawValue)
+      } else {
+        selectMagnetOption(for: element.magnetConfiguration)
+      }
 
       guard let connector = element.content.connector else {
         routePopup.isEnabled = false
@@ -233,12 +319,22 @@
         return
       }
 
-      guard let preset = option.preset else {
-        target.setTool(.magnets)
+      if option == .custom {
+        target.beginAnchorEditing(on: id)
+        PaletteCenter.shared.registeredPalette(
+          for: SionPaletteKind.inspector.paletteKind
+        )?.showPanel()
         return
       }
 
+      guard let preset = option.preset else { return }
+
+      target.endAnchorEditing()
       try? target.setMagnetConfiguration(.preset(preset), on: id)
+    }
+
+    @objc private func endAnchorEditing() {
+      target?.endAnchorEditing()
     }
 
     private func selectMagnetOption(for configuration: MagnetConfiguration) {
@@ -313,8 +409,8 @@
       guard let target else { return }
 
       _ = try? target.paletteEditorController.insertShape(
-        at: target.canvasVisibleCenter,
-        kind: .roundedRectangle(radius: InspectorMetrics.cornerRadius)
+        centeredAt: target.canvasVisibleCenter,
+        kind: .roundedRectangle(radius: SceneElementDefaults.cornerRadius)
       )
     }
 
@@ -322,14 +418,14 @@
       guard let target else { return }
 
       _ = try? target.paletteEditorController.insertShape(
-        at: target.canvasVisibleCenter, kind: .ellipse)
+        centeredAt: target.canvasVisibleCenter, kind: .ellipse)
     }
 
     @objc private func addDiamond() {
       guard let target else { return }
 
       _ = try? target.paletteEditorController.insertShape(
-        at: target.canvasVisibleCenter, kind: .diamond)
+        centeredAt: target.canvasVisibleCenter, kind: .diamond)
     }
 
     @objc private func addText() {
@@ -338,7 +434,7 @@
       guard
         let id = try? target.paletteEditorController.insertText(
           "Text",
-          at: target.canvasVisibleCenter
+          centeredAt: target.canvasVisibleCenter
         )
       else {
         return
@@ -485,7 +581,7 @@
       case .threePerSide: "3 per side"
       case .fourPerSide: "4 per side"
       case .fivePerSide: "5 per side"
-      case .custom: "Custom…"
+      case .custom: AnchorEditingCopy.customOptionTitle
       }
     }
 
@@ -511,10 +607,16 @@
   private enum InspectorMetrics {
     static let spacing = 10.0
     static let insets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
-    static let cornerRadius = 12.0
+    static let anchorInstructionWidth: CGFloat = 244
     static let minimumStrokeWidth = 0.0
     static let maximumStrokeWidth = 12.0
     static let strokeWidthTickCount = 13
+  }
+
+  private enum AnchorEditingCopy {
+    static let customOptionTitle = "Custom points…"
+    static let instruction = "Click the object to add an anchor; click an anchor to remove it."
+    static let doneTitle = "Done"
   }
 
   private enum HistoryDateFormatter {

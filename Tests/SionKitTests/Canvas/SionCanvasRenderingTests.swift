@@ -6,12 +6,12 @@ import XCTest
 
 @MainActor
 final class SionCanvasRenderingTests: XCTestCase {
-  private let canvasSize = SionSize(width: 180, height: 180)
+  private let canvasSize = SionSize(width: 320, height: 240)
   private let colorAccuracy = 0.04
 
   func testElementOpacityMultipliesIntrinsicFillAlpha() throws {
     var shape = SceneElement.shape(
-      frame: SionRect(x: 30, y: 30, width: 120, height: 120),
+      frame: SionRect(x: 80, y: 60, width: 160, height: 120),
       kind: .rectangle
     )
     shape.style = ElementStyle(
@@ -23,7 +23,7 @@ final class SionCanvasRenderingTests: XCTestCase {
     equivalent.style.fill = .solid(.init(red: 1, green: 0, blue: 0))
     equivalent.style.opacity = 0.25
 
-    let point = SionPoint(x: 90, y: 90)
+    let point = SionPoint(x: 160, y: 120)
     let actual = try pixel(in: render(elements: [shape]), at: point)
     let expected = try pixel(in: render(elements: [equivalent]), at: point)
 
@@ -32,7 +32,7 @@ final class SionCanvasRenderingTests: XCTestCase {
 
   func testOpacityCompositesFillAndStrokeOnce() throws {
     var shape = SceneElement.shape(
-      frame: SionRect(x: 30, y: 30, width: 120, height: 120),
+      frame: SionRect(x: 80, y: 60, width: 160, height: 120),
       kind: .rectangle
     )
     shape.style = ElementStyle(
@@ -42,8 +42,8 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
 
     let image = try render(elements: [shape])
-    let fill = try pixel(in: image, at: SionPoint(x: 90, y: 90))
-    let overlap = try pixel(in: image, at: SionPoint(x: 35, y: 90))
+    let fill = try pixel(in: image, at: SionPoint(x: 160, y: 120))
+    let overlap = try pixel(in: image, at: SionPoint(x: 85, y: 120))
 
     XCTAssertEqual(overlap.redComponent, fill.redComponent, accuracy: colorAccuracy)
     XCTAssertEqual(overlap.greenComponent, fill.greenComponent, accuracy: colorAccuracy)
@@ -52,7 +52,7 @@ final class SionCanvasRenderingTests: XCTestCase {
 
   func testOverlayUsesTheOverlayBlendEquation() throws {
     var backdrop = SceneElement.shape(
-      frame: SionRect(x: 20, y: 20, width: 140, height: 140),
+      frame: SionRect(x: 60, y: 40, width: 200, height: 160),
       kind: .rectangle
     )
     backdrop.style = ElementStyle(
@@ -60,7 +60,7 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
 
     var overlay = SceneElement.shape(
-      frame: SionRect(x: 40, y: 40, width: 100, height: 100),
+      frame: SionRect(x: 90, y: 70, width: 140, height: 100),
       kind: .rectangle
     )
     overlay.style = ElementStyle(
@@ -68,7 +68,7 @@ final class SionCanvasRenderingTests: XCTestCase {
       blendMode: .overlay
     )
 
-    let point = SionPoint(x: 90, y: 90)
+    let point = SionPoint(x: 160, y: 120)
     let actual = try pixel(in: render(elements: [backdrop, overlay]), at: point)
     let expected = try overlayReferenceColor(at: point)
 
@@ -96,8 +96,8 @@ final class SionCanvasRenderingTests: XCTestCase {
 
   func testSelectionChromeEscapesElementOpacity() throws {
     var connector = SceneElement.connector(
-      source: .free(SionPoint(x: 30, y: 90)),
-      target: .free(SionPoint(x: 150, y: 90)),
+      source: .free(SionPoint(x: 80, y: 120)),
+      target: .free(SionPoint(x: 240, y: 120)),
       routingStyle: .straight
     )
     connector.style.opacity = 0
@@ -110,35 +110,35 @@ final class SionCanvasRenderingTests: XCTestCase {
 
   private func zeroOpacityElements(displayAssetID: AssetID) throws -> [SceneElement] {
     var shape = SceneElement.shape(
-      frame: SionRect(x: 30, y: 50, width: 120, height: 80),
+      frame: SionRect(x: 80, y: 80, width: 160, height: 80),
       kind: .rectangle,
       text: "Shape"
     )
     shape.style.opacity = 0
 
     var text = SceneElement.text(
-      frame: SionRect(x: 30, y: 50, width: 120, height: 80),
+      frame: SionRect(x: 80, y: 80, width: 160, height: 80),
       text: "Text"
     )
     text.style.opacity = 0
 
     var image = SceneElement.image(
-      frame: SionRect(x: 30, y: 30, width: 120, height: 120),
+      frame: SionRect(x: 80, y: 70, width: 160, height: 100),
       assetID: displayAssetID,
       displayAssetID: displayAssetID
     )
     image.style.opacity = 0
 
     var connector = SceneElement.connector(
-      source: .free(SionPoint(x: 30, y: 90)),
-      target: .free(SionPoint(x: 150, y: 90)),
+      source: .free(SionPoint(x: 80, y: 120)),
+      target: .free(SionPoint(x: 240, y: 120)),
       routingStyle: .straight
     )
     connector.style.opacity = 0
     connector.content = .connector(
       ConnectorContent(
-        source: .free(SionPoint(x: 30, y: 90)),
-        target: .free(SionPoint(x: 150, y: 90)),
+        source: .free(SionPoint(x: 80, y: 120)),
+        target: .free(SionPoint(x: 240, y: 120)),
         routingStyle: .straight,
         sourceDecoration: .circle,
         targetDecoration: .filledArrow,
@@ -211,13 +211,14 @@ final class SionCanvasRenderingTests: XCTestCase {
       origin: .zero,
       size: NSSize(width: canvasSize.width, height: canvasSize.height)
     )
+    let graphics = context.cgContext
     NSColor(calibratedRed: 1, green: 1, blue: 1, alpha: 1).setFill()
-    bounds.fill()
+    graphics.fill(bounds)
     NSColor(calibratedRed: 0.25, green: 0.25, blue: 0.25, alpha: 1).setFill()
-    bounds.fill()
-    context.cgContext.setBlendMode(.overlay)
+    graphics.fill(bounds)
     NSColor(calibratedRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).setFill()
-    bounds.fill()
+    graphics.setBlendMode(.overlay)
+    graphics.fill(bounds)
     context.flushGraphics()
 
     return try pixel(in: representation, at: point)

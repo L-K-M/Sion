@@ -171,14 +171,19 @@ public enum SceneRenderGeometry {
       bounds = bounds.union(adornmentBounds)
     }
 
-    guard let shadow = element.style.shadows.first else { return bounds }
+    let sourceBounds = bounds
 
-    let blurExtent = shadow.blurRadius * PaintedBounds.shadowBlurExtentMultiplier
-    let shadowBounds =
-      bounds
-      .translated(by: shadow.offset)
-      .expanded(by: blurExtent)
-    return bounds.union(shadowBounds)
+    // Bound every styled shadow so renderers cannot clip collection entries.
+    for shadow in element.style.shadows {
+      let blurExtent = shadow.blurRadius * PaintedBounds.shadowBlurExtentMultiplier
+      let shadowBounds =
+        sourceBounds
+        .translated(by: shadow.offset)
+        .expanded(by: blurExtent)
+      bounds = bounds.union(shadowBounds)
+    }
+
+    return bounds
   }
 
   private static func connectorRoute(

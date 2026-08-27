@@ -659,14 +659,15 @@
         throw SceneEditingError.gestureAlreadyActive
       }
 
-      try editor.beginGesture(named: EditorActionName.editText)
-      pendingTextEdit = PendingTextEdit(elementID: id)
+      try beginPendingTextEdit(on: id)
     }
 
     func updateTextEdit(_ text: String, on id: ElementID) throws {
       guard var pendingTextEdit, pendingTextEdit.elementID == id else {
         throw SceneEditingError.noActiveGesture
       }
+
+      guard editableText(on: id) != text else { return }
 
       let result = try editor.updateGesture(with: .setText(elementID: id, text: text))
       guard result == .applied else { return }
@@ -682,6 +683,10 @@
 
     func endTextEdit() throws {
       guard let pendingTextEdit else { return }
+
+      if try cancelTextEditRestoredToBaseline(pendingTextEdit) {
+        return
+      }
 
       let result = try editor.endGesture()
       self.pendingTextEdit = nil
@@ -704,6 +709,11 @@
         throw SceneEditingError.noActiveGesture
       }
 
+      if try cancelTextEditRestoredToBaseline(pendingTextEdit) {
+        try beginPendingTextEdit(on: id)
+        return
+      }
+
       let result = try editor.endGesture()
       self.pendingTextEdit = nil
 
@@ -719,8 +729,7 @@
         }
       }
 
-      try editor.beginGesture(named: EditorActionName.editText)
-      self.pendingTextEdit = PendingTextEdit(elementID: id)
+      try beginPendingTextEdit(on: id)
     }
 
     func cancelTextEdit() {
@@ -735,6 +744,52 @@
       guard result == .applied else { return }
 
       notifyModelChange(notification: .skip)
+    }
+
+    private func beginPendingTextEdit(on id: ElementID) throws {
+      guard let baselineText = editableText(on: id) else {
+        throw SceneEditingError.elementDoesNotContainText(id)
+      }
+
+      try editor.beginGesture(named: EditorActionName.editText)
+      pendingTextEdit = PendingTextEdit(
+        elementID: id,
+        baselineText: baselineText
+      )
+    }
+
+    private func cancelTextEditRestoredToBaseline(
+      _ pendingTextEdit: PendingTextEdit
+    ) throws -> Bool {
+      guard editableText(on: pendingTextEdit.elementID) == pendingTextEdit.baselineText else {
+        return false
+      }
+
+      let result = try editor.cancelGesture()
+      self.pendingTextEdit = nil
+      if pendingTextEdit.didMarkDocumentChanged {
+        didChange(.undone)
+      }
+      if result == .applied {
+        notifyModelChange(notification: .skip)
+      }
+
+      return true
+    }
+
+    private func editableText(on id: ElementID) -> String? {
+      guard let element = editor.document.scene.element(withID: id) else { return nil }
+
+      switch element.content {
+      case .shape(let shape):
+        return shape.label?.string ?? ""
+      case .text(let text):
+        return text.string
+      case .connector(let connector):
+        return connector.label?.string ?? ""
+      case .path, .image, .group:
+        return nil
+      }
     }
 
     func setRoutingStyle(_ style: ConnectorRoutingStyle, on id: ElementID) throws {
@@ -1247,6 +1302,7 @@
 
   private struct PendingTextEdit {
     let elementID: ElementID
+    let baselineText: String
     var didMarkDocumentChanged = false
   }
 

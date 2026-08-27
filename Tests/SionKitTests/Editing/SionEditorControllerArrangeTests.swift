@@ -265,13 +265,18 @@ final class SionEditorControllerArrangeTests: XCTestCase {
 
     try controller.alignSelection(.top)
 
-    // The 100x40 frame rotated 90 degrees paints 40x100 around its center,
-    // so its painted top sits 30pt above the frame origin, at y=-30. Frame-
-    // based alignment would put the plain element at 0; bounds-based at -30.
-    let rotatedFrame = try XCTUnwrap(controller.frame(of: rotated.id))
-    let plainFrame = try XCTUnwrap(controller.frame(of: plain.id))
-    XCTAssertEqual(rotatedFrame.minY, 0, accuracy: 1e-6)
-    XCTAssertEqual(plainFrame.minY, -30, accuracy: 1e-6)
+    let alignedRotated = try XCTUnwrap(
+      controller.document.scene.element(withID: rotated.id)
+    )
+    let alignedPlain = try XCTUnwrap(
+      controller.document.scene.element(withID: plain.id)
+    )
+    XCTAssertEqual(
+      SceneRenderGeometry.paintedBounds(of: alignedRotated).minY,
+      SceneRenderGeometry.paintedBounds(of: alignedPlain).minY,
+      accuracy: 1e-6
+    )
+    XCTAssertEqual(alignedRotated.geometry.frame.minY, 0, accuracy: 1e-6)
   }
 
   func testHidePrunesSelectionAndRevealRestores() throws {
@@ -328,7 +333,8 @@ final class SionEditorControllerArrangeTests: XCTestCase {
       id: ElementID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!),
       frame: SionRect(x: 200, y: 0, width: 100, height: 100)
     )
-    let controller = try makeController(elements: [editable, locked, group])
+    let top = shape(id: "00000000-0000-0000-0000-000000000004", x: 300, y: 0)
+    let controller = try makeController(elements: [editable, locked, group, top])
     let canvas = SionCanvasView(editorController: controller)
 
     controller.select(editable.id)
@@ -349,6 +355,11 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.unlockSelection(_:))))
     XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.hideSelection(_:))))
     XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.bringToFront(_:))))
+
+    controller.select(top.id)
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.bringToFront(_:))))
+    XCTAssertFalse(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.bringForward(_:))))
+    XCTAssertTrue(canvas.menuItemIsEnabled(action: #selector(SionCanvasView.sendBackward(_:))))
   }
 }
 

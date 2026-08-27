@@ -421,6 +421,19 @@
       notifySelectionChange(from: previous)
     }
 
+    func select(_ ids: Set<ElementID>, mode: SelectionMode = .replace) {
+      let previous = selection
+
+      switch mode {
+      case .replace:
+        selection = ids
+      case .extend:
+        selection.formUnion(ids)
+      }
+
+      notifySelectionChange(from: previous)
+    }
+
     func selectAll() {
       let previous = selection
       selection = Set(
@@ -855,7 +868,8 @@
       notifyModelChange(notification: .done)
     }
 
-    func cancelMove() {
+    /// Restores the pre-gesture scene; used when a drag is cancelled.
+    func cancelActiveGesture() {
       guard (try? editor.cancelGesture()) == .applied else { return }
 
       notifyModelChange(notification: .skip)

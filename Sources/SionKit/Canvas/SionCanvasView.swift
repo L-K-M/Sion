@@ -47,6 +47,7 @@
       )
       case create(creation: Creation, start: SionPoint, current: SionPoint)
       case connector(sourceID: ElementID?, start: SionPoint, current: SionPoint)
+      case marquee(origin: SionPoint, current: SionPoint, extendsSelection: Bool)
     }
 
     private let editorController: SionEditorController
@@ -182,6 +183,7 @@
       drawConnectionMagnets()
       drawCreationPreview()
       drawConnectorPreview()
+      drawMarquee()
       NSGraphicsContext.restoreGraphicsState()
     }
 
@@ -281,6 +283,13 @@
           current: target.point
         )
         needsDisplay = true
+      case .marquee(let origin, _, let extendsSelection):
+        self.drag = .marquee(
+          origin: origin,
+          current: point,
+          extendsSelection: extendsSelection
+        )
+        needsDisplay = true
       }
     }
 
@@ -313,14 +322,18 @@
           to: target.elementID,
           targetPoint: end
         )
+      case .marquee(let origin, let current, let extendsSelection):
+        endMarquee(from: origin, to: current, extendsSelection: extendsSelection)
       }
     }
 
     override func keyDown(with event: NSEvent) {
-      if event.keyCode == CanvasKeyCode.escape,
-        editorController.anchorEditingState != .inactive
-      {
-        editorController.endAnchorEditing()
+      if event.keyCode == CanvasKeyCode.escape {
+        if editorController.anchorEditingState != .inactive {
+          editorController.endAnchorEditing()
+        } else {
+          cancelInteraction()
+        }
         return
       }
 
@@ -362,6 +375,33 @@
 
     @objc func delete(_ sender: Any?) {
       try? editorController.deleteSelection()
+    }
+
+    /// Escape cancels inwards: live gesture, then text editing, then selection.
+    @objc override func cancelOperation(_ sender: Any?) {
+      cancelInteraction()
+    }
+
+    private func cancelInteraction() {
+      if textEditor != nil {
+        discardPendingEdits()
+        return
+      }
+
+      if let activeDrag = drag {
+        switch activeDrag {
+        case .move, .resize:
+          editorController.cancelActiveGesture()
+        case .connector, .marquee:
+          break
+        }
+
+        drag = nil
+        needsDisplay = true
+        return
+      }
+
+      editorController.select(nil)
     }
 
     @objc override func selectAll(_ sender: Any?) {
@@ -552,7 +592,20 @@
       }
 
       guard let element = editorController.element(at: point) else {
-        editorController.select(nil)
+        if event.modifierFlags.contains(.shift) {
+          drag = .marquee(
+            origin: point,
+            current: point,
+            extendsSelection: true
+          )
+        } else {
+          editorController.select(nil)
+          drag = .marquee(
+            origin: point,
+            current: point,
+            extendsSelection: false
+          )
+        }
         return
       }
 
@@ -1522,6 +1575,72 @@
       path.stroke()
     }
 
+    private func drawMarquee() {
+      guard case .marquee(let origin, let current, _) = drag else { return }
+
+      let start = NSPoint(x: origin.x, y: origin.y)
+      let end = NSPoint(x: current.x, y: current.y)
+      let rect = NSRect(
+        x: min(start.x, end.x),
+        y: min(start.y, end.y),
+        width: abs(end.x - start.x),
+        height: abs(end.y - start.y)
+      )
+      guard rect.width >= 1 || rect.height >= 1 else { return }
+
+      NSColor.controlAccentColor.withAlphaComponent(CanvasMetrics.marqueeFillOpacity).setFill()
+      rect.fill()
+      NSColor.controlAccentColor.setStroke()
+      let border = NSBezierPath(rect: rect)
+      border.lineWidth = CanvasMetrics.selectionLineWidth
+      border.setLineDash(
+        CanvasMetrics.selectionDash, count: CanvasMetrics.selectionDash.count, phase: 0)
+      border.stroke()
+    }
+
+    /// Selects every visible element the marquee touched: shapes by frame,
+    /// connectors when their routed path crosses the rectangle.
+    private func endMarquee(
+      from origin: SionPoint,
+      to current: SionPoint,
+      extendsSelection: Bool
+    ) {
+      let marqueeRect = SionRect(
+        origin: origin,
+        size: SionSize(width: current.x - origin.x, height: current.y - origin.y)
+      ).standardized
+      guard
+        marqueeRect.width >= CanvasMetrics.minimumMarqueeSize
+          || marqueeRect.height >= CanvasMetrics.minimumMarqueeSize
+      else { return }
+
+      var selectedIDs = Set<ElementID>()
+      for element in editorController.document.scene.elements {
+        guard element.visibility == .visible, element.lockState == .editable else { continue }
+
+        if element.content.connector == nil {
+          if element.geometry.frame.standardized.intersects(marqueeRect) {
+            selectedIDs.insert(element.id)
+          }
+          continue
+        }
+
+        guard let route = editorController.connectorRoute(for: element) else { continue }
+
+        let crossesMarquee =
+          route.polylinePoints.contains { marqueeRect.contains($0) }
+          || route.polylineSegments.contains { $0.intersectsInterior(of: marqueeRect) }
+        if crossesMarquee {
+          selectedIDs.insert(element.id)
+        }
+      }
+
+      editorController.select(
+        selectedIDs,
+        mode: extendsSelection ? .extend : .replace
+      )
+    }
+
     private func drawConnectorPreview() {
       guard case .connector(let sourceID, let start, let current) = drag else { return }
 
@@ -2114,6 +2233,8 @@
     static let largeNudgeDistance = 10.0
     static let textRenderCacheLimit = 512
     static let textRenderCacheEvictionDivisor = 4
+    static let marqueeFillOpacity = 0.08
+    static let minimumMarqueeSize = 2.0
   }
 
   private enum PasteboardType {
@@ -2126,6 +2247,7 @@
     static let tab: UInt16 = 48
     static let delete: UInt16 = 51
     static let forwardDelete: UInt16 = 117
+    static let escape: UInt16 = 53
     static let leftArrow: UInt16 = 123
     static let rightArrow: UInt16 = 124
     static let downArrow: UInt16 = 125

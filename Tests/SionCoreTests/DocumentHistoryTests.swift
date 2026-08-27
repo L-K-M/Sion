@@ -53,7 +53,7 @@ final class DocumentHistoryTests: XCTestCase {
       )
       .appending(
         sceneData: throttledData,
-        at: referenceDate.addingTimeInterval(interval * 2 + 1),
+        at: referenceDate.addingTimeInterval(interval * 2 + interval / 2),
         intent: .autosave
       )
 

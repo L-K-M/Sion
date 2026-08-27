@@ -236,6 +236,105 @@
       editorController.selectAll()
     }
 
+    @objc func duplicate(_ sender: Any?) {
+      try? editorController.duplicateSelection()
+    }
+
+    @objc func bringToFront(_ sender: Any?) {
+      try? editorController.moveSelectionInZOrder(.front)
+    }
+
+    @objc func bringForward(_ sender: Any?) {
+      try? editorController.moveSelectionInZOrder(.forward)
+    }
+
+    @objc func sendBackward(_ sender: Any?) {
+      try? editorController.moveSelectionInZOrder(.backward)
+    }
+
+    @objc func sendToBack(_ sender: Any?) {
+      try? editorController.moveSelectionInZOrder(.back)
+    }
+
+    @objc func alignLeading(_ sender: Any?) {
+      try? editorController.alignSelection(.leading)
+    }
+
+    @objc func alignCenterHorizontally(_ sender: Any?) {
+      try? editorController.alignSelection(.centerX)
+    }
+
+    @objc func alignTrailing(_ sender: Any?) {
+      try? editorController.alignSelection(.trailing)
+    }
+
+    @objc func alignTop(_ sender: Any?) {
+      try? editorController.alignSelection(.top)
+    }
+
+    @objc func alignCenterVertically(_ sender: Any?) {
+      try? editorController.alignSelection(.centerY)
+    }
+
+    @objc func alignBottom(_ sender: Any?) {
+      try? editorController.alignSelection(.bottom)
+    }
+
+    @objc func distributeHorizontally(_ sender: Any?) {
+      try? editorController.distributeSelection(.horizontal)
+    }
+
+    @objc func distributeVertically(_ sender: Any?) {
+      try? editorController.distributeSelection(.vertical)
+    }
+
+    @objc func lockSelection(_ sender: Any?) {
+      try? editorController.setSelectionLockState(.locked)
+    }
+
+    @objc func unlockSelection(_ sender: Any?) {
+      try? editorController.setSelectionLockState(.editable)
+    }
+
+    @objc func hideSelection(_ sender: Any?) {
+      try? editorController.hideSelection()
+    }
+
+    @objc func revealHiddenElements(_ sender: Any?) {
+      try? editorController.revealHiddenElements()
+    }
+
+    /// NSMenuItemValidation is informal on NSView; no override/super exists.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+      switch menuItem.action {
+      case #selector(duplicate(_:)),
+        #selector(bringToFront(_:)),
+        #selector(bringForward(_:)),
+        #selector(sendBackward(_:)),
+        #selector(sendToBack(_:)),
+        #selector(lockSelection(_:)),
+        #selector(unlockSelection(_:)),
+        #selector(hideSelection(_:)):
+        return !editorController.selection.isEmpty
+      case #selector(alignLeading(_:)),
+        #selector(alignCenterHorizontally(_:)),
+        #selector(alignTrailing(_:)),
+        #selector(alignTop(_:)),
+        #selector(alignCenterVertically(_:)),
+        #selector(alignBottom(_:)):
+        return editorController.selection.count > 1
+      case #selector(distributeHorizontally(_:)),
+        #selector(distributeVertically(_:)):
+        return editorController.selection.count > 2
+      case #selector(revealHiddenElements(_:)):
+        return editorController.document.scene.elements.contains {
+          $0.visibility == .hidden
+        }
+      default:
+        return true
+      }
+    }
+
     @objc func paste(_ sender: Any?) {
       let point = visibleCanvasCenter()
       let pasteboard = NSPasteboard.general

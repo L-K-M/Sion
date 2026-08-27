@@ -421,6 +421,49 @@
       notifySelectionChange(from: previous)
     }
 
+    func select(_ ids: Set<ElementID>, mode: SelectionMode = .replace) {
+      let previous = selection
+      let existingIDs = Set(editor.document.scene.elements.map(\.id))
+      let selectableIDs = ids.intersection(existingIDs)
+
+      switch mode {
+      case .replace:
+        selection = selectableIDs
+      case .extend:
+        selection.formUnion(selectableIDs)
+      }
+
+      notifySelectionChange(from: previous)
+    }
+
+    /// IDs of visible, editable elements touched by a marquee rectangle:
+    /// shapes by frame, connectors when their routed path crosses it.
+    func elementIDsIntersecting(_ rect: SionRect) -> Set<ElementID> {
+      var intersectingIDs = Set<ElementID>()
+
+      for element in editor.document.scene.elements {
+        guard element.visibility == .visible, element.lockState == .editable else { continue }
+
+        if element.content.connector == nil {
+          if element.geometry.frame.standardized.intersects(rect) {
+            intersectingIDs.insert(element.id)
+          }
+          continue
+        }
+
+        guard let route = connectorRoute(for: element) else { continue }
+
+        let crossesRect =
+          route.polylinePoints.contains { rect.contains($0) }
+          || route.polylineSegments.contains { $0.intersectsInterior(of: rect) }
+        if crossesRect {
+          intersectingIDs.insert(element.id)
+        }
+      }
+
+      return intersectingIDs
+    }
+
     func selectAll() {
       let previous = selection
       selection = Set(
@@ -863,7 +906,8 @@
       notifyModelChange(notification: .done)
     }
 
-    func cancelMove() {
+    /// Restores the pre-gesture scene; used when a drag is cancelled.
+    func cancelActiveGesture() {
       guard (try? editor.cancelGesture()) == .applied else { return }
 
       notifyModelChange(notification: .skip)

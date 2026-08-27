@@ -47,6 +47,7 @@
       )
       case create(creation: Creation, start: SionPoint, current: SionPoint)
       case connector(sourceID: ElementID?, start: SionPoint, current: SionPoint)
+      case marquee(origin: SionPoint, current: SionPoint)
     }
 
     private let editorController: SionEditorController
@@ -182,6 +183,7 @@
       drawConnectionMagnets()
       drawCreationPreview()
       drawConnectorPreview()
+      drawMarquee()
       NSGraphicsContext.restoreGraphicsState()
     }
 
@@ -281,6 +283,9 @@
           current: target.point
         )
         needsDisplay = true
+      case .marquee(let origin, _):
+        self.drag = .marquee(origin: origin, current: point)
+        needsDisplay = true
       }
     }
 
@@ -313,14 +318,24 @@
           to: target.elementID,
           targetPoint: end
         )
+      case .marquee(let origin, _):
+        // Modifier state at release decides replace versus extend, matching
+        // the gesture the user believes they performed.
+        endMarquee(
+          from: origin,
+          to: modelPoint(from: event),
+          mode: event.modifierFlags.contains(.shift) ? .extend : .replace
+        )
       }
     }
 
     override func keyDown(with event: NSEvent) {
-      if event.keyCode == CanvasKeyCode.escape,
-        editorController.anchorEditingState != .inactive
-      {
-        editorController.endAnchorEditing()
+      if event.keyCode == CanvasKeyCode.escape {
+        if editorController.anchorEditingState != .inactive {
+          editorController.endAnchorEditing()
+        } else {
+          cancelInteraction()
+        }
         return
       }
 
@@ -362,6 +377,35 @@
 
     @objc func delete(_ sender: Any?) {
       try? editorController.deleteSelection()
+    }
+
+    /// Escape cancels inwards: text editing, then a live gesture, then selection.
+    /// keyDown covers the canvas as first responder; cancelOperation catches
+    /// Escape bubbling from a hosted text editor.
+    @objc override func cancelOperation(_ sender: Any?) {
+      cancelInteraction()
+    }
+
+    private func cancelInteraction() {
+      if textEditor != nil {
+        discardPendingEdits()
+        return
+      }
+
+      if let activeDrag = drag {
+        switch activeDrag {
+        case .move, .resize, .rotate, .cornerRadius:
+          editorController.cancelActiveGesture()
+        case .create, .connector, .marquee:
+          break
+        }
+
+        drag = nil
+        needsDisplay = true
+        return
+      }
+
+      editorController.select(nil)
     }
 
     @objc override func selectAll(_ sender: Any?) {
@@ -552,7 +596,11 @@
       }
 
       guard let element = editorController.element(at: point) else {
-        editorController.select(nil)
+        // Shift keeps the current selection as the marquee's base.
+        if !event.modifierFlags.contains(.shift) {
+          editorController.select(nil)
+        }
+        drag = .marquee(origin: point, current: point)
         return
       }
 
@@ -1522,6 +1570,64 @@
       path.stroke()
     }
 
+    private func drawMarquee() {
+      guard case .marquee(let origin, let current) = drag else { return }
+
+      let start = NSPoint(x: origin.x, y: origin.y)
+      let end = NSPoint(x: current.x, y: current.y)
+      let rect = NSRect(
+        x: min(start.x, end.x),
+        y: min(start.y, end.y),
+        width: abs(end.x - start.x),
+        height: abs(end.y - start.y)
+      )
+      guard
+        rect.width >= minimumMarqueeModelSize
+          || rect.height >= minimumMarqueeModelSize
+      else { return }
+
+      NSColor.controlAccentColor.withAlphaComponent(CanvasMetrics.marqueeFillOpacity).setFill()
+      rect.fill()
+      NSColor.controlAccentColor.setStroke()
+      let border = NSBezierPath(rect: rect)
+      border.lineWidth = CanvasMetrics.selectionLineWidth * inverseMagnification
+      let marqueeDash = CanvasMetrics.selectionDash.map {
+        $0 * CGFloat(inverseMagnification)
+      }
+      border.setLineDash(
+        marqueeDash,
+        count: marqueeDash.count,
+        phase: 0
+      )
+      border.stroke()
+    }
+
+    /// Commits the rubber band: touched elements join the selection, replacing
+    /// it unless Shift extends at release time.
+    private func endMarquee(
+      from origin: SionPoint,
+      to current: SionPoint,
+      mode: SionEditorController.SelectionMode
+    ) {
+      let marqueeRect = SionRect(
+        origin: origin,
+        size: SionSize(width: current.x - origin.x, height: current.y - origin.y)
+      ).standardized
+      guard
+        marqueeRect.width >= minimumMarqueeModelSize
+          || marqueeRect.height >= minimumMarqueeModelSize
+      else { return }
+
+      editorController.select(
+        editorController.elementIDsIntersecting(marqueeRect),
+        mode: mode
+      )
+    }
+
+    private var minimumMarqueeModelSize: Double {
+      CanvasMetrics.minimumMarqueeScreenSize * inverseMagnification
+    }
+
     private func drawConnectorPreview() {
       guard case .connector(let sourceID, let start, let current) = drag else { return }
 
@@ -2114,6 +2220,8 @@
     static let largeNudgeDistance = 10.0
     static let textRenderCacheLimit = 512
     static let textRenderCacheEvictionDivisor = 4
+    static let marqueeFillOpacity = 0.08
+    static let minimumMarqueeScreenSize = 2.0
   }
 
   private enum PasteboardType {

@@ -125,7 +125,7 @@ public enum SceneRenderGeometry {
     return bounds
   }
 
-  public static func paintedBounds(
+  package static func paintedBounds(
     of element: SceneElement,
     route: ConnectorRoute? = nil
   ) -> SionRect {
@@ -155,10 +155,17 @@ public enum SceneRenderGeometry {
       bounds = bounds.union(adornmentBounds)
     }
 
-    let sourceBounds = bounds
+    return boundsIncludingShadows(element.style.shadows, around: bounds)
+  }
 
-    // Bound every styled shadow so renderers cannot clip collection entries.
-    for shadow in element.style.shadows {
+  static func boundsIncludingShadows(
+    _ shadows: [ShadowStyle],
+    around sourceBounds: SionRect
+  ) -> SionRect {
+    var bounds = sourceBounds
+
+    // Each shadow is cast from the source artwork, not preceding shadows.
+    for shadow in shadows {
       let blurExtent = shadow.blurRadius * PaintedBounds.shadowBlurExtentMultiplier
       let shadowBounds =
         sourceBounds

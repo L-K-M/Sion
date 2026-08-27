@@ -1318,15 +1318,21 @@
     }
 
     private func draw(_ element: SceneElement) {
+      let drawsArtwork = clampedUnit(element.style.opacity) > 0
+      let isSelected = editorController.selection.contains(element.id)
+      guard drawsArtwork || isSelected else { return }
+
       let route = editorController.connectorRoute(for: element)
       guard element.content.connector == nil || route != nil else {
         return
       }
 
-      drawArtwork(of: element, route: route)
+      if drawsArtwork {
+        drawArtwork(of: element, route: route)
+      }
 
       // Selection chrome is interaction state, not document content.
-      guard !rendersOffscreenPreview, editorController.selection.contains(element.id) else {
+      guard !rendersOffscreenPreview, isSelected else {
         return
       }
       if let route {

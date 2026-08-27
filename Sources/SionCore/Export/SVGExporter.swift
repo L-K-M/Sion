@@ -271,9 +271,11 @@ public enum SVGExporter {
     definitions: inout [String]
   ) -> String {
     let frame = element.geometry.frame.standardized
-    let reducedRotation = element.geometry.rotationRadians.truncatingRemainder(
-      dividingBy: 2 * .pi
-    )
+    // Routes are already resolved in world space, unlike local element art.
+    let reducedRotation =
+      route == nil
+      ? element.geometry.rotationRadians.truncatingRemainder(dividingBy: 2 * .pi)
+      : 0
     let rotation = reducedRotation * 180 / .pi
     let transform =
       rotation == 0
@@ -334,9 +336,10 @@ public enum SVGExporter {
     var filter = ""
     if let shadow = style.shadows.first {
       let filterID = "shadow-\(element.id)"
-      let filterBounds = SceneRenderGeometry.unrotatedPaintedBounds(
+      let filterBounds = svgFilterBounds(
         of: element,
-        route: route
+        route: route,
+        shadow: shadow
       )
       definitions.append(
         "<filter id=\"\(filterID)\" filterUnits=\"userSpaceOnUse\" x=\"\(number(filterBounds.minX))\" y=\"\(number(filterBounds.minY))\" width=\"\(number(filterBounds.width))\" height=\"\(number(filterBounds.height))\"><feDropShadow dx=\"\(number(shadow.offset.dx))\" dy=\"\(number(shadow.offset.dy))\" stdDeviation=\"\(number(shadow.blurRadius / 2))\" flood-color=\"\(shadow.color.hex)\"/></filter>"
@@ -348,7 +351,120 @@ public enum SVGExporter {
       "opacity=\"\(number(style.opacity))\" style=\"mix-blend-mode:\(style.blendMode.rawValue)\"\(filter)"
   }
 
+  private static func svgFilterBounds(
+    of element: SceneElement,
+    route: ConnectorRoute?,
+    shadow: ShadowStyle
+  ) -> SionRect {
+    var unshadowed = element
+    unshadowed.style.shadows = []
+    var artworkBounds = SceneRenderGeometry.unrotatedPaintedBounds(
+      of: unshadowed,
+      route: route
+    )
+
+    if let textBounds = svgTextBounds(of: element, route: route) {
+      artworkBounds = artworkBounds.union(textBounds)
+    }
+
+    return SceneRenderGeometry.boundsIncludingShadows(
+      [shadow],
+      around: artworkBounds
+    )
+  }
+
+  private static func svgTextBounds(
+    of element: SceneElement,
+    route: ConnectorRoute?
+  ) -> SionRect? {
+    switch element.content {
+    case .shape(let shape):
+      guard let label = shape.label else { return nil }
+
+      return conservativeTextBounds(label, in: element.geometry.frame.standardized)
+    case .text(let text):
+      return conservativeTextBounds(text, in: element.geometry.frame.standardized)
+    case .connector(let connector):
+      guard let label = connector.label, let route else { return nil }
+
+      let point = point(on: route, fraction: connector.labelPosition)
+      let frame = SionRect(
+        x: point.x - SVGDefaults.connectorLabelWidth / 2,
+        y: point.y - SVGDefaults.connectorLabelHeight / 2,
+        width: SVGDefaults.connectorLabelWidth,
+        height: SVGDefaults.connectorLabelHeight
+      )
+      return conservativeTextBounds(label, in: frame)
+    case .path, .image, .group:
+      return nil
+    }
+  }
+
   private static func renderText(_ text: TextContent, in frame: SionRect) -> String {
+    let style = text.style
+    let layout = svgTextLayout(text, in: frame)
+
+    let family: String
+    switch style.font.family {
+    case .system:
+      family = "-apple-system, BlinkMacSystemFont, sans-serif"
+    case .named(let name):
+      family = "\(escapeAttribute(name)), sans-serif"
+    }
+
+    let spans = layout.lines.enumerated().map { index, line in
+      let y = layout.firstBaseline + (Double(index) * layout.lineHeight)
+      return "<tspan x=\"\(number(layout.x))\" y=\"\(number(y))\">\(escape(line))</tspan>"
+    }.joined()
+
+    return
+      "<text text-anchor=\"\(layout.anchor)\" font-family=\"\(family)\" font-size=\"\(number(style.font.size))\" font-weight=\"\(fontWeight(style.font.weight))\" fill=\"\(style.color.hex)\">\(spans)</text>"
+  }
+
+  private static func conservativeTextBounds(
+    _ text: TextContent,
+    in frame: SionRect
+  ) -> SionRect {
+    let layout = svgTextLayout(text, in: frame)
+    let fontSize = text.style.font.size
+
+    // SVG text is unwrapped, so filters must allow for wide rendered glyphs.
+    let width = layout.lines.reduce(0.0) { widest, line in
+      let lineWidth =
+        Double(line.unicodeScalars.count)
+        * fontSize
+        * SVGDefaults.conservativeGlyphAdvanceEm
+      return max(widest, lineWidth)
+    }
+
+    let minX: Double
+    switch text.style.horizontalAlignment {
+    case .leading, .justified:
+      minX = layout.x
+    case .center:
+      minX = layout.x - width / 2
+    case .trailing:
+      minX = layout.x - width
+    }
+
+    let lastBaseline =
+      layout.firstBaseline
+      + Double(max(0, layout.lines.count - 1)) * layout.lineHeight
+    let minY = layout.firstBaseline - fontSize
+    let maxY = lastBaseline + fontSize * SVGDefaults.conservativeDescenderEm
+
+    return SionRect(
+      x: minX,
+      y: minY,
+      width: width,
+      height: max(fontSize, maxY - minY)
+    )
+  }
+
+  private static func svgTextLayout(
+    _ text: TextContent,
+    in frame: SionRect
+  ) -> SVGTextLayout {
     let style = text.style
     let lines = text.string.split(separator: "\n", omittingEmptySubsequences: false).map(
       String.init)
@@ -379,21 +495,13 @@ public enum SVGExporter {
       firstBaseline = frame.maxY - style.insets.bottom - textHeight + style.font.size
     }
 
-    let family: String
-    switch style.font.family {
-    case .system:
-      family = "-apple-system, BlinkMacSystemFont, sans-serif"
-    case .named(let name):
-      family = "\(escapeAttribute(name)), sans-serif"
-    }
-
-    let spans = lines.enumerated().map { index, line in
-      let y = firstBaseline + (Double(index) * lineHeight)
-      return "<tspan x=\"\(number(x))\" y=\"\(number(y))\">\(escape(line))</tspan>"
-    }.joined()
-
-    return
-      "<text text-anchor=\"\(anchor)\" font-family=\"\(family)\" font-size=\"\(number(style.font.size))\" font-weight=\"\(fontWeight(style.font.weight))\" fill=\"\(style.color.hex)\">\(spans)</text>"
+    return SVGTextLayout(
+      lines: lines,
+      lineHeight: lineHeight,
+      x: x,
+      anchor: anchor,
+      firstBaseline: firstBaseline
+    )
   }
 
   private static func shapePath(_ kind: ShapeKind, frame: SionRect) -> String {
@@ -578,6 +686,14 @@ public enum SVGExporter {
     """
 }
 
+private struct SVGTextLayout {
+  let lines: [String]
+  let lineHeight: Double
+  let x: Double
+  let anchor: String
+  let firstBaseline: Double
+}
+
 private enum XMLScalar {
   static let replacement = "\u{FFFD}"
 
@@ -596,6 +712,8 @@ private enum XMLScalar {
 
 private enum SVGDefaults {
   static let lineHeightMultiplier = 1.2
+  static let conservativeGlyphAdvanceEm = 2.0
+  static let conservativeDescenderEm = 0.5
   static let connectorLabelWidth = 160.0
   static let connectorLabelHeight = 32.0
   static let numberPrecision = 1_000.0

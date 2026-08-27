@@ -213,42 +213,6 @@ public struct ElementGeometry: Codable, Equatable, Sendable {
     self.frame = frame
     self.rotationRadians = rotationRadians
   }
-
-  /// The axis-aligned bounds of the frame after rotation about its center.
-  public var rotatedBounds: SionRect {
-    let standardized = frame.standardized
-    guard rotationRadians != 0 else {
-      return standardized
-    }
-
-    let center = standardized.center
-    let cosine = cos(rotationRadians)
-    let sine = sin(rotationRadians)
-    let corners = [
-      SionPoint(x: standardized.minX, y: standardized.minY),
-      SionPoint(x: standardized.maxX, y: standardized.minY),
-      SionPoint(x: standardized.maxX, y: standardized.maxY),
-      SionPoint(x: standardized.minX, y: standardized.maxY),
-    ].map { point in
-      let dx = point.x - center.x
-      let dy = point.y - center.y
-      return SionPoint(
-        x: center.x + (dx * cosine) - (dy * sine),
-        y: center.y + (dx * sine) + (dy * cosine)
-      )
-    }
-
-    let minimumX = corners.map(\.x).min() ?? standardized.minX
-    let maximumX = corners.map(\.x).max() ?? standardized.maxX
-    let minimumY = corners.map(\.y).min() ?? standardized.minY
-    let maximumY = corners.map(\.y).max() ?? standardized.maxY
-    return SionRect(
-      x: minimumX,
-      y: minimumY,
-      width: maximumX - minimumX,
-      height: maximumY - minimumY
-    )
-  }
 }
 
 public enum ElementVisibility: String, Codable, CaseIterable, Sendable {

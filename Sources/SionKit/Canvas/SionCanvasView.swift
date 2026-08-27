@@ -663,15 +663,16 @@
     /// newer than the deployment target).
     @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
       switch menuItem.action {
-      case #selector(duplicate(_:)),
-        #selector(bringToFront(_:)),
-        #selector(bringForward(_:)),
-        #selector(sendBackward(_:)),
-        #selector(sendToBack(_:)),
-        #selector(lockSelection(_:)),
-        #selector(unlockSelection(_:)),
-        #selector(hideSelection(_:)):
-        return !editorController.selection.isEmpty
+      case #selector(duplicate(_:)):
+        return editorController.canDuplicateSelection
+      case #selector(bringToFront(_:)):
+        return editorController.canMoveSelectionInZOrder(.front)
+      case #selector(bringForward(_:)):
+        return editorController.canMoveSelectionInZOrder(.forward)
+      case #selector(sendBackward(_:)):
+        return editorController.canMoveSelectionInZOrder(.backward)
+      case #selector(sendToBack(_:)):
+        return editorController.canMoveSelectionInZOrder(.back)
       case #selector(alignLeading(_:)),
         #selector(alignCenterHorizontally(_:)),
         #selector(alignTrailing(_:)),
@@ -682,10 +683,14 @@
       case #selector(distributeHorizontally(_:)),
         #selector(distributeVertically(_:)):
         return editorController.arrangeableSelectionCount > 2
+      case #selector(lockSelection(_:)):
+        return editorController.canSetSelectionLockState(.locked)
+      case #selector(unlockSelection(_:)):
+        return editorController.canSetSelectionLockState(.editable)
+      case #selector(hideSelection(_:)):
+        return editorController.canHideSelection
       case #selector(revealHiddenElements(_:)):
-        return editorController.document.scene.elements.contains {
-          $0.visibility == .hidden
-        }
+        return editorController.canRevealHiddenElements
       default:
         return true
       }

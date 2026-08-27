@@ -205,25 +205,27 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     XCTAssertTrue(controller.canMoveSelection)
   }
 
-  func testAlignExcludesGroupRecordButMovesSelectedChild() throws {
+  func testAlignExcludesSelectedGroupHierarchy() throws {
     let group = SceneElement.group(
       id: ElementID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!),
       frame: SionRect(x: 0, y: 0, width: 100, height: 100)
     )
     var child = shape(id: "00000000-0000-0000-0000-00000000000B", x: 10, y: 10)
     child.parentID = group.id
-    let outside = shape(id: "00000000-0000-0000-0000-00000000000C", x: 200, y: 10)
-    let controller = try makeController(elements: [group, child, outside])
-    controller.select([group.id, child.id, outside.id])
+    let firstOutside = shape(id: "00000000-0000-0000-0000-00000000000C", x: 200, y: 10)
+    let secondOutside = shape(id: "00000000-0000-0000-0000-00000000000D", x: 320, y: 10)
+    let controller = try makeController(elements: [group, child, firstOutside, secondOutside])
+    controller.select([group.id, child.id, firstOutside.id, secondOutside.id])
 
     XCTAssertEqual(controller.arrangeableSelectionCount, 2)
 
     try controller.alignSelection(.leading)
 
-    // Groups have no painted content; explicitly selected children still act.
+    // Group hierarchy behavior is deferred, so the selected subtree stays put.
     XCTAssertEqual(controller.frame(of: child.id)?.minX, 10)
     XCTAssertEqual(controller.frame(of: group.id)?.minX, 0)
-    XCTAssertEqual(controller.frame(of: outside.id)?.minX, 10)
+    XCTAssertEqual(controller.frame(of: firstOutside.id)?.minX, 200)
+    XCTAssertEqual(controller.frame(of: secondOutside.id)?.minX, 200)
   }
 
   func testGroupRecordIsExcludedFromZOrderLockAndHide() throws {
@@ -238,19 +240,19 @@ final class SionEditorControllerArrangeTests: XCTestCase {
 
     let zOrderController = try makeController(elements: elements)
     let zOrderDocument = zOrderController.document
-    zOrderController.select(group.id)
+    zOrderController.select([group.id, child.id])
     try zOrderController.moveSelectionInZOrder(.front)
     XCTAssertEqual(zOrderController.document, zOrderDocument)
 
     let lockController = try makeController(elements: elements)
     let lockDocument = lockController.document
-    lockController.select(group.id)
+    lockController.select([group.id, child.id])
     try lockController.setSelectionLockState(.locked)
     XCTAssertEqual(lockController.document, lockDocument)
 
     let hideController = try makeController(elements: elements)
     let hideDocument = hideController.document
-    hideController.select(group.id)
+    hideController.select([group.id, child.id])
     try hideController.hideSelection()
     XCTAssertEqual(hideController.document, hideDocument)
   }

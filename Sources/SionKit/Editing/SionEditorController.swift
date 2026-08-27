@@ -230,9 +230,10 @@
       let targets = arrangeableSelection()
       guard targets.count > 1 else { return }
 
-      // Rotated elements align their painted bounds, not their frames.
+      endAnchorEditing()
+      // Match the visible rotation, stroke, and shadows instead of raw frames.
       let offsets = SceneArrangement.alignedOffsets(
-        targets.map(\.geometry.rotatedBounds),
+        targets.map { SceneRenderGeometry.paintedBounds(of: $0) },
         edge: edge
       )
       let commands = zip(targets, offsets).map { element, offset in
@@ -245,8 +246,9 @@
       let targets = arrangeableSelection()
       guard targets.count > 2 else { return }
 
+      endAnchorEditing()
       let offsets = SceneArrangement.distributedOffsets(
-        targets.map(\.geometry.rotatedBounds),
+        targets.map { SceneRenderGeometry.paintedBounds(of: $0) },
         axis: axis
       )
       let commands = zip(targets, offsets).map { element, offset in
@@ -255,50 +257,33 @@
       try perform(name: "Distribute", commands: commands)
     }
 
-    /// Reorders the whole selection as one block in the retained z-space.
+    /// Reorders eligible elements as one block in retained scene order.
     func moveSelectionInZOrder(_ movement: ZOrderMovement) throws {
-      let elements = editor.document.scene.elements
-      let orderedIDs = elements.map(\.id).filter(selection.contains)
-      guard !orderedIDs.isEmpty else { return }
+      guard let plan = zOrderPlan(for: movement) else { return }
 
-      let retainedCount = elements.count - orderedIDs.count
-      let destination: Int
-      switch movement {
-      case .front:
-        destination = retainedCount
-      case .back:
-        destination = 0
-      case .forward:
-        let topmost = elements.lastIndex { selection.contains($0.id) } ?? elements.endIndex
-        let retainedAbove = elements[...topmost].count { !selection.contains($0.id) }
-        destination = min(retainedAbove + 1, retainedCount)
-      case .backward:
-        let bottommost = elements.firstIndex { selection.contains($0.id) } ?? elements.startIndex
-        let retainedBelow = elements[..<bottommost].count { !selection.contains($0.id) }
-        destination = max(retainedBelow - 1, 0)
-      }
-
+      endAnchorEditing()
       try perform(
         name: movement.actionName,
-        command: .reorder(elementIDs: orderedIDs, destinationIndex: destination)
+        command: .reorder(
+          elementIDs: plan.orderedIDs,
+          destinationIndex: plan.destinationIndex
+        )
       )
     }
 
     func setSelectionLockState(_ lockState: ElementLockState) throws {
-      guard !selection.isEmpty else { return }
+      let targets = lockStateTargets(for: lockState)
+      guard !targets.isEmpty else { return }
 
       endAnchorEditing()
-      let commands = selection.map { id in
-        SceneCommand.setLockState(elementID: id, lockState: lockState)
+      let commands = targets.map { element in
+        SceneCommand.setLockState(elementID: element.id, lockState: lockState)
       }
       try perform(name: lockState.undoActionName, commands: commands)
     }
 
     func hideSelection() throws {
-      let targets = selection
-      let hiddenIDs = editor.document.scene.elements
-        .filter { targets.contains($0.id) && $0.lockState == .editable }
-        .map(\.id)
+      let hiddenIDs = hideTargets.map(\.id)
       guard !hiddenIDs.isEmpty else { return }
 
       endAnchorEditing()
@@ -313,56 +298,137 @@
     }
 
     func revealHiddenElements() throws {
-      let hidden = editor.document.scene.elements.filter {
-        $0.visibility == .hidden && $0.lockState == .editable
-      }
+      let hidden = editor.document.scene.elements.filter { $0.visibility == .hidden }
       guard !hidden.isEmpty else { return }
 
       try perform(
         name: "Reveal All",
-        commands: hidden.map {
-          SceneCommand.setVisibility(elementID: $0.id, visibility: .visible)
-        }
+        commands: hidden.flatMap(revealCommands)
       )
     }
 
-    var selectionHasEditableElements: Bool {
-      selectedElements.contains { $0.lockState == .editable }
+    var canDuplicateSelection: Bool {
+      !selection.isEmpty
     }
 
-    var selectionHasLockedElements: Bool {
-      selectedElements.contains { $0.lockState == .locked }
+    func canMoveSelectionInZOrder(_ movement: ZOrderMovement) -> Bool {
+      zOrderPlan(for: movement) != nil
     }
 
-    /// Matches revealHiddenElements' filter so the menu never offers a
-    /// command that provably no-ops.
-    var sceneHasRevealableHiddenElements: Bool {
-      editor.document.scene.elements.contains {
-        $0.visibility == .hidden && $0.lockState == .editable
-      }
+    func canSetSelectionLockState(_ lockState: ElementLockState) -> Bool {
+      !lockStateTargets(for: lockState).isEmpty
     }
 
-    /// Visible, editable, non-connector selection with group descendants
-    /// dropped when their ancestor is also selected (translate cascades, so
-    /// keeping both would move the descendant twice).
-    private func arrangeableSelection() -> [SceneElement] {
-      let candidates = selectedElements.filter {
-        $0.visibility == .visible && $0.lockState == .editable && $0.content.connector == nil
-      }
-      let candidateIDs = Set(candidates.map(\.id))
+    var canHideSelection: Bool {
+      !hideTargets.isEmpty
+    }
 
-      return candidates.filter { element in
-        var ancestor = element.parentID
-        while let current = ancestor {
-          if candidateIDs.contains(current) { return false }
-          ancestor = editor.document.scene.element(withID: current)?.parentID
+    var canRevealHiddenElements: Bool {
+      editor.document.scene.elements.contains { $0.visibility == .hidden }
+    }
+
+    /// Group records and their selected subtrees stay untouched until
+    /// hierarchy-wide Arrange semantics are defined.
+    private var selectedIndependentElements: [SceneElement] {
+      let parentByChildID: [ElementID: ElementID] = Dictionary(
+        uniqueKeysWithValues: editor.document.scene.elements.compactMap { element in
+          guard let parentID = element.parentID else { return nil }
+
+          return (element.id, parentID)
         }
+      )
+
+      return selectedElements.filter { element in
+        guard !element.content.isGroup else { return false }
+
+        var ancestorID = element.parentID
+        while let currentID = ancestorID {
+          if selection.contains(currentID) { return false }
+          ancestorID = parentByChildID[currentID]
+        }
+
         return true
+      }
+    }
+
+    private func arrangeableSelection() -> [SceneElement] {
+      selectedIndependentElements.filter {
+        $0.visibility == .visible && $0.lockState == .editable && $0.content.connector == nil
       }
     }
 
     var arrangeableSelectionCount: Int {
       arrangeableSelection().count
+    }
+
+    private var zOrderTargets: [SceneElement] {
+      selectedIndependentElements.filter {
+        $0.visibility == .visible && $0.lockState == .editable
+      }
+    }
+
+    private func lockStateTargets(for lockState: ElementLockState) -> [SceneElement] {
+      selectedIndependentElements.filter { $0.lockState != lockState }
+    }
+
+    private var hideTargets: [SceneElement] {
+      selectedIndependentElements.filter {
+        $0.visibility == .visible && $0.lockState == .editable
+      }
+    }
+
+    /// Locked elements briefly become editable inside one atomic transaction,
+    /// then return to their original lock state after becoming visible.
+    private func revealCommands(for element: SceneElement) -> [SceneCommand] {
+      let reveal = SceneCommand.setVisibility(elementID: element.id, visibility: .visible)
+      guard element.lockState == .locked else { return [reveal] }
+
+      return [
+        .setLockState(elementID: element.id, lockState: .editable),
+        reveal,
+        .setLockState(elementID: element.id, lockState: .locked),
+      ]
+    }
+
+    private func zOrderPlan(for movement: ZOrderMovement) -> ZOrderPlan? {
+      let elements = editor.document.scene.elements
+      let elementIDs = elements.map(\.id)
+      let movedIDSet = Set(zOrderTargets.map(\.id))
+      let orderedIDs = elementIDs.filter(movedIDSet.contains)
+      guard !orderedIDs.isEmpty else { return nil }
+
+      let retainedIDs = elementIDs.filter { !movedIDSet.contains($0) }
+      let destination: Int
+      switch movement {
+      case .front:
+        destination = retainedIDs.endIndex
+      case .back:
+        destination = retainedIDs.startIndex
+      case .forward:
+        guard let topmost = elements.lastIndex(where: { movedIDSet.contains($0.id) }) else {
+          return nil
+        }
+
+        let retainedBelow = elements[..<topmost].count {
+          !movedIDSet.contains($0.id)
+        }
+        destination = min(retainedBelow + 1, retainedIDs.endIndex)
+      case .backward:
+        guard let bottommost = elements.firstIndex(where: { movedIDSet.contains($0.id) }) else {
+          return nil
+        }
+
+        let retainedBelow = elements[..<bottommost].count {
+          !movedIDSet.contains($0.id)
+        }
+        destination = max(retainedBelow - 1, retainedIDs.startIndex)
+      }
+
+      var reorderedIDs = retainedIDs
+      reorderedIDs.insert(contentsOf: orderedIDs, at: destination)
+      guard reorderedIDs != elementIDs else { return nil }
+
+      return ZOrderPlan(orderedIDs: orderedIDs, destinationIndex: destination)
     }
 
     @discardableResult
@@ -1568,6 +1634,11 @@
     let ids: Set<ElementID>
     let delta: SionVector
     let center: SionPoint
+  }
+
+  private struct ZOrderPlan {
+    let orderedIDs: [ElementID]
+    let destinationIndex: Int
   }
 
   enum ZOrderMovement {

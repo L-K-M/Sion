@@ -68,9 +68,8 @@
 
       init(content: TextContent, width: CGFloat) {
         self.content = content
-        // Non-trapping conversion: a degenerate width collapses to the last
-        // bucket instead of crashing on NaN or infinity.
-        self.widthBucket = Int(exactly: (width * 2).rounded()) ?? .max
+        // Floor defines a stable lower edge used by measurement below.
+        self.widthBucket = Int(exactly: (width * 2).rounded(.down)) ?? .max
       }
     }
 
@@ -1110,6 +1109,7 @@
       let attributed = NSAttributedString(string: content.string, attributes: attributes)
       let measured = attributed.boundingRect(
         with: NSSize(
+          // The bucket's lower edge is safe for every width mapped to it.
           width: CGFloat(key.widthBucket) / 2,
           height: .greatestFiniteMagnitude
         ),
@@ -1126,9 +1126,10 @@
           CanvasMetrics.textRenderCacheLimit
             / CanvasMetrics.textRenderCacheEvictionDivisor
         )
-        let staleKeys = Array(textRenderCache.keys.prefix(evictionCount))
-        for staleKey in staleKeys {
-          textRenderCache.removeValue(forKey: staleKey)
+        // Arbitrary partial eviction avoids a full-cache miss spike.
+        let evictedKeys = Array(textRenderCache.keys.prefix(evictionCount))
+        for evictedKey in evictedKeys {
+          textRenderCache.removeValue(forKey: evictedKey)
         }
       }
       textRenderCache[key] = render

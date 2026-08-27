@@ -48,6 +48,30 @@ final class SionEditorControllerInsertionTests: XCTestCase {
     XCTAssertEqual(controller.document.scene.element(withID: textID)?.geometry.frame, textFrame)
   }
 
+  func testShapeFrameInsertionNormalizesReverseDragBounds() throws {
+    let controller = try makeController()
+    let reverseDragFrame = SionRect(x: 260, y: 150, width: -240, height: -120)
+
+    let shapeID = try controller.insertShape(in: reverseDragFrame, kind: .rectangle)
+
+    XCTAssertEqual(
+      controller.document.scene.element(withID: shapeID)?.geometry.frame,
+      reverseDragFrame.standardized
+    )
+  }
+
+  func testTextFrameInsertionNormalizesReverseDragBounds() throws {
+    let controller = try makeController()
+    let reverseDragFrame = SionRect(x: 320, y: 240, width: -280, height: -72)
+
+    let textID = try controller.insertText("Text", in: reverseDragFrame)
+
+    XCTAssertEqual(
+      controller.document.scene.element(withID: textID)?.geometry.frame,
+      reverseDragFrame.standardized
+    )
+  }
+
   func testLibraryInsertionCanCenterDefaultsInTheViewport() throws {
     let controller = try makeController()
     let center = SionPoint(x: 500, y: 300)

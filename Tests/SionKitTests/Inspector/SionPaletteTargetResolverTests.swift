@@ -42,7 +42,7 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertTrue(labels.contains("Process"))
   }
 
-  func testCustomAnchorOptionStartsTransientEditorAndDoneEndsIt() throws {
+  func testCustomAnchorModeEndsWithDoneOrPanelClose() throws {
     _ = NSApplication.shared
     let shape = SceneElement.shape(
       frame: SionRect(x: 40, y: 40, width: 160, height: 90)
@@ -94,6 +94,8 @@ final class InspectorPaletteTests: XCTestCase {
 
     anchorPopup.selectItem(withTitle: "Custom points…")
     XCTAssertTrue(NSApp.sendAction(action, to: anchorPopup.target, from: anchorPopup))
+    XCTAssertEqual(editor.anchorEditingState, .editing(shape.id))
+
     inspector.close()
 
     XCTAssertEqual(editor.anchorEditingState, .inactive)

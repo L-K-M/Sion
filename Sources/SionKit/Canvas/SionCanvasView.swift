@@ -1134,10 +1134,12 @@
     private func drawGrid() {
       let grid = editorController.document.scene.canvas.grid
       let magnification = Double(enclosingScrollView?.magnification ?? 1)
-      guard let plan = CanvasGridRenderGeometry.plan(
-        for: grid,
-        magnification: magnification
-      ) else { return }
+      guard
+        let plan = CanvasGridRenderGeometry.plan(
+          for: grid,
+          magnification: magnification
+        )
+      else { return }
 
       let canvasBounds: SionRect
       switch editorController.document.scene.canvas.extent {
@@ -1149,11 +1151,12 @@
       let drawingBounds = nsRect(canvasBounds).intersection(visibleModelRect())
       guard !drawingBounds.isEmpty else { return }
 
-      guard let xIndices = gridLineIndices(
-        from: drawingBounds.minX,
-        through: drawingBounds.maxX,
-        spacing: plan.lineSpacing
-      ),
+      guard
+        let xIndices = gridLineIndices(
+          from: drawingBounds.minX,
+          through: drawingBounds.maxX,
+          spacing: plan.lineSpacing
+        ),
         let yIndices = gridLineIndices(
           from: drawingBounds.minY,
           through: drawingBounds.maxY,

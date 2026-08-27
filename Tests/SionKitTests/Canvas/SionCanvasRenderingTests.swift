@@ -119,7 +119,7 @@ final class SionCanvasRenderingTests: XCTestCase {
 
     let image = try render(elements: [shape])
     let strokeOnly = try pixel(in: image, at: SionPoint(x: 175, y: 120))
-    let fillAndStroke = try pixel(in: image, at: SionPoint(x: 195, y: 120))
+    let fillAndStroke = try pixel(in: image, at: SionPoint(x: 185, y: 120))
 
     assertEqual(strokeOnly, fillAndStroke)
   }

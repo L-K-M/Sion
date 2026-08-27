@@ -32,7 +32,8 @@
     private var editingCanvasBounds: SionRect
     private var canvasExtent: CanvasExtent
     /// Assets are content-addressed, so a cached rendition never goes stale.
-    private var imageCache: [AssetID: NSImage] = [:]
+    /// NSCache still evicts under memory pressure instead of growing forever.
+    private let imageCache = NSCache<AssetIDCacheKey, NSImage>()
 
     init(editorController: SionEditorController) {
       self.editorController = editorController
@@ -55,6 +56,7 @@
       )
 
       wantsLayer = true
+      imageCache.totalCostLimit = CanvasMetrics.imageCacheCostLimit
       setAccessibilityElement(true)
       setAccessibilityRole(.group)
       setAccessibilityLabel("Diagram canvas")
@@ -678,10 +680,13 @@
       let magnification = max(enclosingScrollView?.magnification ?? 1, 0.01)
       var majorSpacing = max(CanvasMetrics.minimumGridSpacing, CGFloat(grid.spacing))
 
-      // Keep the on-screen pitch readable: at low zoom, double the model
+      // Keep the on-screen pitch readable when zoomed out: double the model
       // spacing so lines stay aligned to the original grid instead of
-      // collapsing into a solid field of thousands of strokes.
-      while majorSpacing * magnification < CanvasMetrics.minimumScreenGridSpacing {
+      // collapsing into a solid field of thousands of strokes. At 1x and
+      // above the configured pitch is honored exactly.
+      while magnification < 1,
+        majorSpacing * magnification < CanvasMetrics.minimumScreenGridSpacing
+      {
         majorSpacing *= 2
       }
 
@@ -707,7 +712,8 @@
         minorPath: drawMinor ? minorPath : nil,
         in: drawingBounds,
         majorSpacing: majorSpacing,
-        subdivisions: subdivisions
+        // Illegible minors are suppressed, not restroked as major lines.
+        subdivisions: drawMinor ? subdivisions : 1
       )
 
       if drawMinor {
@@ -768,16 +774,25 @@
       )
 
       for element in scene.elements where element.visibility == .visible {
-        guard drawingBounds(of: element, intersect: visibleBounds) else { continue }
+        // One route lookup serves both culling and drawing.
+        let route = editorController.connectorRoute(for: element)
+        guard drawingBounds(of: element, route: route, intersect: visibleBounds) else {
+          continue
+        }
 
-        draw(element)
+        draw(element, route: route)
       }
     }
 
     /// Culls offscreen elements; connectors test their route's bounding box
-    /// because the path can leave the endpoints' frames entirely.
-    private func drawingBounds(of element: SceneElement, intersect visibleBounds: NSRect) -> Bool {
-      if let route = editorController.connectorRoute(for: element) {
+    /// because the path can leave the endpoints' frames entirely. The fixed
+    /// margin covers shadows, strokes, arrowheads, and label overhang.
+    private func drawingBounds(
+      of element: SceneElement,
+      route: ConnectorRoute?,
+      intersect visibleBounds: NSRect
+    ) -> Bool {
+      if let route {
         let points = route.polylinePoints
         guard let first = points.first else { return false }
 
@@ -797,11 +812,11 @@
         )
       }
 
-      return visibleBounds.intersects(nsRect(element.geometry.frame))
+      return visibleBounds.intersects(nsRect(element.geometry.rotatedBounds))
     }
 
-    private func draw(_ element: SceneElement) {
-      if let route = editorController.connectorRoute(for: element) {
+    private func draw(_ element: SceneElement, route: ConnectorRoute?) {
+      if let route {
         drawConnector(element, route: route)
         return
       }
@@ -1017,7 +1032,8 @@
 
     /// Decodes each display rendition once per asset instead of per frame.
     private func cachedImage(for assetID: AssetID) -> NSImage? {
-      if let cached = imageCache[assetID] {
+      let key = AssetIDCacheKey(assetID)
+      if let cached = imageCache.object(forKey: key) {
         return cached
       }
 
@@ -1027,7 +1043,13 @@
         return nil
       }
 
-      imageCache[assetID] = image
+      let pixelCost: Int
+      if let pixelSize = asset.pixelSize {
+        pixelCost = Int(pixelSize.width * pixelSize.height * 4)
+      } else {
+        pixelCost = asset.data.count
+      }
+      imageCache.setObject(image, forKey: key, cost: pixelCost)
       return image
     }
 
@@ -1550,6 +1572,21 @@
     }
   }
 
+  /// NSCache keys must be class instances; AssetID is a value type.
+  private final class AssetIDCacheKey: NSObject {
+    let id: AssetID
+
+    init(_ id: AssetID) {
+      self.id = id
+    }
+
+    override var hash: Int { id.hashValue }
+
+    override func isEqual(_ object: Any?) -> Bool {
+      (object as? AssetIDCacheKey)?.id == id
+    }
+  }
+
   private enum ImagePasteType {
     case png
     case jpeg
@@ -1606,7 +1643,8 @@
     static let gridLineWidth = 0.5
     static let minimumGridSpacing: CGFloat = 4
     static let minimumScreenGridSpacing: CGFloat = 8
-    static let cullMargin: CGFloat = 32
+    static let cullMargin: CGFloat = 80
+    static let imageCacheCostLimit = 256 * 1_024 * 1_024
     static let defaultFontSize: CGFloat = 15
     static let selectionInset = 4.0
     static let selectionLineWidth = 1.5

@@ -737,33 +737,57 @@
     /// Renders the document content into a bounded PNG for the archive's
     /// recovery preview. Grid and selection chrome are omitted.
     ///
-    /// Raw bitmap contexts are unflipped (y-up) while the model and this
-    /// view are y-down. NSString drawing honors only the context's reported
-    /// flippedness — not a manually flipped CTM — so the render goes through
-    /// lockFocusFlipped, which sets that flag correctly.
-    func renderPreviewPNG(maximumDimension: CGFloat = 768) -> Data? {
+    /// The explicit flipped context keeps text upright without inheriting a
+    /// display's backing scale.
+    func renderPreviewPNG(
+      maximumDimension: CGFloat = PreviewMetrics.maximumDimension
+    ) -> Data? {
+      guard maximumDimension.isFinite, maximumDimension > 0 else { return nil }
+
       let content = editorController.contentBounds()
       guard content.isFinite, content.width > 0, content.height > 0 else { return nil }
 
-      let scale = min(1, maximumDimension / max(content.width, content.height))
-      let pointSize = NSSize(
-        width: max(1, content.width * scale),
-        height: max(1, content.height * scale)
+      let scale = min(
+        1,
+        Double(maximumDimension) / max(content.width, content.height)
       )
-      let image = NSImage(size: pointSize)
+      let pixelWidth = max(1, Int((content.width * scale).rounded()))
+      let pixelHeight = max(1, Int((content.height * scale).rounded()))
+      guard
+        let bitmap = NSBitmapImageRep(
+          bitmapDataPlanes: nil,
+          pixelsWide: pixelWidth,
+          pixelsHigh: pixelHeight,
+          bitsPerSample: PreviewMetrics.bitsPerSample,
+          samplesPerPixel: PreviewMetrics.samplesPerPixel,
+          hasAlpha: true,
+          isPlanar: false,
+          colorSpaceName: .deviceRGB,
+          bytesPerRow: 0,
+          bitsPerPixel: 0
+        ),
+        let bitmapContext = NSGraphicsContext(bitmapImageRep: bitmap)
+      else {
+        return nil
+      }
+
+      NSGraphicsContext.saveGraphicsState()
+      defer { NSGraphicsContext.restoreGraphicsState() }
+      NSGraphicsContext.current = NSGraphicsContext(
+        cgContext: bitmapContext.cgContext,
+        flipped: true
+      )
 
       rendersOffscreenPreview = true
       defer { rendersOffscreenPreview = false }
 
-      image.lockFocusFlipped(true)
-      // Model coordinates map into the point space: translate, then scale.
-      // Concat order is point order: p * T * S.
+      // Scale first so the following origin offset is scaled with the model.
+      let scaleTransform = NSAffineTransform()
+      scaleTransform.scale(by: CGFloat(scale))
+      scaleTransform.concat()
       let translate = NSAffineTransform()
       translate.translateX(by: -content.minX, yBy: -content.minY)
       translate.concat()
-      let scaleTransform = NSAffineTransform()
-      scaleTransform.scale(by: scale)
-      scaleTransform.concat()
 
       nsColor(editorController.document.scene.canvas.background).setFill()
       NSBezierPath(rect: nsRect(content)).fill()
@@ -771,14 +795,8 @@
       where element.visibility == .visible {
         draw(element)
       }
-      image.unlockFocus()
 
-      guard let tiff = image.tiffRepresentation,
-        let bitmap = NSBitmapImageRep(data: tiff)
-      else {
-        return nil
-      }
-
+      bitmapContext.flushGraphics()
       return bitmap.representation(using: .png, properties: [:])
     }
 
@@ -2504,6 +2522,12 @@
     static let textRenderCacheEvictionDivisor = 4
     static let marqueeFillOpacity = 0.08
     static let minimumMarqueeScreenSize = 2.0
+  }
+
+  private enum PreviewMetrics {
+    static let maximumDimension: CGFloat = 768
+    static let bitsPerSample = 8
+    static let samplesPerPixel = 4
   }
 
   private enum PasteboardType {

@@ -331,7 +331,12 @@
     }
 
     func contentBounds() -> SionRect {
-      SceneRenderGeometry.contentBounds(of: editor.document.scene)
+      SceneRenderGeometry.contentBounds(
+        of: editor.document.scene,
+        connectorRoutes: { [weak self] element in
+          self?.connectorRoute(for: element) ?? nil
+        }
+      )
     }
 
     @discardableResult

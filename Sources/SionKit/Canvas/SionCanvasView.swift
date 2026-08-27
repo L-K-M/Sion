@@ -1286,7 +1286,9 @@
       let path = polygonPath(selectionCorners.map(nsPoint))
       NSColor.controlAccentColor.setStroke()
       path.lineWidth = CanvasMetrics.selectionLineWidth * inverseMagnification
-      let selectionDash = CanvasMetrics.selectionDash.map { $0 * inverseMagnification }
+      let selectionDash = CanvasMetrics.selectionDash.map {
+        $0 * CGFloat(inverseMagnification)
+      }
       path.setLineDash(
         selectionDash,
         count: selectionDash.count,
@@ -1447,7 +1449,9 @@
       NSColor.controlAccentColor.setStroke()
       path.fill()
       path.lineWidth = CanvasMetrics.selectionLineWidth * inverseMagnification
-      let previewDash = CanvasMetrics.previewDash.map { $0 * inverseMagnification }
+      let previewDash = CanvasMetrics.previewDash.map {
+        $0 * CGFloat(inverseMagnification)
+      }
       path.setLineDash(previewDash, count: previewDash.count, phase: 0)
       path.stroke()
     }

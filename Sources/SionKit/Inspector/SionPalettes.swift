@@ -150,7 +150,7 @@
 
     func retarget(to target: SionEditorController?) {
       if let currentTarget = self.target,
-        target.map({ $0 !== currentTarget }) ?? presentation == .panel
+        target.map({ $0 !== currentTarget }) ?? (presentation == .panel)
       {
         currentTarget.endAnchorEditing()
       }

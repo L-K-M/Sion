@@ -131,7 +131,7 @@
 
       let area = NSTrackingArea(
         rect: bounds,
-        options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
+        options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp],
         owner: self,
         userInfo: nil
       )
@@ -144,11 +144,26 @@
     }
 
     override func mouseEntered(with event: NSEvent) {
+      guard drag == nil else { return }
+
       updateCursor(at: modelPoint(from: event))
     }
 
     override func mouseExited(with event: NSEvent) {
+      guard drag == nil else { return }
+
       NSCursor.arrow.set()
+    }
+
+    /// Tool and selection changes arrive without mouse movement; re-derive the
+    /// cursor whenever the pointer already sits inside the canvas.
+    private func refreshCursorForCurrentPointer() {
+      guard drag == nil, let window else { return }
+
+      let locationInView = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+      guard bounds.contains(locationInView) else { return }
+
+      updateCursor(at: modelPoint(from: locationInView))
     }
 
     /// The canvas reads as a physical surface: hands for moves, crosshairs

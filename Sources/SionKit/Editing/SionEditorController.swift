@@ -253,7 +253,12 @@
         return nil
       }
 
-      imageCache.setObject(image, forKey: key, cost: asset.data.count)
+      // Charge the cache by decoded pixels; compressed bytes understate
+      // what a rendition actually retains.
+      let decodedCost = image.representations.reduce(0) {
+        $0 + ($1.pixelsWide * $1.pixelsHigh * 4)
+      }
+      imageCache.setObject(image, forKey: key, cost: decodedCost)
       return image
     }
 

@@ -101,13 +101,12 @@ final class SVGExporterTests: XCTestCase {
       frame: SionRect(x: 0, y: 0, width: 100, height: 100),
       kind: .rectangle
     )
-    shape.style.shadows = [
-      ShadowStyle(
-        color: .primaryInk,
-        offset: SionVector(dx: 300, dy: 200),
-        blurRadius: 40
-      )
-    ]
+    let shadow = ShadowStyle(
+      color: .primaryInk,
+      offset: SionVector(dx: 300, dy: 200),
+      blurRadius: 40
+    )
+    shape.style.shadows = [shadow]
 
     let svg = try SVGExporter.export(
       document: SionDocument(scene: SionScene(elements: [shape])),
@@ -117,6 +116,26 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertTrue(svg.contains("filterUnits=\"userSpaceOnUse\""))
     XCTAssertFalse(svg.contains("x=\"-50%\""))
     XCTAssertFalse(svg.contains("width=\"200%\""))
+
+    let filterStart = try XCTUnwrap(svg.range(of: "<filter "))
+    let filterSuffix = svg[filterStart.lowerBound...]
+    let filterEnd = try XCTUnwrap(filterSuffix.firstIndex(of: ">"))
+    let filterTag = filterSuffix[...filterEnd]
+    let x = try XCTUnwrap(numberAttribute("x", in: filterTag))
+    let y = try XCTUnwrap(numberAttribute("y", in: filterTag))
+    let width = try XCTUnwrap(numberAttribute("width", in: filterTag))
+    let height = try XCTUnwrap(numberAttribute("height", in: filterTag))
+
+    XCTAssertLessThanOrEqual(x, shape.geometry.frame.minX)
+    XCTAssertLessThanOrEqual(y, shape.geometry.frame.minY)
+    XCTAssertGreaterThanOrEqual(
+      x + width,
+      shape.geometry.frame.maxX + shadow.offset.dx + shadow.blurRadius
+    )
+    XCTAssertGreaterThanOrEqual(
+      y + height,
+      shape.geometry.frame.maxY + shadow.offset.dy + shadow.blurRadius
+    )
   }
 
   func testConnectorResolutionUsesRotatedMagnets() throws {
@@ -175,5 +194,15 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertFalse(svg.unicodeScalars.contains { $0.value == 0 || $0.value == 12 })
     XCTAssertTrue(svg.contains("before�after�"))
     XCTAssertTrue(svg.contains("title�"))
+  }
+
+  private func numberAttribute(_ name: String, in tag: Substring) -> Double? {
+    guard let valueStart = tag.range(of: "\(name)=\"")?.upperBound,
+      let valueEnd = tag[valueStart...].firstIndex(of: "\"")
+    else {
+      return nil
+    }
+
+    return Double(tag[valueStart..<valueEnd])
   }
 }

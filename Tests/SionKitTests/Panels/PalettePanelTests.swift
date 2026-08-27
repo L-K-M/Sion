@@ -29,7 +29,7 @@ final class PalettePanelTests: XCTestCase {
     let contentView = try XCTUnwrap(panel.contentView)
     let closeButton = try XCTUnwrap(
       contentView.descendants.compactMap { $0 as? NSButton }.first {
-        $0.toolTip == "Close Inspector Palette"
+        $0.toolTip == "Close \(PalettePanelTestCopy.title) Palette"
       }
     )
 
@@ -67,11 +67,15 @@ final class PalettePanelTests: XCTestCase {
     PalettePanel(
       definition: PaletteDefinition(
         kind: PaletteKind("tests.inspector"),
-        title: "Palette Panel Test",
+        title: PalettePanelTestCopy.title,
         contentSize: NSSize(width: 300, height: 320)
       )
     )
   }
+}
+
+private enum PalettePanelTestCopy {
+  static let title = "Palette Panel Test"
 }
 
 @MainActor

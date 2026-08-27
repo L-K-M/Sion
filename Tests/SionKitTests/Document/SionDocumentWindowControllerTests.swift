@@ -58,7 +58,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
       )
     )
     let zoomControl = try XCTUnwrap(zoomItem.view as? NSSegmentedControl)
-    let temporaryResponder = NSTextField()
+    let temporaryResponder = TestResponderView()
     window.contentView?.addSubview(temporaryResponder)
     XCTAssertTrue(window.makeFirstResponder(temporaryResponder))
 
@@ -93,4 +93,8 @@ final class SionDocumentWindowControllerTests: XCTestCase {
 
     XCTAssertEqual(scrollView.magnification, firstFit, accuracy: 0.000_001)
   }
+}
+
+private final class TestResponderView: NSView {
+  override var acceptsFirstResponder: Bool { true }
 }

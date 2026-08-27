@@ -60,6 +60,49 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertTrue(anchorPopup.isEnabled)
   }
 
+  func testMultipleSelectionExposesNoInspectorMutation() throws {
+    _ = NSApplication.shared
+    var lockedShape = SceneElement.shape(
+      frame: SionRect(x: 40, y: 40, width: 160, height: 90)
+    )
+    lockedShape.lockState = .locked
+    let editableShape = SceneElement.shape(
+      frame: SionRect(x: 240, y: 40, width: 160, height: 90)
+    )
+    let editor = try SionEditorController(
+      package: SionPackage(
+        document: SionDocument(scene: SionScene(elements: [lockedShape, editableShape]))
+      ),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+    editor.select(lockedShape.id)
+    editor.select(editableShape.id, mode: .extend)
+    let documentController = SionDocumentWindowController(editorController: editor)
+    defer { documentController.close() }
+
+    let documentWindow = try XCTUnwrap(documentController.window)
+    documentWindow.orderFrontRegardless()
+    let inspector = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.inspector.paletteKind)
+    )
+    defer { inspector.close() }
+    inspector.showPanel()
+
+    let panel = try XCTUnwrap(
+      NSApp.windows.first { $0.title == "Inspector" && $0.isVisible }
+    )
+    let descendants = try XCTUnwrap(panel.contentView).inspectorTestDescendants
+    let lockButton = try XCTUnwrap(
+      descendants.compactMap { $0 as? NSButton }.first { $0.title == "Locked" }
+    )
+
+    XCTAssertFalse(lockButton.isEnabled)
+    XCTAssertTrue(descendants.compactMap { $0 as? NSColorWell }.allSatisfy { !$0.isEnabled })
+    XCTAssertTrue(descendants.compactMap { $0 as? NSSlider }.allSatisfy { !$0.isEnabled })
+    XCTAssertTrue(descendants.compactMap { $0 as? NSPopUpButton }.allSatisfy { !$0.isEnabled })
+  }
+
   func testFloatingInspectorObservesDocumentSelection() throws {
     _ = NSApplication.shared
     var shape = SceneElement.shape(

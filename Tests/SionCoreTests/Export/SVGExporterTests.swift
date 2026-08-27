@@ -196,6 +196,13 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertTrue(svg.contains("title�"))
   }
 
+  func testNumberAttributeMatchesExactName() {
+    let tag = Substring(#"<filter dx="9" x="-4" dy="8" y="-3">"#)
+
+    XCTAssertEqual(numberAttribute("x", in: tag), -4)
+    XCTAssertEqual(numberAttribute("y", in: tag), -3)
+  }
+
   private func numberAttribute(_ name: String, in tag: Substring) -> Double? {
     guard let valueStart = tag.range(of: "\(name)=\"")?.upperBound,
       let valueEnd = tag[valueStart...].firstIndex(of: "\"")

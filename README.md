@@ -48,6 +48,8 @@ npm test           # vitest unit suite
 npm run build      # production build to out/
 npm run e2e        # Playwright Electron smoke suite (build first)
 npm run package    # unsigned local installers via electron-builder
+scripts/build.sh           # locked install, checks, host packages
+scripts/build.sh --install # same, then install the native macOS app
 npm run check:licenses   # license gate (PLAN.md §4)
 npm run gen:licenses     # regenerate THIRD_PARTY_LICENSES.md
 ```

@@ -53,8 +53,8 @@
     private let editorController: SionEditorController
     private let creationFailureFeedback: @MainActor () -> Void
     private var observerID: UUID?
-    private var drag: Drag?
     private var magnificationObservation: NSKeyValueObservation?
+    private var drag: Drag?
     private var textEditor: NSScrollView?
     private var editedElementID: ElementID?
     private var inlineTextUndoManager: UndoManager?
@@ -1133,20 +1133,14 @@
 
     private func drawGrid() {
       let grid = editorController.document.scene.canvas.grid
+      let magnification = Double(enclosingScrollView?.magnification ?? 1)
+      guard
+        let plan = CanvasGridRenderGeometry.plan(
+          for: grid,
+          magnification: magnification
+        )
+      else { return }
 
-      guard grid.visibility == .visible else { return }
-
-      // Zoom-adaptive rendering: lines stay at true model positions while the
-      // spacing fades out below legible screen sizes instead of shifting.
-      let magnification = max(enclosingScrollView?.magnification ?? 1, 0.01)
-      let screenSpacing = CGFloat(grid.spacing) * magnification
-      let fade =
-        (screenSpacing - CanvasMetrics.gridFadeScreenSpacing)
-        / (CanvasMetrics.gridLegibleScreenSpacing - CanvasMetrics.gridFadeScreenSpacing)
-      let opacity = CanvasMetrics.gridOpacity * min(max(fade, 0), 1)
-      guard opacity > 0.01 else { return }
-
-      let spacing = CGFloat(grid.spacing)
       let canvasBounds: SionRect
       switch editorController.document.scene.canvas.extent {
       case .infinite:
@@ -1157,25 +1151,69 @@
       let drawingBounds = nsRect(canvasBounds).intersection(visibleModelRect())
       guard !drawingBounds.isEmpty else { return }
 
-      let path = NSBezierPath()
-      var x = floor(drawingBounds.minX / spacing) * spacing
-      while x <= drawingBounds.maxX {
+      guard
+        let xIndices = gridLineIndices(
+          from: drawingBounds.minX,
+          through: drawingBounds.maxX,
+          spacing: plan.lineSpacing
+        ),
+        let yIndices = gridLineIndices(
+          from: drawingBounds.minY,
+          through: drawingBounds.maxY,
+          spacing: plan.lineSpacing
+        )
+      else {
+        return
+      }
+
+      let majorPath = NSBezierPath()
+      let subdivisionPath = NSBezierPath()
+      for index in xIndices {
+        let x = CGFloat(Double(index) * plan.lineSpacing)
+        let path =
+          index.isMultiple(of: plan.linesPerMajor) ? majorPath : subdivisionPath
         path.move(to: NSPoint(x: x, y: drawingBounds.minY))
         path.line(to: NSPoint(x: x, y: drawingBounds.maxY))
-        x += spacing
       }
-
-      var y = floor(drawingBounds.minY / spacing) * spacing
-      while y <= drawingBounds.maxY {
+      for index in yIndices {
+        let y = CGFloat(Double(index) * plan.lineSpacing)
+        let path =
+          index.isMultiple(of: plan.linesPerMajor) ? majorPath : subdivisionPath
         path.move(to: NSPoint(x: drawingBounds.minX, y: y))
         path.line(to: NSPoint(x: drawingBounds.maxX, y: y))
-        y += spacing
       }
 
-      NSColor.separatorColor.withAlphaComponent(opacity).setStroke()
-      // Keep hairlines hairlines: compensate the canvas magnification.
-      path.lineWidth = CanvasMetrics.gridLineWidth / magnification
-      path.stroke()
+      let lineWidth = CanvasMetrics.gridScreenLineWidth * inverseMagnification
+      NSColor.separatorColor.withAlphaComponent(
+        CanvasMetrics.subdivisionGridOpacity
+      ).setStroke()
+      subdivisionPath.lineWidth = lineWidth
+      subdivisionPath.stroke()
+
+      NSColor.separatorColor.withAlphaComponent(
+        CanvasMetrics.majorGridOpacity
+      ).setStroke()
+      majorPath.lineWidth = lineWidth
+      majorPath.stroke()
+    }
+
+    private func gridLineIndices(
+      from minimum: CGFloat,
+      through maximum: CGFloat,
+      spacing: Double
+    ) -> ClosedRange<Int>? {
+      let first = floor(Double(minimum) / spacing)
+      let last = floor(Double(maximum) / spacing)
+      guard first.isFinite,
+        last.isFinite,
+        let firstIndex = Int(exactly: first),
+        let lastIndex = Int(exactly: last),
+        firstIndex <= lastIndex
+      else {
+        return nil
+      }
+
+      return firstIndex...lastIndex
     }
 
     private func drawElements() {
@@ -2342,10 +2380,9 @@
 
   private enum CanvasMetrics {
     static let minimumInfiniteSize = SionSize(width: 4_000, height: 3_000)
-    static let gridOpacity = 0.18
-    static let gridLineWidth = 0.5
-    static let gridFadeScreenSpacing: CGFloat = 6
-    static let gridLegibleScreenSpacing: CGFloat = 12
+    static let majorGridOpacity = 0.18
+    static let subdivisionGridOpacity = 0.08
+    static let gridScreenLineWidth = 0.5
     static let defaultFontSize: CGFloat = 15
     static let selectionInset = 4.0
     static let selectionLineWidth = 1.5

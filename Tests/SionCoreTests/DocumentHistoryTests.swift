@@ -27,24 +27,40 @@ final class DocumentHistoryTests: XCTestCase {
     XCTAssertEqual(history.revisions.map(\.sceneData), [Data("one".utf8)])
   }
 
-  func testFutureRevisionDoesNotSuppressAutosave() {
+  func testClockCorrectionUsesNewestEligibleAutosave() {
+    let interval = DocumentHistory.autosaveCheckpointInterval
+    let oldData = Data("old".utf8)
+    let recentData = Data("recent".utf8)
     let futureData = Data("future".utf8)
-    let currentData = Data("current".utf8)
+    let correctedData = Data("corrected".utf8)
     let throttledData = Data("throttled".utf8)
     let history = DocumentHistory()
+      .appending(sceneData: oldData, at: referenceDate, intent: .autosave)
+      .appending(
+        sceneData: recentData,
+        at: referenceDate.addingTimeInterval(interval),
+        intent: .autosave
+      )
       .appending(
         sceneData: futureData,
-        at: referenceDate.addingTimeInterval(DocumentHistory.autosaveCheckpointInterval),
+        at: referenceDate.addingTimeInterval(interval * 1_000),
         intent: .manual
       )
-      .appending(sceneData: currentData, at: referenceDate, intent: .autosave)
+      .appending(
+        sceneData: correctedData,
+        at: referenceDate.addingTimeInterval(interval * 2),
+        intent: .autosave
+      )
       .appending(
         sceneData: throttledData,
-        at: referenceDate.addingTimeInterval(DocumentHistory.autosaveCheckpointInterval / 2),
+        at: referenceDate.addingTimeInterval(interval * 2 + 1),
         intent: .autosave
       )
 
-    XCTAssertEqual(history.revisions.map(\.sceneData), [futureData, currentData])
+    XCTAssertEqual(
+      history.revisions.map(\.sceneData),
+      [futureData, correctedData, recentData, oldData]
+    )
   }
 
   func testAutosavesAtSameDateAreRateLimited() {
@@ -53,26 +69,6 @@ final class DocumentHistoryTests: XCTestCase {
       .appending(sceneData: Data("two".utf8), at: referenceDate, intent: .autosave)
 
     XCTAssertEqual(history.revisions.map(\.sceneData), [Data("one".utf8)])
-  }
-
-  func testThrottleUsesMostRecentEligibleRevision() {
-    let interval = DocumentHistory.autosaveCheckpointInterval
-    let tooSoon = Data("too-soon".utf8)
-    let history = DocumentHistory()
-      .appending(sceneData: Data("old".utf8), at: referenceDate, intent: .autosave)
-      .appending(
-        sceneData: Data("recent".utf8),
-        at: referenceDate.addingTimeInterval(interval),
-        intent: .autosave
-      )
-      .appending(
-        sceneData: tooSoon,
-        at: referenceDate.addingTimeInterval(interval + 1),
-        intent: .autosave
-      )
-
-    XCTAssertEqual(history.revisions.count, 2)
-    XCTAssertFalse(history.revisions.contains { $0.sceneData == tooSoon })
   }
 
   func testNewestRevisionsSurviveThinning() {

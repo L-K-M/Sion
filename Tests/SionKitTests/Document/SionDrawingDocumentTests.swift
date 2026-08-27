@@ -8,7 +8,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   func testMermaidExportWarningsMatchCoverage() {
     XCTAssertNil(MermaidExportWarning(coverage: .complete))
     XCTAssertEqual(MermaidExportWarning(coverage: .partial), .partial)
-    XCTAssertEqual(MermaidExportWarning(coverage: .none), .none)
+    XCTAssertEqual(MermaidExportWarning(coverage: .none), .nothingRepresentable)
   }
 
   func testMermaidExportWarningsDescribeOmissions() throws {

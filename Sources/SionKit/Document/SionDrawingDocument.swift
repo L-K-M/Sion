@@ -4,7 +4,7 @@
 
   enum MermaidExportWarning: Equatable {
     case partial
-    case none
+    case nothingRepresentable
 
     init?(coverage: MermaidCoverage) {
       switch coverage {
@@ -13,7 +13,7 @@
       case .partial:
         self = .partial
       case .none:
-        self = .none
+        self = .nothingRepresentable
       }
     }
 
@@ -21,7 +21,7 @@
       switch self {
       case .partial:
         return "Mermaid will omit content"
-      case .none:
+      case .nothingRepresentable:
         return "Mermaid cannot represent this drawing"
       }
     }
@@ -35,7 +35,7 @@
       switch self {
       case .partial:
         return "Unsupported visible content will be omitted: \(summary)."
-      case .none:
+      case .nothingRepresentable:
         return "The file will contain omission comments only: \(summary)."
       }
     }

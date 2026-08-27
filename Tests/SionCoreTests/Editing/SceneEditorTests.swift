@@ -535,6 +535,61 @@ final class SceneEditorTests: XCTestCase {
     )
   }
 
+  func testTranslatingMovesParentedChildrenRegardlessOfGroupKind() throws {
+    // Full validation rejects non-group parents, so this state is only
+    // reachable mid-transaction; apply pins the shared-walk semantics.
+    let rootID = elementID("20000000-0000-0000-0000-000000000039")
+    let childID = elementID("20000000-0000-0000-0000-00000000003a")
+    let root = SceneElement.shape(
+      id: rootID,
+      frame: SionRect(x: 0, y: 0, width: 100, height: 60)
+    )
+    let child = SceneElement.shape(
+      id: childID,
+      frame: SionRect(x: 10, y: 10, width: 40, height: 20),
+      parentID: rootID
+    )
+    var scene = SionScene(elements: [root, child])
+
+    try SceneCommand.translate(elementIDs: [rootID], by: SionVector(dx: 5, dy: 5))
+      .apply(to: &scene)
+
+    XCTAssertEqual(
+      scene.element(withID: childID)?.geometry.frame.origin,
+      SionPoint(x: 15, y: 15)
+    )
+  }
+
+  func testTranslatingGroupWithLockedDescendantThrowsAndRollsBack() throws {
+    let groupID = elementID("20000000-0000-0000-0000-00000000003b")
+    let childID = elementID("20000000-0000-0000-0000-00000000003c")
+    let group = SceneElement.group(
+      id: groupID,
+      frame: SionRect(x: 0, y: 0, width: 200, height: 120)
+    )
+    var child = SceneElement.shape(
+      id: childID,
+      frame: SionRect(x: 20, y: 20, width: 100, height: 60),
+      parentID: groupID
+    )
+    child.lockState = .locked
+    let document = SionDocument(scene: SionScene(elements: [group, child]))
+    var editor = try SceneEditor(document: document)
+
+    XCTAssertThrowsError(
+      try editor.perform(
+        SceneTransaction(
+          name: "Move locked group",
+          command: .translate(elementIDs: [groupID], by: SionVector(dx: 5, dy: 5))
+        )
+      )
+    ) { error in
+      XCTAssertEqual(error as? SceneEditingError, .elementLocked(childID))
+    }
+
+    XCTAssertEqual(editor.document, document)
+  }
+
   private func elementID(_ string: String) -> ElementID {
     ElementID(string)!
   }

@@ -31,12 +31,13 @@
         let suffix = omission.count == 1 ? "" : "s"
         return "\(omission.count) \(omission.kind.rawValue)\(suffix)"
       }.joined(separator: ", ")
+      let omissionList = summary.isEmpty ? "unspecified content" : summary
 
       switch self {
       case .partial:
-        return "Unsupported visible content will be omitted: \(summary)."
+        return "Unsupported visible content will be omitted: \(omissionList)."
       case .nothingRepresentable:
-        return "The file will contain omission comments only: \(summary)."
+        return "The file will contain omission comments only: \(omissionList)."
       }
     }
   }
@@ -202,16 +203,16 @@
       _ warning: MermaidExportWarning,
       export: MermaidExport
     ) {
-      guard let window = windowControllers.first?.window else { return }
+      guard let window = windowForSheet else { return }
 
       let alert = NSAlert()
       alert.alertStyle = .warning
       alert.messageText = warning.messageText
       alert.informativeText = warning.informativeText(for: export.omissions)
-      alert.addButton(withTitle: "Export Anyway")
       alert.addButton(withTitle: "Cancel")
+      alert.addButton(withTitle: "Export Anyway")
       alert.beginSheetModal(for: window) { [weak self] response in
-        guard response == .alertFirstButtonReturn else { return }
+        guard response == .alertSecondButtonReturn else { return }
 
         self?.presentMermaidExportPanel(export)
       }

@@ -27,6 +27,10 @@ final class SionDrawingDocumentTests: XCTestCase {
       none.informativeText(for: omissions),
       "The file will contain omission comments only: 1 image, 2 paths."
     )
+    XCTAssertEqual(
+      partial.informativeText(for: []),
+      "Unsupported visible content will be omitted: unspecified content."
+    )
   }
 
   func testUndoGroupClosureDoesNotDirtySavedDocumentAgain() throws {

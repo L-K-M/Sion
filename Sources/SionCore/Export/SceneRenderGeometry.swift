@@ -245,14 +245,22 @@ public enum SceneRenderGeometry {
     style: ElementStyle
   ) -> SionRect {
     var bounds = bounds(containing: route.exportBoundsPoints)
-    let strokeWidth = style.stroke?.width ?? 0
-    let markerRadius = strokeWidth * PaintedBounds.svgMarkerRadiusFactor
+    let strokeWidth =
+      style.stroke?.width ?? PaintedBounds.nativeDefaultConnectorWidth
 
     if connector.sourceDecoration != .none {
-      bounds = bounds.union(pointBounds(route.start, radius: markerRadius))
+      let radius = connectorDecorationRadius(
+        connector.sourceDecoration,
+        strokeWidth: strokeWidth
+      )
+      bounds = bounds.union(pointBounds(route.start, radius: radius))
     }
     if connector.targetDecoration != .none {
-      bounds = bounds.union(pointBounds(route.end, radius: markerRadius))
+      let radius = connectorDecorationRadius(
+        connector.targetDecoration,
+        strokeWidth: strokeWidth
+      )
+      bounds = bounds.union(pointBounds(route.end, radius: radius))
     }
 
     if connector.label != nil {
@@ -267,6 +275,27 @@ public enum SceneRenderGeometry {
     }
 
     return bounds
+  }
+
+  private static func connectorDecorationRadius(
+    _ decoration: ConnectorDecoration,
+    strokeWidth: Double
+  ) -> Double {
+    let nativeRadius: Double
+    switch decoration {
+    case .none:
+      return 0
+    case .openArrow, .filledArrow:
+      nativeRadius = PaintedBounds.nativeArrowRadius
+    case .circle:
+      nativeRadius = PaintedBounds.nativeCircleRadius
+    case .diamond:
+      nativeRadius = PaintedBounds.nativeDiamondRadius
+    }
+
+    let nativePaintedRadius = nativeRadius + (strokeWidth / 2)
+    let svgRadius = strokeWidth * PaintedBounds.svgMarkerRadiusFactor
+    return max(nativePaintedRadius, svgRadius)
   }
 
   private static func strokeExpansion(for stroke: StrokeStyle?) -> Double {
@@ -504,6 +533,10 @@ private enum PaintedBounds {
   // Use the larger Canvas/SVG footprints so neither renderer clips.
   static let connectorLabelWidth = 160.0
   static let connectorLabelHeight = 36.0
+  static let nativeArrowRadius = hypot(12.0, 6.0)
+  static let nativeCircleRadius = 5.0
+  static let nativeDiamondRadius = 10.0
+  static let nativeDefaultConnectorWidth = 1.5
   static let nativeMiterLimit = 10.0
   static let shadowBlurExtentMultiplier = 3.0
   static let svgMarkerRadiusFactor = 4.0

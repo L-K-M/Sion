@@ -4,7 +4,7 @@ import XCTest
 
 final class SceneRenderGeometryTests: XCTestCase {
   private let canvasArrowLength = 12.0
-  private let contentPadding = 32.0
+  private let contentPadding = SceneRenderGeometry.exportPadding
 
   func testContentBoundsIncludeWideStroke() {
     var shape = SceneElement.shape(

@@ -1109,7 +1109,10 @@
       ]
       let attributed = NSAttributedString(string: content.string, attributes: attributes)
       let measured = attributed.boundingRect(
-        with: NSSize(width: width, height: .greatestFiniteMagnitude),
+        with: NSSize(
+          width: CGFloat(key.widthBucket) / 2,
+          height: .greatestFiniteMagnitude
+        ),
         options: [.usesLineFragmentOrigin, .usesFontLeading]
       )
       let render = TextRender(
@@ -1118,7 +1121,15 @@
       )
 
       if textRenderCache.count >= CanvasMetrics.textRenderCacheLimit {
-        textRenderCache.removeAll()
+        let evictionCount = max(
+          1,
+          CanvasMetrics.textRenderCacheLimit
+            / CanvasMetrics.textRenderCacheEvictionDivisor
+        )
+        let staleKeys = Array(textRenderCache.keys.prefix(evictionCount))
+        for staleKey in staleKeys {
+          textRenderCache.removeValue(forKey: staleKey)
+        }
       }
       textRenderCache[key] = render
       return render
@@ -2101,6 +2112,7 @@
     static let nudgeDistance = 1.0
     static let largeNudgeDistance = 10.0
     static let textRenderCacheLimit = 512
+    static let textRenderCacheEvictionDivisor = 4
   }
 
   private enum PasteboardType {

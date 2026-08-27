@@ -9,7 +9,7 @@
     func testRouteCacheInvalidatesWhenConnectedElementMoves() throws {
       let (controller, connector) = try makeConnectedScene()
 
-      let routeBefore = controller.connectorRoute(for: connector) ?? .empty
+      let routeBefore = try XCTUnwrap(controller.connectorRoute(for: connector))
 
       let sourceID = controller.document.scene.elements[0].id
       controller.select(sourceID)
@@ -17,9 +17,32 @@
       try controller.moveSelection(by: SionVector(dx: 0, dy: 200))
       try controller.endMove()
 
-      let routeAfter = controller.connectorRoute(for: connector) ?? .empty
+      let routeAfter = try XCTUnwrap(controller.connectorRoute(for: connector))
 
       XCTAssertNotEqual(routeBefore, routeAfter)
+    }
+
+    func testRouteCacheInvalidatesOnUndo() throws {
+      let (controller, connector) = try makeConnectedScene()
+      let originalRoute = try XCTUnwrap(controller.connectorRoute(for: connector))
+
+      let sourceID = controller.document.scene.elements[0].id
+      controller.select(sourceID)
+      try controller.beginMove()
+      try controller.moveSelection(by: SionVector(dx: 0, dy: 200))
+      try controller.endMove()
+      controller.undoSceneEdit()
+
+      let cachedRoute = try XCTUnwrap(controller.connectorRoute(for: connector))
+      let derivedRoute = try XCTUnwrap(
+        SceneRenderGeometry.connectorRoute(
+          for: connector,
+          in: controller.document.scene
+        )
+      )
+
+      XCTAssertEqual(cachedRoute, originalRoute)
+      XCTAssertEqual(cachedRoute, derivedRoute)
     }
 
     func testConnectorIsSelectableByRouteOnly() throws {
@@ -64,7 +87,4 @@
     }
   }
 
-  extension ConnectorRoute {
-    fileprivate static let empty = ConnectorRoute(start: .zero, segments: [])
-  }
 #endif

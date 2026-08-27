@@ -334,9 +334,28 @@ public enum SVGExporter {
 
   private static func renderText(_ text: TextContent, in frame: SionRect) -> String {
     let style = text.style
-    let lines = text.string.split(separator: "\n", omittingEmptySubsequences: false).map(
+    let explicitLines = text.string.split(separator: "\n", omittingEmptySubsequences: false).map(
       String.init)
+    // The canvas wraps with real AppKit metrics; SVG text does not wrap at
+    // all. Wrap here with an estimate so long labels stay inside their
+    // shapes instead of overflowing the recovery export.
+    let wrapWidth = frame.width - style.insets.leading - style.insets.trailing
+    var lines = explicitLines.flatMap { line in
+      TextLineWrapEstimator.wrappedLines(
+        of: line,
+        fitting: wrapWidth,
+        style: style
+      )
+    }
     let lineHeight = style.font.size * SVGDefaults.lineHeightMultiplier
+
+    // Budget the height too: more wrapped lines than the frame holds would
+    // just trade horizontal overflow for vertical overflow.
+    let verticalRoom = frame.height - style.insets.top - style.insets.bottom
+    let maximumLines = max(1, Int(verticalRoom / lineHeight))
+    if lines.count > maximumLines {
+      lines = Array(lines.prefix(maximumLines - 1)) + [lines[maximumLines - 1] + "…"]
+    }
     let textHeight = max(style.font.size, lineHeight * Double(lines.count))
 
     let x: Double
@@ -604,5 +623,87 @@ extension SionColor {
       components[2],
       components[3]
     )
+  }
+}
+
+/// Wraps text for the SVG export, which unlike the canvas has no layout
+/// engine. Widths use per-character-class em estimates tuned for the system
+/// sans face; wrapping is greedy on word boundaries with a hard break for
+/// overlong words. Approximation beats the overflow it replaces.
+enum TextLineWrapEstimator {
+  static func wrappedLines(
+    of line: String,
+    fitting width: Double,
+    style: TextStyle
+  ) -> [String] {
+    guard width.isFinite, width > 0 else { return [line] }
+    guard estimatedWidth(of: line, style: style) > width else { return [line] }
+
+    var lines: [String] = []
+    var current = ""
+
+    for word in line.split(separator: " ", omittingEmptySubsequences: false) {
+      let candidate = current.isEmpty ? String(word) : current + " " + word
+      if !current.isEmpty && estimatedWidth(of: candidate, style: style) > width {
+        lines.append(current)
+        current = String(word)
+      } else {
+        current = candidate
+      }
+
+      // A single word wider than the frame breaks hard at the estimate.
+      while estimatedWidth(of: current, style: style) > width, current.count > 1 {
+        let splitIndex = hardBreakIndex(of: current, fitting: width, style: style)
+        lines.append(String(current[..<splitIndex]))
+        current = String(current[splitIndex...])
+      }
+    }
+
+    lines.append(current)
+    return lines
+  }
+
+  static func estimatedWidth(of text: String, style: TextStyle) -> Double {
+    text.reduce(0.0) { partial, character in
+      partial + emFraction(for: character)
+    } * style.font.size * weightFactor(of: style)
+  }
+
+  private static func weightFactor(of style: TextStyle) -> Double {
+    switch style.font.weight {
+    case .light: return 0.96
+    case .semibold, .bold: return 1.06
+    case .regular, .medium: return 1.0
+    }
+  }
+
+  private static func emFraction(for character: Character) -> Double {
+    if character == " " { return 0.28 }
+    if character.isUppercase { return 0.66 }
+    if character.isNumber { return 0.56 }
+    if character.isPunctuation { return 0.32 }
+    if character.isSymbol { return 0.6 }
+    // CJK ideographs, kana, hangul, and most emoji render at full width.
+    if character.unicodeScalars.contains(where: { $0.value >= 0x2E80 }) { return 1.0 }
+    return 0.5
+  }
+
+  private static func hardBreakIndex(
+    of word: String,
+    fitting width: Double,
+    style: TextStyle
+  ) -> String.Index {
+    var used = 0.0
+    var lastFit = word.startIndex
+    let factor = style.font.size * weightFactor(of: style)
+
+    for index in word.indices {
+      used += emFraction(for: word[index]) * factor
+      guard used <= width else { break }
+
+      lastFit = word.index(after: index)
+    }
+
+    return lastFit > word.startIndex ? lastFit : word.index(after: word.startIndex)
   }
 }

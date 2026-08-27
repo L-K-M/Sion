@@ -1225,7 +1225,7 @@
 
     private func drawStyle(_ style: ElementStyle, path: NSBezierPath) {
       NSGraphicsContext.saveGraphicsState()
-      NSGraphicsContext.current?.compositingOperation = compositingOperation(style.blendMode)
+      applyBlendMode(style.blendMode)
       let opacity = clampedUnit(style.opacity)
 
       switch style.fill {
@@ -1270,6 +1270,17 @@
       }
 
       NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// NSCompositingOperation has no overlay; Core Graphics does. Both set
+    /// the same context state underneath.
+    private func applyBlendMode(_ mode: BlendMode) {
+      switch mode {
+      case .overlay:
+        NSGraphicsContext.current?.cgContext.setBlendMode(.overlay)
+      case .normal, .multiply, .screen:
+        NSGraphicsContext.current?.compositingOperation = compositingOperation(mode)
+      }
     }
 
     private func drawText(_ content: TextContent, frame: SionRect) {

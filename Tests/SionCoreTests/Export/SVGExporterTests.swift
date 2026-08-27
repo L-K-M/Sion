@@ -196,11 +196,150 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertTrue(svg.contains("title�"))
   }
 
+  func testShapeEffectsWrapGeometryAndLabel() throws {
+    let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000001"))
+    var shape = SceneElement.shape(
+      id: id,
+      frame: SionRect(x: 20, y: 20, width: 120, height: 80),
+      kind: .rectangle,
+      text: "Label"
+    )
+    shape.style = ElementStyle(
+      fill: .solid(SionColor(red: 1, green: 0, blue: 0, alpha: 0.5)),
+      stroke: StrokeStyle(
+        color: SionColor(red: 0, green: 0, blue: 1, alpha: 0.25),
+        width: 4
+      ),
+      shadows: [
+        ShadowStyle(
+          color: SionColor(red: 0, green: 0, blue: 0, alpha: 0.3),
+          offset: SionVector(dx: 3, dy: 4),
+          blurRadius: 6
+        )
+      ],
+      opacity: 0.4,
+      blendMode: .overlay
+    )
+    let svg = try export([shape])
+
+    let group = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
+    let path = try openingTag(startingWith: "<path d=", after: group.endIndex, in: svg)
+
+    XCTAssertTrue(group.text.contains("opacity=\"0.4\""))
+    XCTAssertTrue(group.text.contains("mix-blend-mode:overlay"))
+    XCTAssertTrue(group.text.contains("filter=\"url(#shadow-\(id))\""))
+    XCTAssertFalse(path.text.contains("opacity="))
+    XCTAssertFalse(path.text.contains("mix-blend-mode:"))
+    XCTAssertFalse(path.text.contains("filter="))
+    XCTAssertTrue(path.text.contains("fill=\"#ff000080\""))
+    XCTAssertTrue(path.text.contains("stroke=\"#0000ff40\""))
+    XCTAssertTrue(svg[group.endIndex...].contains("<text "))
+  }
+
+  func testConnectorEffectsWrapRouteMarkersAndLabel() throws {
+    let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000002"))
+    var connector = SceneElement.connector(
+      id: id,
+      source: .free(SionPoint(x: 20, y: 40)),
+      target: .free(SionPoint(x: 220, y: 40)),
+      routingStyle: .straight
+    )
+    connector.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: SionColor(red: 0.2, green: 0.4, blue: 0.6, alpha: 0.5),
+        width: 3
+      ),
+      opacity: 0.25,
+      blendMode: .multiply
+    )
+    connector.content = .connector(
+      ConnectorContent(
+        source: .free(SionPoint(x: 20, y: 40)),
+        target: .free(SionPoint(x: 220, y: 40)),
+        routingStyle: .straight,
+        sourceDecoration: .circle,
+        targetDecoration: .filledArrow,
+        label: TextContent(string: "Flow")
+      )
+    )
+    let svg = try export([connector])
+
+    let group = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
+    let groupMarkup = svg[group.startIndex...]
+
+    XCTAssertTrue(group.text.contains("opacity=\"0.25\""))
+    XCTAssertTrue(group.text.contains("mix-blend-mode:multiply"))
+    XCTAssertTrue(groupMarkup.contains("marker-start=\"url(#marker-circle)\""))
+    XCTAssertTrue(groupMarkup.contains("marker-end=\"url(#marker-filledArrow)\""))
+    XCTAssertTrue(groupMarkup.contains("<text "))
+    XCTAssertEqual(svg.components(separatedBy: "opacity=\"0.25\"").count - 1, 1)
+  }
+
+  func testTextAndImageGroupsContainOnlyElementEffects() throws {
+    let textID = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000003"))
+    var text = SceneElement.text(
+      id: textID,
+      frame: SionRect(x: 20, y: 20, width: 120, height: 60),
+      text: "Text"
+    )
+    text.style.opacity = 0.3
+    text.style.blendMode = .screen
+
+    let display = try SionAsset.safeDisplayPNG(data: testPNGData())
+    let imageID = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000004"))
+    var image = SceneElement.image(
+      id: imageID,
+      frame: SionRect(x: 160, y: 20, width: 80, height: 80),
+      assetID: display.id,
+      displayAssetID: display.id
+    )
+    image.style.opacity = 0.6
+    image.style.blendMode = .multiply
+
+    let document = SionDocument(scene: SionScene(elements: [text, image]))
+    let svg = try SVGExporter.export(
+      document: document,
+      assets: [display.id: display]
+    )
+
+    for (id, opacity, blend) in [
+      (textID, "0.3", "screen"),
+      (imageID, "0.6", "multiply"),
+    ] {
+      let group = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
+
+      XCTAssertTrue(group.text.contains("opacity=\"\(opacity)\""))
+      XCTAssertTrue(group.text.contains("mix-blend-mode:\(blend)"))
+      XCTAssertFalse(group.text.contains(" fill="))
+      XCTAssertFalse(group.text.contains(" stroke="))
+    }
+  }
+
   func testNumberAttributeMatchesExactName() {
     let tag = Substring(#"<filter dx="9" x="-4" dy="8" y="-3">"#)
 
     XCTAssertEqual(numberAttribute("x", in: tag), -4)
     XCTAssertEqual(numberAttribute("y", in: tag), -3)
+  }
+
+  private func export(_ elements: [SceneElement]) throws -> String {
+    try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: elements)),
+      assets: [:]
+    )
+  }
+
+  private func openingTag(
+    startingWith prefix: String,
+    after index: String.Index? = nil,
+    in source: String
+  ) throws -> (text: Substring, startIndex: String.Index, endIndex: String.Index) {
+    let searchRange = (index ?? source.startIndex)..<source.endIndex
+    let start = try XCTUnwrap(source.range(of: prefix, range: searchRange)?.lowerBound)
+    let end = try XCTUnwrap(source[start...].firstIndex(of: ">"))
+
+    return (source[start...end], start, source.index(after: end))
   }
 
   private func numberAttribute(_ name: String, in tag: Substring) -> Double? {

@@ -17,6 +17,12 @@ public struct SceneRouteCache: Sendable {
     routes.removeAll(keepingCapacity: true)
   }
 
+  /// Returns the memoized route for `element` in `scene`.
+  ///
+  /// - Important: The cache is keyed by element ID only and is
+  ///   scene-agnostic. Scope one instance to a single evolving scene;
+  ///   passing a different scene silently returns stale routes until
+  ///   `invalidate()` is called.
   public mutating func route(
     for element: SceneElement,
     in scene: SionScene

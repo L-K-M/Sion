@@ -123,6 +123,7 @@
     private var history: DocumentHistory
     private var previewPNG: Data?
     private var pendingTextEdit: PendingTextEdit?
+    private var lastDuplicate: DuplicateState?
     private var routeCache: [ElementID: ConnectorRoute]
     private let imageCache: NSCache<NSString, NSImage>
 
@@ -1271,7 +1272,11 @@
     }
 
     private func perform(name: String, command: SceneCommand) throws {
-      let result = try editor.perform(SceneTransaction(name: name, command: command))
+      try perform(name: name, commands: [command])
+    }
+
+    private func perform(name: String, commands: [SceneCommand]) throws {
+      let result = try editor.perform(SceneTransaction(name: name, commands: commands))
       guard result == .applied else { return }
 
       registerUndo(actionName: name)
@@ -1480,6 +1485,8 @@
     static let customAnchorIDPrefix = "custom-"
     static let imageCacheLimit = 256
     static let imageCacheTotalCostLimit = 128 * 1024 * 1024
+    static let duplicateStepMinimum = 8.0
+    static let duplicateMoveTolerance = 0.5
   }
 
   private struct AnchorPlacement {

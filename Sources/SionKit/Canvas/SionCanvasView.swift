@@ -155,6 +155,18 @@
     override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
 
+      updateMagnificationObservation()
+    }
+
+    override func viewDidMoveToSuperview() {
+      super.viewDidMoveToSuperview()
+
+      updateMagnificationObservation()
+    }
+
+    /// The scroll view can appear after either move; rebind KVO wherever the
+    /// canvas last landed.
+    private func updateMagnificationObservation() {
       // Zoom-adaptive grid rendering must re-run whenever magnification
       // changes, including layer-backed scaling that skips normal layout.
       magnificationObservation = enclosingScrollView?.observe(\.magnification) {

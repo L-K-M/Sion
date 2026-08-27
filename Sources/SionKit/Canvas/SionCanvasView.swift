@@ -1358,7 +1358,7 @@
 
     private func visibleCanvasCenter() -> SionPoint {
       let visible = visibleRect
-      guard visible.width > 0, visible.height > 0 else {
+      guard enclosingScrollView != nil, visible.width > 0, visible.height > 0 else {
         return editingCanvasBounds.center
       }
 

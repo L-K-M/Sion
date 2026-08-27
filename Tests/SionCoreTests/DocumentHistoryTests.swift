@@ -27,6 +27,50 @@ final class DocumentHistoryTests: XCTestCase {
     XCTAssertEqual(history.revisions.map(\.sceneData), [Data("one".utf8)])
   }
 
+  func testClockCorrectionUsesNewestEligibleAutosave() {
+    let interval = DocumentHistory.autosaveCheckpointInterval
+    let oldData = Data("old".utf8)
+    let recentData = Data("recent".utf8)
+    let futureData = Data("future".utf8)
+    let correctedData = Data("corrected".utf8)
+    let throttledData = Data("throttled".utf8)
+    let history = DocumentHistory()
+      .appending(sceneData: oldData, at: referenceDate, intent: .autosave)
+      .appending(
+        sceneData: recentData,
+        at: referenceDate.addingTimeInterval(interval),
+        intent: .autosave
+      )
+      .appending(
+        sceneData: futureData,
+        at: referenceDate.addingTimeInterval(interval * 1_000),
+        intent: .manual
+      )
+      .appending(
+        sceneData: correctedData,
+        at: referenceDate.addingTimeInterval(interval * 2),
+        intent: .autosave
+      )
+      .appending(
+        sceneData: throttledData,
+        at: referenceDate.addingTimeInterval(interval * 2 + interval / 2),
+        intent: .autosave
+      )
+
+    XCTAssertEqual(
+      history.revisions.map(\.sceneData),
+      [futureData, correctedData, recentData, oldData]
+    )
+  }
+
+  func testAutosavesAtSameDateAreRateLimited() {
+    let history = DocumentHistory()
+      .appending(sceneData: Data("one".utf8), at: referenceDate, intent: .autosave)
+      .appending(sceneData: Data("two".utf8), at: referenceDate, intent: .autosave)
+
+    XCTAssertEqual(history.revisions.map(\.sceneData), [Data("one".utf8)])
+  }
+
   func testNewestRevisionsSurviveThinning() {
     let revisions = (0..<200).map { index in
       let data = Data("scene-\(index)".utf8)

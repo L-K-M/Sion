@@ -483,9 +483,13 @@
         return lastDuplicate.delta
       }
 
-      let step = max(
-        EditorDefaults.duplicateStepMinimum,
-        editor.document.scene.canvas.grid.spacing
+      // Imported files can carry huge grid pitches; keep copies nearby.
+      let step = min(
+        EditorDefaults.duplicateStepMaximum,
+        max(
+          EditorDefaults.duplicateStepMinimum,
+          editor.document.scene.canvas.grid.spacing
+        )
       )
       return SionVector(dx: step, dy: step)
     }
@@ -1568,6 +1572,7 @@
     static let imageCacheLimit = 256
     static let imageCacheTotalCostLimit = 128 * 1024 * 1024
     static let duplicateStepMinimum = 8.0
+    static let duplicateStepMaximum = 64.0
     static let duplicateMoveTolerance = 0.5
   }
 

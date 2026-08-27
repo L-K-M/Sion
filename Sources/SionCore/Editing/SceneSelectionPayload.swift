@@ -79,7 +79,7 @@ public struct SceneSelectionPayload: Equatable, Sendable {
   }
 
   /// The copied content's bounds; connectors contribute their routed paths.
-  public var contentBounds: SionRect {
+  package var contentBounds: SionRect {
     Self.contentBounds(of: elements)
   }
 

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum SceneAlignmentEdge: String, CaseIterable, Equatable, Hashable, Sendable {
+package enum SceneAlignmentEdge: String, CaseIterable, Equatable, Hashable, Sendable {
   case leading
   case centerX
   case trailing
@@ -9,16 +9,16 @@ public enum SceneAlignmentEdge: String, CaseIterable, Equatable, Hashable, Senda
   case bottom
 }
 
-public enum SceneDistributionAxis: String, CaseIterable, Equatable, Hashable, Sendable {
+package enum SceneDistributionAxis: String, CaseIterable, Equatable, Hashable, Sendable {
   case horizontal
   case vertical
 }
 
 /// Pure geometry behind the Arrange menu: alignment shares an edge or center,
 /// distribution equalizes the gaps between frames while pinning the extremes.
-public enum SceneArrangement {
+package enum SceneArrangement {
   /// One translation per frame, parallel to the input order.
-  public static func alignedOffsets(
+  package static func alignedOffsets(
     _ frames: [SionRect],
     edge: SceneAlignmentEdge
   ) -> [SionVector] {
@@ -48,7 +48,7 @@ public enum SceneArrangement {
   /// One translation per frame, parallel to the input order. The two extreme
   /// frames stay put; the rest move so all gaps are equal. Frames wider than
   /// the span overlap gracefully (gaps go negative uniformly).
-  public static func distributedOffsets(
+  package static func distributedOffsets(
     _ frames: [SionRect],
     axis: SceneDistributionAxis
   ) -> [SionVector] {

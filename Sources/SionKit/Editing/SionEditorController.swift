@@ -55,8 +55,15 @@
       case unavailable
     }
 
-    enum ConnectorInsertionError: Error, Equatable {
+    enum ConnectorInsertionError: LocalizedError, Equatable {
       case selfLoopNotSupported(ElementID)
+
+      var errorDescription: String? {
+        switch self {
+        case .selfLoopNotSupported:
+          "Connectors cannot start and end on the same element."
+        }
+      }
     }
 
     enum Tool: Int, CaseIterable {

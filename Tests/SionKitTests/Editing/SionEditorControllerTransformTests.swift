@@ -141,6 +141,67 @@ final class SionEditorControllerTransformTests: XCTestCase {
     )
   }
 
+  func testConnectorRejectsAttachedSelfLoopWithoutMutation() throws {
+    let shape = SceneElement.shape(
+      frame: SionRect(x: 20, y: 20, width: 160, height: 96),
+      kind: .rectangle
+    )
+    let document = SionDocument(scene: SionScene(elements: [shape]))
+    let undoManager = UndoManager()
+    var changes = 0
+    let controller = try SionEditorController(
+      package: SionPackage(document: document),
+      undoManagerProvider: { undoManager },
+      didChange: { _ in changes += 1 }
+    )
+    let sourceMagnet = try XCTUnwrap(
+      shape.resolvedMagnets.first { $0.magnet.id == "east" }
+    )
+    let targetMagnet = try XCTUnwrap(
+      shape.resolvedMagnets.first { $0.magnet.id == "west" }
+    )
+    controller.select(shape.id)
+
+    XCTAssertThrowsError(
+      try controller.insertConnector(
+        from: shape.id,
+        sourcePoint: sourceMagnet.endpoint.point,
+        to: shape.id,
+        targetPoint: targetMagnet.endpoint.point
+      )
+    )
+
+    XCTAssertEqual(controller.document, document)
+    XCTAssertEqual(controller.selection, [shape.id])
+    XCTAssertEqual(changes, 0)
+    XCTAssertFalse(undoManager.canUndo)
+  }
+
+  func testConnectorAllowsAttachedEndpointToFreePoint() throws {
+    let shape = SceneElement.shape(
+      frame: SionRect(x: 20, y: 20, width: 160, height: 96),
+      kind: .rectangle
+    )
+    let controller = try makeController(elements: [shape])
+    let sourceMagnet = try XCTUnwrap(
+      shape.resolvedMagnets.first { $0.magnet.id == "east" }
+    )
+    let freePoint = SionPoint(x: 320, y: 220)
+
+    let connectorID = try controller.insertConnector(
+      from: shape.id,
+      sourcePoint: sourceMagnet.endpoint.point,
+      to: nil,
+      targetPoint: freePoint
+    )
+
+    let connector = try XCTUnwrap(
+      controller.document.scene.element(withID: connectorID)?.content.connector
+    )
+    XCTAssertEqual(connector.source.elementID, shape.id)
+    XCTAssertNil(connector.target.elementID)
+  }
+
   private func makeController(
     elements: [SceneElement],
     undoManager: UndoManager? = nil,

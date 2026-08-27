@@ -160,8 +160,12 @@
     private func refreshCursorForCurrentPointer() {
       guard drag == nil, let window else { return }
 
-      let locationInView = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-      guard bounds.contains(locationInView) else { return }
+      let locationInWindow = window.mouseLocationOutsideOfEventStream
+      let locationInView = convert(locationInWindow, from: nil)
+      guard bounds.contains(locationInView),
+        let hit = window.contentView?.hitTest(locationInWindow),
+        hit === self || hit.isDescendant(of: self)
+      else { return }
 
       updateCursor(at: modelPoint(from: locationInView))
     }

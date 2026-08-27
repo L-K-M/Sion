@@ -201,6 +201,7 @@ private enum PNGFile {
         return true
       }
 
+      // UInt32 converts exactly; tolerance would accept drifted metadata.
       return expectedPixelSize.width == Double(width)
         && expectedPixelSize.height == Double(height)
     }

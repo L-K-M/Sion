@@ -9,6 +9,7 @@ final class SionAssetTests: XCTestCase {
 
     XCTAssertEqual(display.mediaType, "image/png")
     XCTAssertEqual(display.fileExtension, "png")
+    XCTAssertNil(display.pixelSize)
 
     XCTAssertThrowsError(
       try SionAsset.safeDisplayPNG(data: Data("not a PNG".utf8))
@@ -94,7 +95,10 @@ final class SionAssetTests: XCTestCase {
 
   func testAcceptsDisplayPNGWithDynamicHuffmanPixels() {
     XCTAssertNoThrow(
-      try SionAsset.safeDisplayPNG(data: testDynamicPNGData())
+      try SionAsset.safeDisplayPNG(
+        data: testDynamicPNGData(),
+        pixelSize: SionSize(width: 17, height: 17)
+      )
     )
   }
 

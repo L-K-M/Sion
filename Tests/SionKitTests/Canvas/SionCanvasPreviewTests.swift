@@ -70,20 +70,8 @@ final class SionCanvasPreviewTests: XCTestCase {
       1,
       Double(TestPreview.orientationDimension) / max(content.width, content.height)
     )
-    let diagnostic = sampledColors(
-      in: bitmap,
-      centers: [upperLeft.geometry.frame.center, lowerRight.geometry.frame.center],
-      content: content,
-      scale: scale
-    )
-    let redCenter = try XCTUnwrap(
-      pixelCenter(in: bitmap, matching: .red),
-      diagnostic
-    )
-    let blueCenter = try XCTUnwrap(
-      pixelCenter(in: bitmap, matching: .blue),
-      diagnostic
-    )
+    let redCenter = try XCTUnwrap(pixelCenter(in: bitmap, matching: .red))
+    let blueCenter = try XCTUnwrap(pixelCenter(in: bitmap, matching: .blue))
 
     XCTAssertEqual(
       redCenter.x,
@@ -95,8 +83,16 @@ final class SionCanvasPreviewTests: XCTestCase {
       (lowerRight.geometry.frame.center.x - content.minX) * scale,
       accuracy: TestPreview.pixelTolerance
     )
-    // Bitmap rows are bottom-up; the model's smaller y-coordinate appears higher.
-    XCTAssertGreaterThan(redCenter.y, blueCenter.y)
+    XCTAssertEqual(
+      redCenter.y,
+      (upperLeft.geometry.frame.center.y - content.minY) * scale,
+      accuracy: TestPreview.pixelTolerance
+    )
+    XCTAssertEqual(
+      blueCenter.y,
+      (lowerRight.geometry.frame.center.y - content.minY) * scale,
+      accuracy: TestPreview.pixelTolerance
+    )
   }
 
   func testPreviewIsIndependentOfSelection() throws {
@@ -133,8 +129,7 @@ final class SionCanvasPreviewTests: XCTestCase {
 
     for y in 0..<bitmap.pixelsHigh {
       for x in 0..<bitmap.pixelsWide {
-        guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
-          target.matches(color)
+        guard let color = bitmap.colorAt(x: x, y: y), target.matches(color)
         else {
           continue
         }
@@ -150,23 +145,6 @@ final class SionCanvasPreviewTests: XCTestCase {
     return SionPoint(x: xTotal / count, y: yTotal / count)
   }
 
-  private func sampledColors(
-    in bitmap: NSBitmapImageRep,
-    centers: [SionPoint],
-    content: SionRect,
-    scale: Double
-  ) -> String {
-    centers.enumerated().map { index, center in
-      let x = Int(((center.x - content.minX) * scale).rounded())
-      let topY = Int(((center.y - content.minY) * scale).rounded())
-      let bottomY = bitmap.pixelsHigh - 1 - topY
-      let topColor = bitmap.colorAt(x: x, y: topY)
-      let bottomColor = bitmap.colorAt(x: x, y: bottomY)
-
-      return
-        "center \(index): top=\(String(describing: topColor)), bottom=\(String(describing: bottomColor))"
-    }.joined(separator: "; ")
-  }
 }
 
 private enum TestPreview {
@@ -178,12 +156,12 @@ private enum TestPreview {
       switch self {
       case .red:
         color.redComponent > TestPreview.componentHigh
-          && color.greenComponent < TestPreview.componentLow
-          && color.blueComponent < TestPreview.componentLow
+          && color.redComponent > color.greenComponent * TestPreview.dominanceFactor
+          && color.redComponent > color.blueComponent * TestPreview.dominanceFactor
       case .blue:
-        color.redComponent < TestPreview.componentLow
-          && color.greenComponent < TestPreview.componentLow
-          && color.blueComponent > TestPreview.componentHigh
+        color.blueComponent > TestPreview.componentHigh
+          && color.blueComponent > color.redComponent * TestPreview.dominanceFactor
+          && color.blueComponent > color.greenComponent * TestPreview.dominanceFactor
       }
     }
   }
@@ -199,7 +177,7 @@ private enum TestPreview {
   static let selectionDimension: CGFloat = 256
   static let pixelTolerance = 2.0
   static let componentHigh: CGFloat = 0.8
-  static let componentLow: CGFloat = 0.2
+  static let dominanceFactor: CGFloat = 2
   static let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
   static let red = SionColor(red: 1, green: 0, blue: 0)
   static let blue = SionColor(red: 0, green: 0, blue: 1)

@@ -708,6 +708,14 @@
       )
     }
 
+    func setLockState(_ lockState: ElementLockState, on id: ElementID) throws {
+      let actionName = lockState == .locked ? "Lock Element" : "Unlock Element"
+      try perform(
+        name: actionName,
+        command: .setLockState(elementID: id, lockState: lockState)
+      )
+    }
+
     func setFillColor(_ color: SionColor, on id: ElementID) throws {
       guard var element = editor.document.scene.element(withID: id) else { return }
 

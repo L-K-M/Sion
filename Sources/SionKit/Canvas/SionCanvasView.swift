@@ -31,6 +31,8 @@
     private var inlineTextUndoManager: UndoManager?
     private var editingCanvasBounds: SionRect
     private var canvasExtent: CanvasExtent
+    /// Assets are content-addressed, so a cached rendition never goes stale.
+    private var imageCache: [AssetID: NSImage] = [:]
 
     init(editorController: SionEditorController) {
       self.editorController = editorController
@@ -673,7 +675,16 @@
 
       guard grid.visibility == .visible else { return }
 
-      let spacing = max(CanvasMetrics.minimumGridSpacing, CGFloat(grid.spacing))
+      let magnification = max(enclosingScrollView?.magnification ?? 1, 0.01)
+      var majorSpacing = max(CanvasMetrics.minimumGridSpacing, CGFloat(grid.spacing))
+
+      // Keep the on-screen pitch readable: at low zoom, double the model
+      // spacing so lines stay aligned to the original grid instead of
+      // collapsing into a solid field of thousands of strokes.
+      while majorSpacing * magnification < CanvasMetrics.minimumScreenGridSpacing {
+        majorSpacing *= 2
+      }
+
       let canvasBounds: SionRect
       switch editorController.document.scene.canvas.extent {
       case .infinite:
@@ -684,32 +695,109 @@
       let drawingBounds = nsRect(canvasBounds).intersection(visibleModelRect())
       guard !drawingBounds.isEmpty else { return }
 
-      let path = NSBezierPath()
-      var x = floor(drawingBounds.minX / spacing) * spacing
-      while x <= drawingBounds.maxX {
-        path.move(to: NSPoint(x: x, y: drawingBounds.minY))
-        path.line(to: NSPoint(x: x, y: drawingBounds.maxY))
-        x += spacing
-      }
+      let subdivisions = max(1, grid.subdivisions)
+      let minorSpacing = majorSpacing / CGFloat(subdivisions)
+      let drawMinor =
+        subdivisions > 1 && minorSpacing * magnification >= CanvasMetrics.minimumGridSpacing
 
-      var y = floor(drawingBounds.minY / spacing) * spacing
-      while y <= drawingBounds.maxY {
-        path.move(to: NSPoint(x: drawingBounds.minX, y: y))
-        path.line(to: NSPoint(x: drawingBounds.maxX, y: y))
-        y += spacing
+      let majorPath = NSBezierPath()
+      let minorPath = NSBezierPath()
+      appendGridLines(
+        to: majorPath,
+        minorPath: drawMinor ? minorPath : nil,
+        in: drawingBounds,
+        majorSpacing: majorSpacing,
+        subdivisions: subdivisions
+      )
+
+      if drawMinor {
+        NSColor.separatorColor.withAlphaComponent(CanvasMetrics.minorGridOpacity).setStroke()
+        minorPath.lineWidth = CanvasMetrics.gridLineWidth
+        minorPath.stroke()
       }
 
       NSColor.separatorColor.withAlphaComponent(CanvasMetrics.gridOpacity).setStroke()
-      path.lineWidth = CanvasMetrics.gridLineWidth
-      path.stroke()
+      majorPath.lineWidth = CanvasMetrics.gridLineWidth
+      majorPath.stroke()
+    }
+
+    /// Fills vertical and horizontal grid lines; minor lines skip positions
+    /// already covered by a major line.
+    private func appendGridLines(
+      to majorPath: NSBezierPath,
+      minorPath: NSBezierPath?,
+      in drawingBounds: NSRect,
+      majorSpacing: CGFloat,
+      subdivisions: Int
+    ) {
+      let minorSpacing = majorSpacing / CGFloat(subdivisions)
+      let startIndex = Int((drawingBounds.minX / minorSpacing).rounded(.up))
+      let endIndex = Int((drawingBounds.maxX / minorSpacing).rounded(.down))
+
+      guard startIndex <= endIndex else { return }
+
+      var index = startIndex
+      while index <= endIndex {
+        let path = index.isMultiple(of: subdivisions) ? majorPath : (minorPath ?? majorPath)
+        let x = CGFloat(index) * minorSpacing
+        path.move(to: NSPoint(x: x, y: drawingBounds.minY))
+        path.line(to: NSPoint(x: x, y: drawingBounds.maxY))
+        index += 1
+      }
+
+      let startRow = Int((drawingBounds.minY / minorSpacing).rounded(.up))
+      let endRow = Int((drawingBounds.maxY / minorSpacing).rounded(.down))
+
+      guard startRow <= endRow else { return }
+
+      var row = startRow
+      while row <= endRow {
+        let path = row.isMultiple(of: subdivisions) ? majorPath : (minorPath ?? majorPath)
+        let y = CGFloat(row) * minorSpacing
+        path.move(to: NSPoint(x: drawingBounds.minX, y: y))
+        path.line(to: NSPoint(x: drawingBounds.maxX, y: y))
+        row += 1
+      }
     }
 
     private func drawElements() {
       let scene = editorController.document.scene
+      let visibleBounds = visibleModelRect().insetBy(
+        dx: -CanvasMetrics.cullMargin,
+        dy: -CanvasMetrics.cullMargin
+      )
 
       for element in scene.elements where element.visibility == .visible {
+        guard drawingBounds(of: element, intersect: visibleBounds) else { continue }
+
         draw(element)
       }
+    }
+
+    /// Culls offscreen elements; connectors test their route's bounding box
+    /// because the path can leave the endpoints' frames entirely.
+    private func drawingBounds(of element: SceneElement, intersect visibleBounds: NSRect) -> Bool {
+      if let route = editorController.connectorRoute(for: element) {
+        let points = route.polylinePoints
+        guard let first = points.first else { return false }
+
+        var minX = first.x
+        var minY = first.y
+        var maxX = first.x
+        var maxY = first.y
+        for point in points.dropFirst() {
+          minX = min(minX, point.x)
+          minY = min(minY, point.y)
+          maxX = max(maxX, point.x)
+          maxY = max(maxY, point.y)
+        }
+
+        return visibleBounds.intersects(
+          NSRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        )
+      }
+
+      return visibleBounds.intersects(nsRect(element.geometry.frame))
     }
 
     private func draw(_ element: SceneElement) {
@@ -832,9 +920,7 @@
     }
 
     private func drawImage(_ content: ImageContent, frame: SionRect) {
-      guard let asset = editorController.asset(for: content.displayAssetID),
-        let image = NSImage(data: asset.data)
-      else {
+      guard let image = cachedImage(for: content.displayAssetID) else {
         drawMissingImage(in: frame)
         return
       }
@@ -927,6 +1013,22 @@
       rect.fill()
       NSColor.secondaryLabelColor.setStroke()
       NSBezierPath(rect: rect).stroke()
+    }
+
+    /// Decodes each display rendition once per asset instead of per frame.
+    private func cachedImage(for assetID: AssetID) -> NSImage? {
+      if let cached = imageCache[assetID] {
+        return cached
+      }
+
+      guard let asset = editorController.asset(for: assetID),
+        let image = NSImage(data: asset.data)
+      else {
+        return nil
+      }
+
+      imageCache[assetID] = image
+      return image
     }
 
     private func drawConnector(_ element: SceneElement, route: ConnectorRoute) {
@@ -1500,8 +1602,11 @@
   private enum CanvasMetrics {
     static let minimumInfiniteSize = SionSize(width: 4_000, height: 3_000)
     static let gridOpacity = 0.18
+    static let minorGridOpacity = 0.08
     static let gridLineWidth = 0.5
     static let minimumGridSpacing: CGFloat = 4
+    static let minimumScreenGridSpacing: CGFloat = 8
+    static let cullMargin: CGFloat = 32
     static let defaultFontSize: CGFloat = 15
     static let selectionInset = 4.0
     static let selectionLineWidth = 1.5

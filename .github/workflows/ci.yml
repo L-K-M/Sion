@@ -8,139 +8,30 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  # Preserve every main result; only superseded PR runs are disposable.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
-  check:
-    name: Typecheck · lint · licenses · unit
-    runs-on: ubuntu-22.04
+  core-linux:
+    runs-on: ubuntu-24.04
+    container: swift:6.3.3-noble
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-          cache: npm
-      - run: npm ci
-        env:
-          # Skip the playwright package postinstall (downloads ALL browsers);
-          # the e2e job installs exactly what it needs via the explicit step.
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run format:check
-      - run: npm run check:licenses
-      - run: npm run check:license-ledger
-      - run: npm run test
-      - name: Check helper scripts
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck
-          shellcheck scripts/*.sh
-      - name: Report dependency vulnerabilities
-        continue-on-error: true
-        run: npm audit
+      - run: swift format lint --recursive --strict Sources Tests Package.swift scripts/generate-icons.swift
+      - run: bash -n scripts/*.sh
+      - run: swift test
 
-  e2e:
-    name: E2E smoke (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, macos-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Cache Electron binaries
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/electron' || '~/.cache/electron' }}
-          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-          cache: npm
-      - run: npm ci
-        env:
-          # Skip the playwright package postinstall (downloads ALL browsers);
-          # the e2e job installs exactly what it needs via the explicit step.
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-      - name: Cache Playwright browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - name: Install Playwright browsers (Linux)
-        if: runner.os == 'Linux'
-        run: npx playwright install chromium --with-deps
-      - name: Install Playwright browsers (macOS)
-        if: runner.os != 'Linux'
-        run: npx playwright install chromium
-      - run: npm run build
-      - name: Install xvfb (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-      - name: Run Playwright (Electron smoke)
-        run: if [ "${{ runner.os }}" = "Linux" ]; then xvfb-run -a npm run e2e; else npm run e2e; fi
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure()
-        with:
-          name: playwright-report-${{ matrix.os }}
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
-
-  package:
-    name: Package (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, macos-latest]
-    runs-on: ${{ matrix.os }}
+  native-macos:
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Cache Electron binaries
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/electron' || '~/.cache/electron' }}
-          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-          cache: npm
-      - run: npm ci
-        env:
-          # Skip the playwright package postinstall (downloads ALL browsers);
-          # the e2e job installs exactly what it needs via the explicit step.
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-      - name: Install Linux packaging tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y binutils rpm xz-utils
-      - name: Build & package (unsigned)
-        run: npm run package
-        env:
-          # No signing certs in CI; skip macOS identity auto-discovery.
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: thalyx-packages-${{ matrix.os }}
-          path: |
-            release/*.dmg
-            release/*.zip
-            release/*.AppImage
-            release/*.deb
-            release/*.rpm
-          if-no-files-found: error
-          retention-days: 7
+      - run: scripts/build.sh --clean
+      - run: test -x build/Sion.app/Contents/MacOS/Sion

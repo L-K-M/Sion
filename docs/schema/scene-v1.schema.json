@@ -1,0 +1,993 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lkmc.ch/sion/schema/scene-v1.schema.json",
+  "title": "Sion scene v1",
+  "type": "object",
+  "required": [
+    "format",
+    "schemaVersion",
+    "id",
+    "title",
+    "scene",
+    "assets",
+    "extensions"
+  ],
+  "properties": {
+    "format": { "const": "sion-scene" },
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "#/$defs/uuid" },
+    "title": { "type": "string" },
+    "scene": { "$ref": "#/$defs/scene" },
+    "assets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/asset" },
+      "uniqueItems": true
+    },
+    "extensions": { "$ref": "#/$defs/extensions" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "assetID": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+    },
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/jsonValue" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+        }
+      ]
+    },
+    "point": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "boundedPoint": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+        "y": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+      },
+      "additionalProperties": false
+    },
+    "normalizedPoint": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "vector": {
+      "type": "object",
+      "required": ["dx", "dy"],
+      "properties": {
+        "dx": { "type": "number" },
+        "dy": { "type": "number" }
+      },
+      "anyOf": [
+        { "properties": { "dx": { "not": { "const": 0 } } } },
+        { "properties": { "dy": { "not": { "const": 0 } } } }
+      ],
+      "additionalProperties": false
+    },
+    "size": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number" },
+        "height": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "pixelSize": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 }
+      },
+      "additionalProperties": false
+    },
+    "frameSize": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "minimum": 0, "maximum": 2000000 },
+        "height": { "type": "number", "minimum": 0, "maximum": 2000000 }
+      },
+      "additionalProperties": false
+    },
+    "rect": {
+      "$comment": "The model also requires origin + size to remain within +/-1,000,000.",
+      "type": "object",
+      "required": ["origin", "size"],
+      "properties": {
+        "origin": { "$ref": "#/$defs/boundedPoint" },
+        "size": { "$ref": "#/$defs/frameSize" }
+      },
+      "additionalProperties": false
+    },
+    "scene": {
+      "type": "object",
+      "required": ["canvas", "elements", "extensions"],
+      "properties": {
+        "canvas": { "$ref": "#/$defs/canvas" },
+        "elements": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/element" }
+        },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "canvas": {
+      "type": "object",
+      "required": ["extent", "background", "grid"],
+      "properties": {
+        "extent": { "$ref": "#/$defs/canvasExtent" },
+        "background": { "$ref": "#/$defs/color" },
+        "grid": { "$ref": "#/$defs/grid" }
+      },
+      "additionalProperties": false
+    },
+    "canvasExtent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "const": "infinite" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "size"],
+          "properties": {
+            "type": { "const": "fixed" },
+            "size": {
+              "type": "object",
+              "required": ["width", "height"],
+              "properties": {
+                "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+                "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "grid": {
+      "type": "object",
+      "required": ["visibility", "spacing", "subdivisions"],
+      "properties": {
+        "visibility": { "enum": ["hidden", "visible"] },
+        "spacing": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        },
+        "subdivisions": { "type": "integer", "minimum": 1, "maximum": 1024 }
+      },
+      "additionalProperties": false
+    },
+    "color": {
+      "type": "object",
+      "required": ["red", "green", "blue", "alpha"],
+      "properties": {
+        "red": { "type": "number", "minimum": 0, "maximum": 1 },
+        "green": { "type": "number", "minimum": 0, "maximum": 1 },
+        "blue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "alpha": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "element": {
+      "type": "object",
+      "required": [
+        "id",
+        "geometry",
+        "visibility",
+        "lockState",
+        "magnetConfiguration",
+        "magnets",
+        "style",
+        "content",
+        "extensions"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "parentID": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "geometry": { "$ref": "#/$defs/geometry" },
+        "visibility": { "enum": ["visible", "hidden"] },
+        "lockState": { "enum": ["editable", "locked"] },
+        "magnetConfiguration": { "$ref": "#/$defs/magnetConfiguration" },
+        "magnets": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/magnet" }
+        },
+        "style": { "$ref": "#/$defs/elementStyle" },
+        "content": { "$ref": "#/$defs/elementContent" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "geometry": {
+      "type": "object",
+      "required": ["frame", "rotationRadians"],
+      "properties": {
+        "frame": { "$ref": "#/$defs/rect" },
+        "rotationRadians": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "magnet": {
+      "type": "object",
+      "required": ["id", "position", "normal", "direction"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "position": { "$ref": "#/$defs/normalizedPoint" },
+        "normal": { "$ref": "#/$defs/vector" },
+        "direction": { "enum": ["incoming", "outgoing", "both"] }
+      },
+      "additionalProperties": false
+    },
+    "magnetConfiguration": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "preset"],
+          "properties": {
+            "type": { "const": "preset" },
+            "preset": { "$ref": "#/$defs/magnetPreset" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "magnets"],
+          "properties": {
+            "type": { "const": "custom" },
+            "magnets": {
+              "type": "array",
+              "maxItems": 256,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/magnet" }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "magnetPreset": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "enum": [
+                "none",
+                "cardinalFour",
+                "northSouth",
+                "eastWest",
+                "diagonalFour",
+                "eight",
+                "vertices"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "count"],
+          "properties": {
+            "type": { "const": "perSegment" },
+            "count": { "type": "integer", "minimum": 1, "maximum": 32 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "elementStyle": {
+      "type": "object",
+      "required": ["fill", "shadows", "opacity", "blendMode"],
+      "properties": {
+        "fill": { "$ref": "#/$defs/fill" },
+        "stroke": { "$ref": "#/$defs/stroke" },
+        "shadows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/shadow" }
+        },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "blendMode": { "enum": ["normal", "multiply", "screen", "overlay"] }
+      },
+      "additionalProperties": false
+    },
+    "fill": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "const": "none" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "color"],
+          "properties": {
+            "type": { "const": "solid" },
+            "color": { "$ref": "#/$defs/color" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "gradient"],
+          "properties": {
+            "type": { "const": "linearGradient" },
+            "gradient": { "$ref": "#/$defs/linearGradient" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "linearGradient": {
+      "$comment": "Stop locations must also be in nondecreasing order.",
+      "type": "object",
+      "required": ["stops", "start", "end"],
+      "properties": {
+        "stops": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/gradientStop" }
+        },
+        "start": { "$ref": "#/$defs/normalizedPoint" },
+        "end": { "$ref": "#/$defs/normalizedPoint" }
+      },
+      "additionalProperties": false
+    },
+    "gradientStop": {
+      "type": "object",
+      "required": ["color", "location"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "location": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "stroke": {
+      "type": "object",
+      "required": ["color", "width", "dashPattern", "lineCap", "lineJoin"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "width": { "type": "number", "minimum": 0, "maximum": 1000000 },
+        "dashPattern": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0, "maximum": 1000000 },
+          "if": { "minItems": 1 },
+          "then": {
+            "contains": { "type": "number", "exclusiveMinimum": 0 },
+            "minContains": 1
+          }
+        },
+        "lineCap": { "enum": ["butt", "round", "square"] },
+        "lineJoin": { "enum": ["bevel", "miter", "round"] }
+      },
+      "additionalProperties": false
+    },
+    "shadow": {
+      "type": "object",
+      "required": ["color", "offset", "blurRadius", "spread"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "offset": {
+          "type": "object",
+          "required": ["dx", "dy"],
+          "properties": {
+            "dx": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+            "dy": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+          },
+          "additionalProperties": false
+        },
+        "blurRadius": { "type": "number", "minimum": 0, "maximum": 1000000 },
+        "spread": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+      },
+      "additionalProperties": false
+    },
+    "elementContent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "shape"],
+          "properties": {
+            "type": { "const": "shape" },
+            "shape": { "$ref": "#/$defs/shapeContent" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": { "const": "path" },
+            "path": { "$ref": "#/$defs/pathContent" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "text"],
+          "properties": {
+            "type": { "const": "text" },
+            "text": { "$ref": "#/$defs/textContent" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "image"],
+          "properties": {
+            "type": { "const": "image" },
+            "image": { "$ref": "#/$defs/imageContent" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "group"],
+          "properties": {
+            "type": { "const": "group" },
+            "group": { "$ref": "#/$defs/groupContent" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "connector"],
+          "properties": {
+            "type": { "const": "connector" },
+            "connector": { "$ref": "#/$defs/connectorContent" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "shapeContent": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/shapeKind" },
+        "label": { "$ref": "#/$defs/textContent" }
+      },
+      "additionalProperties": false
+    },
+    "shapeKind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "enum": [
+                "rectangle",
+                "ellipse",
+                "diamond",
+                "triangle",
+                "hexagon",
+                "capsule",
+                "cylinder"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "radius"],
+          "properties": {
+            "type": { "const": "roundedRectangle" },
+            "radius": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": { "const": "custom" },
+            "path": { "$ref": "#/$defs/vectorPath" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "pathContent": {
+      "type": "object",
+      "required": ["path"],
+      "properties": { "path": { "$ref": "#/$defs/vectorPath" } },
+      "additionalProperties": false
+    },
+    "vectorPath": {
+      "type": "object",
+      "required": ["coordinateSpace", "fillRule", "commands"],
+      "properties": {
+        "coordinateSpace": { "enum": ["normalized", "localPoints"] },
+        "fillRule": { "enum": ["evenOdd", "nonZero"] },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "prefixItems": [{ "$ref": "#/$defs/pathMoveCommand" }],
+          "items": { "$ref": "#/$defs/pathCommand" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "coordinateSpace": { "const": "normalized" } },
+            "required": ["coordinateSpace"]
+          },
+          "then": {
+            "properties": {
+              "commands": {
+                "items": { "$ref": "#/$defs/normalizedPathCommand" }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "pathMoveCommand": {
+      "type": "object",
+      "required": ["type", "to"],
+      "properties": {
+        "type": { "const": "move" },
+        "to": { "$ref": "#/$defs/boundedPoint" }
+      },
+      "additionalProperties": false
+    },
+    "pathCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "to"],
+          "properties": {
+            "type": { "enum": ["move", "line"] },
+            "to": { "$ref": "#/$defs/boundedPoint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "control", "to"],
+          "properties": {
+            "type": { "const": "quadratic" },
+            "control": { "$ref": "#/$defs/boundedPoint" },
+            "to": { "$ref": "#/$defs/boundedPoint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "control1", "control2", "to"],
+          "properties": {
+            "type": { "const": "cubic" },
+            "control1": { "$ref": "#/$defs/boundedPoint" },
+            "control2": { "$ref": "#/$defs/boundedPoint" },
+            "to": { "$ref": "#/$defs/boundedPoint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "const": "close" } },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "normalizedPathCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "to"],
+          "properties": {
+            "type": { "enum": ["move", "line"] },
+            "to": { "$ref": "#/$defs/normalizedPoint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "control", "to"],
+          "properties": {
+            "type": { "const": "quadratic" },
+            "control": { "$ref": "#/$defs/normalizedPoint" },
+            "to": { "$ref": "#/$defs/normalizedPoint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "control1", "control2", "to"],
+          "properties": {
+            "type": { "const": "cubic" },
+            "control1": { "$ref": "#/$defs/normalizedPoint" },
+            "control2": { "$ref": "#/$defs/normalizedPoint" },
+            "to": { "$ref": "#/$defs/normalizedPoint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "const": "close" } },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "textContent": {
+      "type": "object",
+      "required": ["string", "style"],
+      "properties": {
+        "string": { "type": "string" },
+        "style": { "$ref": "#/$defs/textStyle" }
+      },
+      "additionalProperties": false
+    },
+    "textStyle": {
+      "type": "object",
+      "required": [
+        "font",
+        "color",
+        "horizontalAlignment",
+        "verticalAlignment",
+        "lineSpacing",
+        "paragraphSpacing",
+        "insets",
+        "autoSizing"
+      ],
+      "properties": {
+        "font": { "$ref": "#/$defs/font" },
+        "color": { "$ref": "#/$defs/color" },
+        "horizontalAlignment": { "enum": ["leading", "center", "trailing", "justified"] },
+        "verticalAlignment": { "enum": ["top", "center", "bottom"] },
+        "lineSpacing": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+        "paragraphSpacing": {
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "insets": { "$ref": "#/$defs/textInsets" },
+        "autoSizing": { "enum": ["fixed", "fitHeight", "fitWidthAndHeight"] }
+      },
+      "additionalProperties": false
+    },
+    "font": {
+      "type": "object",
+      "required": ["family", "size", "weight"],
+      "properties": {
+        "family": { "$ref": "#/$defs/fontFamily" },
+        "size": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+        "weight": { "enum": ["light", "regular", "medium", "semibold", "bold"] }
+      },
+      "additionalProperties": false
+    },
+    "fontFamily": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "const": "system" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "name"],
+          "properties": {
+            "type": { "const": "named" },
+            "name": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "textInsets": {
+      "type": "object",
+      "required": ["top", "leading", "bottom", "trailing"],
+      "properties": {
+        "top": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+        "leading": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+        "bottom": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+        "trailing": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+      },
+      "additionalProperties": false
+    },
+    "imageContent": {
+      "type": "object",
+      "required": ["assetID", "displayAssetID", "scalingMode", "interpolation"],
+      "properties": {
+        "assetID": { "$ref": "#/$defs/assetID" },
+        "displayAssetID": { "$ref": "#/$defs/assetID" },
+        "scalingMode": { "enum": ["fit", "fill", "stretch", "tile"] },
+        "interpolation": { "enum": ["automatic", "nearestNeighbor", "highQuality"] },
+        "accessibilityDescription": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "groupContent": {
+      "type": "object",
+      "required": ["clipping"],
+      "properties": { "clipping": { "enum": ["none", "clipToBounds"] } },
+      "additionalProperties": false
+    },
+    "connectorContent": {
+      "type": "object",
+      "required": [
+        "source",
+        "target",
+        "routingStyle",
+        "sourceDecoration",
+        "targetDecoration",
+        "labelPosition"
+      ],
+      "properties": {
+        "source": { "$ref": "#/$defs/endpoint" },
+        "target": { "$ref": "#/$defs/endpoint" },
+        "routingStyle": { "enum": ["straight", "curved", "orthogonal", "bezier"] },
+        "manualRoute": { "$ref": "#/$defs/manualRoute" },
+        "resolvedRoute": { "$ref": "#/$defs/connectorRoute" },
+        "sourceDecoration": { "$ref": "#/$defs/decoration" },
+        "targetDecoration": { "$ref": "#/$defs/decoration" },
+        "label": { "$ref": "#/$defs/textContent" },
+        "labelPosition": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "routingStyle": { "const": "straight" } },
+            "required": ["routingStyle"]
+          },
+          "then": { "properties": { "manualRoute": false } }
+        },
+        {
+          "if": {
+            "properties": { "routingStyle": { "const": "curved" } },
+            "required": ["routingStyle"]
+          },
+          "then": {
+            "properties": {
+              "manualRoute": { "$ref": "#/$defs/curvedManualRoute" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "routingStyle": { "const": "orthogonal" } },
+            "required": ["routingStyle"]
+          },
+          "then": {
+            "properties": {
+              "manualRoute": { "$ref": "#/$defs/orthogonalManualRoute" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "routingStyle": { "const": "bezier" } },
+            "required": ["routingStyle"]
+          },
+          "then": {
+            "properties": {
+              "manualRoute": { "$ref": "#/$defs/bezierManualRoute" }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "decoration": {
+      "enum": ["none", "openArrow", "filledArrow", "circle", "diamond"]
+    },
+    "endpoint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "elementID", "attachment", "fallbackPoint"],
+          "properties": {
+            "type": { "const": "element" },
+            "elementID": { "$ref": "#/$defs/uuid" },
+            "attachment": { "$ref": "#/$defs/magnetAttachment" },
+            "fallbackPoint": { "$ref": "#/$defs/boundedPoint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "point"],
+          "properties": {
+            "type": { "const": "free" },
+            "point": { "$ref": "#/$defs/boundedPoint" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "magnetAttachment": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "const": "automatic" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "magnetID"],
+          "properties": {
+            "type": { "const": "magnet" },
+            "magnetID": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "manualRoute": {
+      "oneOf": [
+        { "$ref": "#/$defs/orthogonalManualRoute" },
+        { "$ref": "#/$defs/curvedManualRoute" },
+        { "$ref": "#/$defs/bezierManualRoute" }
+      ]
+    },
+    "orthogonalManualRoute": {
+      "type": "object",
+      "required": ["type", "waypoints"],
+      "properties": {
+        "type": { "const": "orthogonal" },
+        "waypoints": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/boundedPoint" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "curvedManualRoute": {
+      "type": "object",
+      "required": ["type", "controlPoint"],
+      "properties": {
+        "type": { "const": "curved" },
+        "controlPoint": { "$ref": "#/$defs/boundedPoint" }
+      },
+      "additionalProperties": false
+    },
+    "bezierManualRoute": {
+      "type": "object",
+      "required": ["type", "sourceControl", "targetControl"],
+      "properties": {
+        "type": { "const": "bezier" },
+        "sourceControl": { "$ref": "#/$defs/boundedPoint" },
+        "targetControl": { "$ref": "#/$defs/boundedPoint" }
+      },
+      "additionalProperties": false
+    },
+    "connectorRoute": {
+      "type": "object",
+      "required": ["start", "segments"],
+      "properties": {
+        "start": { "$ref": "#/$defs/boundedPoint" },
+        "segments": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/routeSegment" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "routeSegment": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "to"],
+          "properties": {
+            "type": { "const": "line" },
+            "to": { "$ref": "#/$defs/boundedPoint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "control", "to"],
+          "properties": {
+            "type": { "const": "quadratic" },
+            "control": { "$ref": "#/$defs/boundedPoint" },
+            "to": { "$ref": "#/$defs/boundedPoint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "control1", "control2", "to"],
+          "properties": {
+            "type": { "const": "cubic" },
+            "control1": { "$ref": "#/$defs/boundedPoint" },
+            "control2": { "$ref": "#/$defs/boundedPoint" },
+            "to": { "$ref": "#/$defs/boundedPoint" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "asset": {
+      "$comment": "id and sha256 are the same digest; path is assets/<digest>.<fileExtension>.",
+      "type": "object",
+      "required": [
+        "id",
+        "path",
+        "mediaType",
+        "fileExtension",
+        "byteLength",
+        "sha256"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/assetID" },
+        "path": {
+          "type": "string",
+          "pattern": "^assets/[0-9a-f]{64}\\.[\\p{L}\\p{N}]{1,12}$"
+        },
+        "mediaType": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "fileExtension": { "type": "string", "pattern": "^[\\p{L}\\p{N}]{1,12}$" },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 268435456
+        },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "originalFilename": { "type": "string" },
+        "pixelSize": { "$ref": "#/$defs/pixelSize" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

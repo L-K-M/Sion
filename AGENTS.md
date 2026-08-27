@@ -2,14 +2,13 @@
 
 ## Tooling
 
-Use Node.js 24+ and npm 11+ (`.node-version` pins CI's release).
+Use Swift 6.3.3 (`.swift-version` pins the toolchain).
 
-- `npm ci` installs the locked dependency tree.
-- `npm run check` mirrors the static, license, and unit-test gate.
+- `swift test` verifies the portable core.
 - `scripts/build.sh [--clean] [--run] [--install]` verifies and packages the
-  app; `--install` copies the native macOS build to `/Applications`.
+  native macOS app. `--install` copies it to `/Applications`.
 - `scripts/release.sh X.Y.Z [--push]` bumps, commits, tags, and optionally
-  pushes a release through the shared `lkm-release` engine.
+  pushes a native macOS release.
 
 ## AI review scope
 

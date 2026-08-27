@@ -1,0 +1,183 @@
+{
+  "assets" : [],
+  "extensions" : {},
+  "format" : "sion-scene",
+  "id" : "10000000-0000-0000-0000-000000000010",
+  "scene" : {
+    "canvas" : {
+      "background" : {
+        "alpha" : 1,
+        "blue" : 0.976,
+        "green" : 0.969,
+        "red" : 0.965
+      },
+      "extent" : {
+        "type" : "infinite"
+      },
+      "grid" : {
+        "spacing" : 16,
+        "subdivisions" : 1,
+        "visibility" : "hidden"
+      }
+    },
+    "elements" : [
+      {
+        "content" : {
+          "shape" : {
+            "kind" : {
+              "radius" : 14,
+              "type" : "roundedRectangle"
+            },
+            "label" : {
+              "string" : "Portable",
+              "style" : {
+                "autoSizing" : "fixed",
+                "color" : {
+                  "alpha" : 1,
+                  "blue" : 0.153,
+                  "green" : 0.122,
+                  "red" : 0.105
+                },
+                "font" : {
+                  "family" : {
+                    "type" : "system"
+                  },
+                  "size" : 15,
+                  "weight" : "medium"
+                },
+                "horizontalAlignment" : "center",
+                "insets" : {
+                  "bottom" : 12,
+                  "leading" : 12,
+                  "top" : 12,
+                  "trailing" : 12
+                },
+                "lineSpacing" : 0,
+                "paragraphSpacing" : 0,
+                "verticalAlignment" : "center"
+              }
+            }
+          },
+          "type" : "shape"
+        },
+        "extensions" : {},
+        "geometry" : {
+          "frame" : {
+            "origin" : {
+              "x" : 40,
+              "y" : 40
+            },
+            "size" : {
+              "height" : 76,
+              "width" : 160
+            }
+          },
+          "rotationRadians" : 0
+        },
+        "id" : "00000000-0000-0000-0000-000000000010",
+        "lockState" : "editable",
+        "magnetConfiguration" : {
+          "preset" : {
+            "type" : "cardinalFour"
+          },
+          "type" : "preset"
+        },
+        "magnets" : [
+          {
+            "direction" : "both",
+            "id" : "north",
+            "normal" : {
+              "dx" : 0,
+              "dy" : -1
+            },
+            "position" : {
+              "x" : 0.5,
+              "y" : 0
+            }
+          },
+          {
+            "direction" : "both",
+            "id" : "east",
+            "normal" : {
+              "dx" : 1,
+              "dy" : 0
+            },
+            "position" : {
+              "x" : 1,
+              "y" : 0.5
+            }
+          },
+          {
+            "direction" : "both",
+            "id" : "south",
+            "normal" : {
+              "dx" : 0,
+              "dy" : 1
+            },
+            "position" : {
+              "x" : 0.5,
+              "y" : 1
+            }
+          },
+          {
+            "direction" : "both",
+            "id" : "west",
+            "normal" : {
+              "dx" : -1,
+              "dy" : 0
+            },
+            "position" : {
+              "x" : 0,
+              "y" : 0.5
+            }
+          }
+        ],
+        "style" : {
+          "blendMode" : "normal",
+          "fill" : {
+            "color" : {
+              "alpha" : 1,
+              "blue" : 1,
+              "green" : 0.929,
+              "red" : 0.902
+            },
+            "type" : "solid"
+          },
+          "opacity" : 1,
+          "shadows" : [
+            {
+              "blurRadius" : 8,
+              "color" : {
+                "alpha" : 0.16,
+                "blue" : 0.15,
+                "green" : 0.08,
+                "red" : 0.05
+              },
+              "offset" : {
+                "dx" : 0,
+                "dy" : 2
+              },
+              "spread" : 0
+            }
+          ],
+          "stroke" : {
+            "color" : {
+              "alpha" : 1,
+              "blue" : 0.965,
+              "green" : 0.443,
+              "red" : 0.216
+            },
+            "dashPattern" : [],
+            "lineCap" : "round",
+            "lineJoin" : "round",
+            "width" : 1.5
+          }
+        },
+        "visibility" : "visible"
+      }
+    ],
+    "extensions" : {}
+  },
+  "schemaVersion" : 1,
+  "title" : "Portable flow"
+}

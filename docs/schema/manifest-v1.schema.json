@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lkmc.ch/sion/schema/manifest-v1.schema.json",
+  "title": "Sion manifest v1",
+  "type": "object",
+  "required": [
+    "format",
+    "formatVersion",
+    "generator",
+    "writtenAt",
+    "scene",
+    "entries",
+    "mermaidCoverage"
+  ],
+  "properties": {
+    "format": { "const": "sion-document" },
+    "formatVersion": { "const": 1 },
+    "generator": { "$ref": "#/$defs/generator" },
+    "writtenAt": { "type": "string", "format": "date-time" },
+    "scene": { "$ref": "#/$defs/scene" },
+    "entries": {
+      "type": "array",
+      "maxItems": 4093,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/entry" }
+    },
+    "mermaidCoverage": { "enum": ["complete", "partial", "none"] }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "generator": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "scene": {
+      "type": "object",
+      "required": ["path", "schemaVersion", "bytes", "sha256"],
+      "properties": {
+        "path": { "const": "scene.json" },
+        "schemaVersion": { "const": 1 },
+        "bytes": { "type": "integer", "minimum": 0, "maximum": 268435456 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "required": ["path", "role", "mediaType", "bytes", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*[:\\\\\\u0000])(?!.*//)(?!.*\\/$).+$"
+        },
+        "role": { "enum": ["authoritative", "derived"] },
+        "mediaType": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "bytes": { "type": "integer", "minimum": 0, "maximum": 268435456 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

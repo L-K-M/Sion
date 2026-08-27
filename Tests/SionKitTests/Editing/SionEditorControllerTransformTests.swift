@@ -5,6 +5,43 @@ import XCTest
 
 @MainActor
 final class SionEditorControllerTransformTests: XCTestCase {
+  func testNativeUndoDuringUntouchedDragKeepsHistoryInSync() throws {
+    let frame = SionRect(x: 20, y: 30, width: 160, height: 96)
+    let undoManager = UndoManager()
+    undoManager.groupsByEvent = false
+    let controller = try makeController(elements: [], undoManager: undoManager)
+
+    undoManager.beginUndoGrouping()
+    let shapeID = try controller.insertShape(in: frame, kind: .rectangle)
+    undoManager.endUndoGrouping()
+    controller.select(shapeID)
+    try controller.beginMove()
+
+    XCTAssertTrue(undoManager.canUndo)
+    XCTAssertFalse(undoManager.canRedo)
+
+    undoManager.undo()
+
+    XCTAssertNil(controller.document.scene.element(withID: shapeID))
+    XCTAssertFalse(undoManager.canUndo)
+    XCTAssertTrue(undoManager.canRedo)
+
+    undoManager.undo()
+
+    XCTAssertNil(controller.document.scene.element(withID: shapeID))
+    XCTAssertFalse(undoManager.canUndo)
+    XCTAssertTrue(undoManager.canRedo)
+
+    undoManager.redo()
+
+    XCTAssertEqual(
+      controller.document.scene.element(withID: shapeID)?.geometry.frame,
+      frame
+    )
+    XCTAssertTrue(undoManager.canUndo)
+    XCTAssertFalse(undoManager.canRedo)
+  }
+
   func testRotationDragCommitsOneUndoableChange() throws {
     let shape = SceneElement.shape(
       frame: SionRect(x: 20, y: 30, width: 160, height: 96)

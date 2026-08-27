@@ -54,6 +54,7 @@
     private let creationFailureFeedback: @MainActor () -> Void
     private var observerID: UUID?
     private var drag: Drag?
+    private var magnificationObservation: NSKeyValueObservation?
     private var textEditor: NSScrollView?
     private var editedElementID: ElementID?
     private var inlineTextUndoManager: UndoManager?
@@ -291,6 +292,29 @@
 
       editorController.removeObserver(observerID)
       self.observerID = nil
+    }
+
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+
+      updateMagnificationObservation()
+    }
+
+    override func viewDidMoveToSuperview() {
+      super.viewDidMoveToSuperview()
+
+      updateMagnificationObservation()
+    }
+
+    /// The scroll view can appear after either move; rebind KVO wherever the
+    /// canvas last landed.
+    private func updateMagnificationObservation() {
+      // Zoom-adaptive grid rendering must re-run whenever magnification
+      // changes, including layer-backed scaling that skips normal layout.
+      magnificationObservation = enclosingScrollView?.observe(\.magnification) {
+        [weak self] _, _ in
+        self?.needsDisplay = true
+      }
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -1112,7 +1136,17 @@
 
       guard grid.visibility == .visible else { return }
 
-      let spacing = max(CanvasMetrics.minimumGridSpacing, CGFloat(grid.spacing))
+      // Zoom-adaptive rendering: lines stay at true model positions while the
+      // spacing fades out below legible screen sizes instead of shifting.
+      let magnification = max(enclosingScrollView?.magnification ?? 1, 0.01)
+      let screenSpacing = CGFloat(grid.spacing) * magnification
+      let fade =
+        (screenSpacing - CanvasMetrics.gridFadeScreenSpacing)
+        / (CanvasMetrics.gridLegibleScreenSpacing - CanvasMetrics.gridFadeScreenSpacing)
+      let opacity = CanvasMetrics.gridOpacity * min(max(fade, 0), 1)
+      guard opacity > 0.01 else { return }
+
+      let spacing = CGFloat(grid.spacing)
       let canvasBounds: SionRect
       switch editorController.document.scene.canvas.extent {
       case .infinite:
@@ -1138,8 +1172,9 @@
         y += spacing
       }
 
-      NSColor.separatorColor.withAlphaComponent(CanvasMetrics.gridOpacity).setStroke()
-      path.lineWidth = CanvasMetrics.gridLineWidth
+      NSColor.separatorColor.withAlphaComponent(opacity).setStroke()
+      // Keep hairlines hairlines: compensate the canvas magnification.
+      path.lineWidth = CanvasMetrics.gridLineWidth / magnification
       path.stroke()
     }
 
@@ -2309,7 +2344,8 @@
     static let minimumInfiniteSize = SionSize(width: 4_000, height: 3_000)
     static let gridOpacity = 0.18
     static let gridLineWidth = 0.5
-    static let minimumGridSpacing: CGFloat = 4
+    static let gridFadeScreenSpacing: CGFloat = 6
+    static let gridLegibleScreenSpacing: CGFloat = 12
     static let defaultFontSize: CGFloat = 15
     static let selectionInset = 4.0
     static let selectionLineWidth = 1.5

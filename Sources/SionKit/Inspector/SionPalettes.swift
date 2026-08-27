@@ -107,6 +107,11 @@
     private var observerID: UUID?
     private var presentation: PalettePresentation?
     private let selectionLabel = NSTextField(labelWithString: "No selection")
+    private let lockButton = NSButton(
+      checkboxWithTitle: "Locked",
+      target: nil,
+      action: nil
+    )
     private let fillColorWell = NSColorWell()
     private let strokeColorWell = NSColorWell()
     private let strokeWidthSlider = NSSlider()
@@ -133,7 +138,9 @@
       configureMagnetPopup()
       configureAnchorEditingControls()
       configureAppearanceControls()
+      configureLockButton()
       stack.addArrangedSubview(selectionLabel)
+      stack.addArrangedSubview(lockButton)
       stack.addArrangedSubview(separator())
       stack.addArrangedSubview(row(label: "Fill", control: fillColorWell))
       stack.addArrangedSubview(row(label: "Stroke", control: strokeColorWell))
@@ -209,6 +216,13 @@
       strokeWidthSlider.setAccessibilityLabel("Stroke width")
     }
 
+    private func configureLockButton() {
+      lockButton.allowsMixedState = true
+      lockButton.target = self
+      lockButton.action = #selector(changeLock(_:))
+      lockButton.setAccessibilityLabel("Element lock")
+    }
+
     private func configureMagnetPopup() {
       for option in MagnetOption.allCases {
         magnetPopup.addItem(withTitle: option.title)
@@ -241,10 +255,17 @@
 
     private func refresh() {
       guard let element = target?.selectedElement else {
+        let hasMultipleSelection = target?.selection.isEmpty == false
         selectionLabel.stringValue =
-          target?.selection.isEmpty == false
+          hasMultipleSelection
           ? "Multiple elements"
           : "No selection"
+        lockButton.state = hasMultipleSelection ? .mixed : .off
+        lockButton.isEnabled = false
+        lockButton.toolTip =
+          hasMultipleSelection
+          ? "Lock state cannot be changed for a mixed selection."
+          : nil
         routePopup.isEnabled = false
         magnetPopup.isEnabled = false
         anchorEditingControls.isHidden = true
@@ -254,16 +275,27 @@
         return
       }
 
-      selectionLabel.stringValue = element.name ?? element.displayName
+      let isEditable = element.lockState == .editable
+      let name = element.name ?? element.displayName
+      selectionLabel.stringValue = isEditable ? name : "\(name) • Locked"
+      lockButton.state = isEditable ? .off : .on
+      lockButton.isEnabled = true
+      lockButton.toolTip =
+        isEditable
+        ? "Prevent changes to this element."
+        : "Unlock this element to edit it."
       let supportsFill = element.content.supportsFill
-      fillColorWell.isEnabled = supportsFill
-      strokeColorWell.isEnabled = element.content.connector != nil || supportsFill
+      fillColorWell.isEnabled = supportsFill && isEditable
+      strokeColorWell.isEnabled =
+        (element.content.connector != nil || supportsFill) && isEditable
       strokeWidthSlider.isEnabled = strokeColorWell.isEnabled
       fillColorWell.color = nsColor(element.style.fill.solidColor ?? .clear)
       strokeColorWell.color = nsColor(element.style.stroke?.color ?? .primaryInk)
       strokeWidthSlider.doubleValue = element.style.stroke?.width ?? 0
-      let editsAnchors = target?.anchorEditingState == .editing(element.id)
-      magnetPopup.isEnabled = element.content.connector == nil && !editsAnchors
+      let editsAnchors =
+        target?.anchorEditingState == .editing(element.id) && isEditable
+      magnetPopup.isEnabled =
+        element.content.connector == nil && !editsAnchors && isEditable
       anchorEditingControls.isHidden = !editsAnchors
       if editsAnchors {
         magnetPopup.selectItem(withTag: MagnetOption.custom.rawValue)
@@ -276,8 +308,24 @@
         return
       }
 
-      routePopup.isEnabled = true
+      routePopup.isEnabled = isEditable
       routePopup.selectItem(withTitle: connector.routingStyle.displayName)
+    }
+
+    @objc private func changeLock(_ sender: NSButton) {
+      guard let target, let id = target.selectedElement?.id else { return }
+
+      let lockState = sender.state == .on ? ElementLockState.locked : .editable
+      if lockState == .locked {
+        target.endAnchorEditing()
+      }
+
+      do {
+        try target.setLockState(lockState, on: id)
+      } catch {
+        NSSound.beep()
+        refresh()
+      }
     }
 
     @objc private func changeRoute(_ sender: NSPopUpButton) {

@@ -666,7 +666,15 @@
           continue
         }
 
-        if element.geometry.frame.expanded(by: EditorDefaults.elementHitSlop).contains(point) {
+        // Frames are unrotated local boxes; test the point in the same space
+        // so rotated elements select where they actually render.
+        let frame = element.geometry.frame.standardized
+        let localPoint = unrotated(
+          point,
+          around: frame.center,
+          radians: element.geometry.rotationRadians
+        )
+        if frame.expanded(by: EditorDefaults.elementHitSlop).contains(localPoint) {
           return element
         }
       }
@@ -678,7 +686,12 @@
       editor.document.scene.elements.reversed().first { element in
         element.visibility == .visible
           && element.content.connector == nil
-          && element.geometry.frame.expanded(by: EditorDefaults.elementHitSlop).contains(point)
+          && element.geometry.frame.expanded(by: EditorDefaults.elementHitSlop).contains(
+            unrotated(
+              point,
+              around: element.geometry.frame.standardized.center,
+              radians: element.geometry.rotationRadians
+            ))
       }
     }
 

@@ -19,7 +19,8 @@
 
     private enum Drag {
       case move(lastPoint: SionPoint)
-      case resize(elementID: ElementID, corner: ResizeCorner, startFrame: SionRect)
+      case resize(
+        elementID: ElementID, corner: ResizeCorner, startFrame: SionRect, rotationRadians: Double)
       case connector(sourceID: ElementID?, start: SionPoint, current: SionPoint)
     }
 
@@ -156,8 +157,13 @@
         let offset = point - lastPoint
         try? editorController.moveSelection(by: offset)
         self.drag = .move(lastPoint: point)
-      case .resize(let elementID, let corner, let startFrame):
-        let frame = resizedFrame(startFrame, moving: corner, to: point)
+      case .resize(let elementID, let corner, let startFrame, let rotationRadians):
+        let frame = resizedFrame(
+          startFrame,
+          moving: corner,
+          to: point,
+          rotationRadians: rotationRadians
+        )
         try? editorController.resize(elementID, to: frame)
       case .connector(let sourceID, let start, _):
         self.drag = .connector(sourceID: sourceID, start: start, current: point)
@@ -390,14 +396,19 @@
       if let element = editorController.selectedElement,
         element.lockState == .editable,
         element.content.connector == nil,
-        let corner = resizeCorner(at: point, frame: element.geometry.frame)
+        let corner = resizeCorner(
+          at: point,
+          frame: element.geometry.frame,
+          rotationRadians: element.geometry.rotationRadians
+        )
       {
         do {
           try editorController.beginResize()
           drag = .resize(
             elementID: element.id,
             corner: corner,
-            startFrame: element.geometry.frame.standardized
+            startFrame: element.geometry.frame.standardized,
+            rotationRadians: element.geometry.rotationRadians
           )
         } catch {
           drag = nil
@@ -1026,6 +1037,9 @@
     }
 
     private func drawSelection(for element: SceneElement) {
+      NSGraphicsContext.saveGraphicsState()
+      applyRotation(of: element)
+
       let rect = nsRect(element.geometry.frame).insetBy(
         dx: -CanvasMetrics.selectionInset,
         dy: -CanvasMetrics.selectionInset
@@ -1037,10 +1051,14 @@
         CanvasMetrics.selectionDash, count: CanvasMetrics.selectionDash.count, phase: 0)
       path.stroke()
 
+      defer { NSGraphicsContext.restoreGraphicsState() }
+
       guard element.lockState == .editable, element.content.connector == nil else { return }
 
+      // Handle positions live in local space; the active rotation transform
+      // places them on the element's visible corners.
       for corner in ResizeCorner.allCases {
-        let point = resizePoint(corner, frame: element.geometry.frame)
+        let point = localResizePoint(corner, frame: element.geometry.frame)
         let handle = NSRect(
           x: point.x - CanvasMetrics.resizeHandleRadius,
           y: point.y - CanvasMetrics.resizeHandleRadius,
@@ -1407,13 +1425,24 @@
       modelPoint(from: convert(event.locationInWindow, from: nil))
     }
 
-    private func resizeCorner(at point: SionPoint, frame: SionRect) -> ResizeCorner? {
-      ResizeCorner.allCases.first { corner in
-        point.distance(to: resizePoint(corner, frame: frame)) <= CanvasMetrics.resizeHitRadius
+    private func resizeCorner(at point: SionPoint, frame: SionRect, rotationRadians: Double = 0)
+      -> ResizeCorner?
+    {
+      let rect = frame.standardized
+      let localPoint = unrotatedLocal(
+        point,
+        around: rect.center,
+        rotationRadians: rotationRadians
+      )
+
+      return ResizeCorner.allCases.first { corner in
+        localPoint.distance(to: localResizePoint(corner, frame: rect))
+          <= CanvasMetrics.resizeHitRadius
       }
     }
 
-    private func resizePoint(_ corner: ResizeCorner, frame: SionRect) -> SionPoint {
+    /// Handle positions in the element's own, unrotated coordinates.
+    private func localResizePoint(_ corner: ResizeCorner, frame: SionRect) -> SionPoint {
       let rect = frame.standardized
       switch corner {
       case .topLeft: return SionPoint(x: rect.minX, y: rect.minY)
@@ -1423,27 +1452,73 @@
       }
     }
 
+    /// Screen-space handle position for an element's visible corners.
+    private func resizePoint(
+      _ corner: ResizeCorner,
+      frame: SionRect,
+      rotationRadians: Double = 0
+    ) -> SionPoint {
+      let rect = frame.standardized
+      let local = localResizePoint(corner, frame: rect)
+
+      guard rotationRadians != 0 else { return local }
+
+      let center = rect.center
+      let cosine = cos(rotationRadians)
+      let sine = sin(rotationRadians)
+      let offset = local - center
+      return SionPoint(
+        x: center.x + (offset.dx * cosine) - (offset.dy * sine),
+        y: center.y + (offset.dx * sine) + (offset.dy * cosine)
+      )
+    }
+
+    private func unrotatedLocal(
+      _ point: SionPoint,
+      around center: SionPoint,
+      rotationRadians: Double
+    ) -> SionPoint {
+      guard rotationRadians != 0 else { return point }
+
+      let cosine = cos(-rotationRadians)
+      let sine = sin(-rotationRadians)
+      let offset = point - center
+      return SionPoint(
+        x: center.x + (offset.dx * cosine) - (offset.dy * sine),
+        y: center.y + (offset.dx * sine) + (offset.dy * cosine)
+      )
+    }
+
     private func resizedFrame(
       _ start: SionRect,
       moving corner: ResizeCorner,
-      to point: SionPoint
+      to point: SionPoint,
+      rotationRadians: Double = 0
     ) -> SionRect {
+      let rect = start.standardized
+      // Resize in local space so handles track the element's rotated axes.
+      let localPoint = unrotatedLocal(
+        point,
+        around: rect.center,
+        rotationRadians: rotationRadians
+      )
+
       let opposite: SionPoint
       switch corner {
       case .topLeft:
-        opposite = SionPoint(x: start.maxX, y: start.maxY)
+        opposite = SionPoint(x: rect.maxX, y: rect.maxY)
       case .topRight:
-        opposite = SionPoint(x: start.minX, y: start.maxY)
+        opposite = SionPoint(x: rect.minX, y: rect.maxY)
       case .bottomLeft:
-        opposite = SionPoint(x: start.maxX, y: start.minY)
+        opposite = SionPoint(x: rect.maxX, y: rect.minY)
       case .bottomRight:
-        opposite = SionPoint(x: start.minX, y: start.minY)
+        opposite = SionPoint(x: rect.minX, y: rect.minY)
       }
 
-      let width = max(CanvasMetrics.minimumElementSize, abs(point.x - opposite.x))
-      let height = max(CanvasMetrics.minimumElementSize, abs(point.y - opposite.y))
-      let x = point.x < opposite.x ? opposite.x - width : opposite.x
-      let y = point.y < opposite.y ? opposite.y - height : opposite.y
+      let width = max(CanvasMetrics.minimumElementSize, abs(localPoint.x - opposite.x))
+      let height = max(CanvasMetrics.minimumElementSize, abs(localPoint.y - opposite.y))
+      let x = localPoint.x < opposite.x ? opposite.x - width : opposite.x
+      let y = localPoint.y < opposite.y ? opposite.y - height : opposite.y
       return SionRect(x: x, y: y, width: width, height: height)
     }
   }

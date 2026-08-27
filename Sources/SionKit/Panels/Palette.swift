@@ -15,6 +15,7 @@
     public var isFloating: Bool { presentation == .panel }
 
     private enum PopoverFollowUp: Equatable {
+      case closePanel
       case showPanel
     }
 
@@ -100,22 +101,16 @@
     }
 
     public func close() {
-      popoverFollowUp = nil
-
       // A detached panel can briefly coexist with its closing popover.
       let hasPresentedPanel = presentation == .panel || panel?.isVisible == true
-      if hasPresentedPanel {
-        panel?.close()
-      }
-
       if let popover {
+        popoverFollowUp = hasPresentedPanel ? .closePanel : nil
         popover.close()
         return
       }
 
-      if !hasPresentedPanel {
-        panel?.close()
-      }
+      popoverFollowUp = nil
+      panel?.close()
     }
 
     /// Re-resolves the target after front-document or selection changes.
@@ -153,14 +148,22 @@
 
       if detached {
         completeDetachment()
+        if followUp == .closePanel {
+          panel?.close()
+        }
         return
       }
 
       discardPreparedDetachment()
       transition(to: nil)
 
-      if followUp == .showPanel {
+      switch followUp {
+      case .closePanel:
+        panel?.close()
+      case .showPanel:
         showPanelNow()
+      case nil:
+        break
       }
     }
 

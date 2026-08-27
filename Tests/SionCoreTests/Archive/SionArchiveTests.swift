@@ -201,7 +201,7 @@ final class SionArchiveTests: XCTestCase {
     )
 
     XCTAssertTrue(svg.contains("<pattern id=\"image-pattern-"))
-    XCTAssertTrue(svg.contains("patternUnits=\"userSpaceOnUse\" width=\"32\" height=\"24\""))
+    XCTAssertTrue(svg.contains("patternUnits=\"userSpaceOnUse\" width=\"1\" height=\"1\""))
     XCTAssertTrue(svg.contains("fill=\"url(#image-pattern-"))
     XCTAssertFalse(svg.lowercased().contains("nan"))
     XCTAssertFalse(svg.lowercased().contains("inf"))

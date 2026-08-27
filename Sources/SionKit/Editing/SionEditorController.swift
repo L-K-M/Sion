@@ -326,6 +326,22 @@
       )
     }
 
+    var selectionHasEditableElements: Bool {
+      selectedElements.contains { $0.lockState == .editable }
+    }
+
+    var selectionHasLockedElements: Bool {
+      selectedElements.contains { $0.lockState == .locked }
+    }
+
+    /// Matches revealHiddenElements' filter so the menu never offers a
+    /// command that provably no-ops.
+    var sceneHasRevealableHiddenElements: Bool {
+      editor.document.scene.elements.contains {
+        $0.visibility == .hidden && $0.lockState == .editable
+      }
+    }
+
     /// Visible, editable, non-connector selection with group descendants
     /// dropped when their ancestor is also selected (translate cascades, so
     /// keeping both would move the descendant twice).

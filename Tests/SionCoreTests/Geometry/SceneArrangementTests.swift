@@ -28,7 +28,7 @@ final class SceneArrangementTests: XCTestCase {
     XCTAssertEqual(offsets[1], .zero)
   }
 
-  func testAlignCenterYAveragesNothingButSharesCenter() {
+  func testAlignCenterYAlignsBothCentersToTheUnionCenter() {
     let frames = [
       SionRect(x: 0, y: 0, width: 10, height: 20),
       SionRect(x: 0, y: 100, width: 10, height: 40),

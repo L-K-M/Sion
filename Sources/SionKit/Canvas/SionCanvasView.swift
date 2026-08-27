@@ -182,7 +182,7 @@
         if editorController.anchorEditingState != .inactive {
           return .crosshair
         }
-      case .shape, .text, .connector, .magnets:
+      case .rectangle, .circle, .text, .connector:
         return .crosshair
       }
 

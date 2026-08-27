@@ -560,7 +560,7 @@ final class SceneEditorTests: XCTestCase {
     )
   }
 
-  func testTranslatingGroupWithLockedDescendantThrowsAndRollsBack() throws {
+  func testTranslateCommandDoesNotPartiallyMoveLockedGroup() throws {
     let groupID = elementID("20000000-0000-0000-0000-00000000003b")
     let childID = elementID("20000000-0000-0000-0000-00000000003c")
     let group = SceneElement.group(
@@ -573,21 +573,19 @@ final class SceneEditorTests: XCTestCase {
       parentID: groupID
     )
     child.lockState = .locked
-    let document = SionDocument(scene: SionScene(elements: [group, child]))
-    var editor = try SceneEditor(document: document)
+    var scene = SionScene(elements: [group, child])
+    let originalScene = scene
 
     XCTAssertThrowsError(
-      try editor.perform(
-        SceneTransaction(
-          name: "Move locked group",
-          command: .translate(elementIDs: [groupID], by: SionVector(dx: 5, dy: 5))
-        )
-      )
+      try SceneCommand.translate(
+        elementIDs: [groupID],
+        by: SionVector(dx: 5, dy: 5)
+      ).apply(to: &scene)
     ) { error in
       XCTAssertEqual(error as? SceneEditingError, .elementLocked(childID))
     }
 
-    XCTAssertEqual(editor.document, document)
+    XCTAssertEqual(scene, originalScene)
   }
 
   private func elementID(_ string: String) -> ElementID {

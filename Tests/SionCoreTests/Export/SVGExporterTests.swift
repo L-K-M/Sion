@@ -206,10 +206,12 @@ final class SVGExporterTests: XCTestCase {
   private func numberAttribute(_ name: String, in tag: Substring) -> Double? {
     let prefix = "\(name)=\""
     guard
-      let attribute = tag
+      let attribute =
+        tag
         .split(whereSeparator: \Character.isWhitespace)
         .first(where: { $0.hasPrefix(prefix) }),
-      let valueEnd = attribute.dropFirst(prefix.count).firstIndex(of: "\"")
+      let valueEnd =
+        attribute.dropFirst(prefix.count).firstIndex(of: "\"")
     else {
       return nil
     }

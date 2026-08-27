@@ -103,14 +103,17 @@ final class CanvasViewportTests: XCTestCase {
     let routed = SceneRenderGeometry.connectorRoute(for: connector, in: scene)
     XCTAssertNotNil(routed)
 
+    var providerCalls = 0
     let providerBounds = SceneRenderGeometry.editingCanvasBounds(
       of: scene,
       minimumInfiniteSize: minimumInfiniteSize,
       connectorRoutes: { element in
-        element.id == connector.id ? routed : nil
+        providerCalls += 1
+        return element.id == connector.id ? routed : nil
       }
     )
 
     XCTAssertEqual(providerBounds, expected)
+    XCTAssertGreaterThan(providerCalls, 0)
   }
 }

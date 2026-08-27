@@ -60,10 +60,16 @@
     private var canvasExtent: CanvasExtent
     private var textRenderCache: [TextRenderKey: TextRender] = [:]
 
-    /// Everything that determines one measured text layout.
+    /// Everything that determines one measured text layout. Widths quantize
+    /// to half points so a resize drag does not thrash the cache per pixel.
     private struct TextRenderKey: Hashable {
       let content: TextContent
-      let width: CGFloat
+      let widthBucket: Int
+
+      init(content: TextContent, width: CGFloat) {
+        self.content = content
+        self.widthBucket = Int((width * 2).rounded())
+      }
     }
 
     private struct TextRender {

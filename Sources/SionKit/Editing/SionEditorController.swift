@@ -113,7 +113,7 @@
     private var previewPNG: Data?
     private var pendingTextEdit: PendingTextEdit?
     private var routeCache: [ElementID: ConnectorRoute]
-    private var imageCache: [AssetID: NSImage]
+    private let imageCache: NSCache<NSString, NSImage>
 
     private let undoManagerProvider: () -> UndoManager?
     private let didChange: (DocumentChange) -> Void
@@ -130,7 +130,8 @@
       previewPNG = package.previewPNG
       pendingTextEdit = nil
       routeCache = [:]
-      imageCache = [:]
+      imageCache = NSCache()
+      imageCache.countLimit = EditorDefaults.imageCacheLimit
       self.undoManagerProvider = undoManagerProvider
       self.didChange = didChange
 
@@ -227,7 +228,7 @@
       pendingTextEdit = nil
       anchorEditingState = .inactive
       routeCache.removeAll()
-      imageCache.removeAll()
+      imageCache.removeAllObjects()
       selection.removeAll()
       undoManagerProvider()?.removeAllActions(withTarget: self)
       notifyObservers()
@@ -237,10 +238,11 @@
       assets[id]
     }
 
-    /// Decodes display renditions once; entries stay valid across edits
-    /// because asset IDs are content addressed.
+    /// Decodes display renditions once; IDs are content addressed, so entries
+    /// stay valid until the asset is dropped. NSCache evicts under pressure.
     func image(for content: ImageContent) -> NSImage? {
-      if let cached = imageCache[content.displayAssetID] {
+      let key = NSString(string: content.displayAssetID.rawValue)
+      if let cached = imageCache.object(forKey: key) {
         return cached
       }
 
@@ -250,7 +252,7 @@
         return nil
       }
 
-      imageCache[content.displayAssetID] = image
+      imageCache.setObject(image, forKey: key)
       return image
     }
 
@@ -953,8 +955,9 @@
     }
 
     private func notifyModelChange(notification: DocumentChangeNotification) {
-      // Any edit invalidates the archive's optional rendered preview and the
-      // shared route cache; selection-only notifications keep them.
+      // Every notification reaching this funnel mutates the document, so the
+      // rendered preview and cached routes are stale. Selection-only changes
+      // notify observers directly and keep both caches.
       previewPNG = nil
       routeCache.removeAll()
 
@@ -1088,7 +1091,7 @@
     private func removeAssets(_ ids: Set<AssetID>) {
       for id in ids {
         assets[id] = nil
-        imageCache[id] = nil
+        imageCache.removeObject(forKey: NSString(string: id.rawValue))
       }
     }
 
@@ -1127,6 +1130,7 @@
     static let connectorMagnetSnapTolerance = 10.0
     static let elementHitSlop = 2.0
     static let customAnchorIDPrefix = "custom-"
+    static let imageCacheLimit = 256
   }
 
   private struct AnchorPlacement {

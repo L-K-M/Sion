@@ -174,7 +174,8 @@ public enum SceneRenderGeometry {
     guard let shadow = element.style.shadows.first else { return bounds }
 
     let blurExtent = shadow.blurRadius * PaintedBounds.shadowBlurExtentMultiplier
-    let shadowBounds = bounds
+    let shadowBounds =
+      bounds
       .translated(by: shadow.offset)
       .expanded(by: blurExtent)
     return bounds.union(shadowBounds)

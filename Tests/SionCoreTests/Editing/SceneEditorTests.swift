@@ -765,6 +765,51 @@ final class SceneEditorTests: XCTestCase {
     XCTAssertEqual(scene, originalScene)
   }
 
+  func testPendingGestureStateTracksEveryExit() throws {
+    var editor = try SceneEditor()
+    XCTAssertFalse(editor.hasPendingGesture)
+
+    try editor.beginGesture(named: "Move")
+    XCTAssertTrue(editor.hasPendingGesture)
+    _ = try editor.endGesture()
+    XCTAssertFalse(editor.hasPendingGesture)
+
+    try editor.beginGesture(named: "Resize")
+    _ = try editor.cancelGesture()
+    XCTAssertFalse(editor.hasPendingGesture)
+
+    try editor.beginGesture(named: "Rotate")
+    XCTAssertNil(editor.undo())
+    XCTAssertFalse(editor.hasPendingGesture)
+  }
+
+  func testRedoDoesNotEndPendingGesture() throws {
+    let actionName = "Add Shape"
+    let shape = SceneElement.shape(
+      frame: SionRect(x: 20, y: 30, width: 160, height: 96)
+    )
+    var editor = try SceneEditor()
+
+    try editor.perform(
+      SceneTransaction(
+        name: actionName,
+        command: .insert(elements: [shape], at: nil)
+      )
+    )
+    XCTAssertEqual(editor.undo(), actionName)
+    XCTAssertTrue(editor.canRedo)
+
+    try editor.beginGesture(named: "Move")
+
+    XCTAssertNil(editor.redo())
+    XCTAssertTrue(editor.hasPendingGesture)
+    XCTAssertFalse(editor.canRedo)
+
+    _ = try editor.cancelGesture()
+    XCTAssertTrue(editor.canRedo)
+    XCTAssertEqual(editor.redo(), actionName)
+  }
+
   private func elementID(_ string: String) -> ElementID {
     ElementID(string)!
   }

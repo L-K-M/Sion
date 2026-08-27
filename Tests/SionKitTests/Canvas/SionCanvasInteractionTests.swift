@@ -194,6 +194,78 @@ final class SionCanvasInteractionTests: XCTestCase {
     XCTAssertTrue(controller.document.scene.elements.isEmpty)
   }
 
+  func testExternalUndoDropsChangedMoveDrag() throws {
+    let frame = SionRect(x: 100, y: 100, width: 100, height: 60)
+    let element = SceneElement.shape(frame: frame, kind: .rectangle)
+    let controller = try makeController(elements: [element])
+    let canvas = makeCanvas(controller: controller)
+    controller.select(element.id)
+
+    canvas.mouseDown(
+      with: try mouseEvent(.leftMouseDown, canvas: canvas, at: frame.center)
+    )
+    canvas.mouseDragged(
+      with: try mouseEvent(
+        .leftMouseDragged,
+        canvas: canvas,
+        at: frame.center + SionVector(dx: 40, dy: 20)
+      )
+    )
+    XCTAssertNotEqual(
+      controller.document.scene.element(withID: element.id)?.geometry.frame,
+      frame
+    )
+
+    controller.undoSceneEdit()
+
+    XCTAssertEqual(
+      controller.document.scene.element(withID: element.id)?.geometry.frame,
+      frame
+    )
+    canvas.mouseDragged(
+      with: try mouseEvent(
+        .leftMouseDragged,
+        canvas: canvas,
+        at: frame.center + SionVector(dx: 80, dy: 40)
+      )
+    )
+    XCTAssertEqual(
+      controller.document.scene.element(withID: element.id)?.geometry.frame,
+      frame
+    )
+    canvas.cancelOperation(nil)
+    XCTAssertTrue(controller.selection.isEmpty)
+  }
+
+  func testExternalUndoDropsUntouchedMoveDrag() throws {
+    let frame = SionRect(x: 100, y: 100, width: 100, height: 60)
+    let element = SceneElement.shape(frame: frame, kind: .rectangle)
+    let controller = try makeController(elements: [element])
+    let canvas = makeCanvas(controller: controller)
+    controller.select(element.id)
+
+    canvas.mouseDown(
+      with: try mouseEvent(.leftMouseDown, canvas: canvas, at: frame.center)
+    )
+    controller.undoSceneEdit()
+    XCTAssertFalse(controller.hasPendingEditorGesture)
+
+    canvas.mouseDragged(
+      with: try mouseEvent(
+        .leftMouseDragged,
+        canvas: canvas,
+        at: frame.center + SionVector(dx: 40, dy: 20)
+      )
+    )
+
+    XCTAssertEqual(
+      controller.document.scene.element(withID: element.id)?.geometry.frame,
+      frame
+    )
+    canvas.cancelOperation(nil)
+    XCTAssertTrue(controller.selection.isEmpty)
+  }
+
   func testMarqueeThresholdUsesScreenDistance() throws {
     let selected = SceneElement.shape(
       frame: SionRect(x: 20, y: 20, width: 40, height: 40),

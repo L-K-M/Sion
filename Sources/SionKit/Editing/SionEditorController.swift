@@ -968,6 +968,11 @@
       notifyModelChange(notification: .skip)
     }
 
+    /// Mirrors core gesture lifetime for view-state recovery.
+    var hasPendingEditorGesture: Bool {
+      editor.hasPendingGesture
+    }
+
     func element(at point: SionPoint) -> SceneElement? {
       for element in editor.document.scene.elements.reversed() {
         guard element.visibility == .visible else { continue }
@@ -1014,7 +1019,15 @@
     }
 
     @objc func undoSceneEdit() {
-      guard let actionName = editor.undo() else { return }
+      let hadPendingGesture = editor.hasPendingGesture
+      guard let actionName = editor.undo() else {
+        // An untouched gesture changes no document bytes, but its view still
+        // needs to discard the corresponding drag.
+        if hadPendingGesture {
+          notifyObservers()
+        }
+        return
+      }
 
       undoManagerProvider()?.registerUndo(withTarget: self) { target in
         Self.performUndo(.redo, on: target)

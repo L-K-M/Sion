@@ -773,6 +773,14 @@
 
       NSGraphicsContext.saveGraphicsState()
       defer { NSGraphicsContext.restoreGraphicsState() }
+
+      // Map the y-down model into the bitmap's y-up pixel coordinates.
+      bitmapContext.cgContext.translateBy(x: 0, y: CGFloat(pixelHeight))
+      bitmapContext.cgContext.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
+      bitmapContext.cgContext.translateBy(
+        x: CGFloat(-content.minX),
+        y: CGFloat(-content.minY)
+      )
       NSGraphicsContext.current = NSGraphicsContext(
         cgContext: bitmapContext.cgContext,
         flipped: true
@@ -780,14 +788,6 @@
 
       rendersOffscreenPreview = true
       defer { rendersOffscreenPreview = false }
-
-      // Scale first so the following origin offset is scaled with the model.
-      let scaleTransform = NSAffineTransform()
-      scaleTransform.scale(by: CGFloat(scale))
-      scaleTransform.concat()
-      let translate = NSAffineTransform()
-      translate.translateX(by: -content.minX, yBy: -content.minY)
-      translate.concat()
 
       nsColor(editorController.document.scene.canvas.background).setFill()
       NSBezierPath(rect: nsRect(content)).fill()

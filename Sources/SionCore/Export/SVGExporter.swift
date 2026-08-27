@@ -356,10 +356,8 @@ public enum SVGExporter {
     route: ConnectorRoute?,
     shadow: ShadowStyle
   ) -> SionRect {
-    var unshadowed = element
-    unshadowed.style.shadows = []
-    var artworkBounds = SceneRenderGeometry.unrotatedPaintedBounds(
-      of: unshadowed,
+    var artworkBounds = SceneRenderGeometry.unrotatedArtworkBounds(
+      of: element,
       route: route
     )
 

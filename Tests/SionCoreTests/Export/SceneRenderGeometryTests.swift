@@ -65,6 +65,57 @@ final class SceneRenderGeometryTests: XCTestCase {
     )
   }
 
+  func testContentBoundsIncludeEveryShadow() {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+      kind: .rectangle
+    )
+    let positiveShadow = ShadowStyle(
+      color: .primaryInk,
+      offset: SionVector(dx: 300, dy: 200),
+      blurRadius: 40
+    )
+    let negativeShadow = ShadowStyle(
+      color: .primaryInk,
+      offset: SionVector(dx: -300, dy: -200),
+      blurRadius: 40
+    )
+    shape.style.shadows = [positiveShadow, negativeShadow]
+
+    let bounds = SceneRenderGeometry.contentBounds(
+      of: SionScene(elements: [shape])
+    )
+
+    XCTAssertGreaterThanOrEqual(
+      bounds.maxX,
+      shape.geometry.frame.maxX
+        + positiveShadow.offset.dx
+        + positiveShadow.blurRadius
+        + contentPadding
+    )
+    XCTAssertGreaterThanOrEqual(
+      bounds.maxY,
+      shape.geometry.frame.maxY
+        + positiveShadow.offset.dy
+        + positiveShadow.blurRadius
+        + contentPadding
+    )
+    XCTAssertLessThanOrEqual(
+      bounds.minX,
+      shape.geometry.frame.minX
+        + negativeShadow.offset.dx
+        - negativeShadow.blurRadius
+        - contentPadding
+    )
+    XCTAssertLessThanOrEqual(
+      bounds.minY,
+      shape.geometry.frame.minY
+        + negativeShadow.offset.dy
+        - negativeShadow.blurRadius
+        - contentPadding
+    )
+  }
+
   func testContentBoundsIncludeLocalPathCommandsOutsideFrame() {
     let path = VectorPath(
       coordinateSpace: .localPoints,

@@ -419,7 +419,11 @@
         )
         try? editorController.setCornerRadius(radius, on: elementID)
       case .create(let creation, let start, _):
-        self.drag = .create(creation: creation, start: start, current: point)
+        self.drag = .create(
+          creation: creation,
+          start: start,
+          current: editorController.snappedToGrid(point)
+        )
         needsDisplay = true
       case .connector(let sourceID, let start, _):
         let target = connectorTarget(at: point, use: .incoming)

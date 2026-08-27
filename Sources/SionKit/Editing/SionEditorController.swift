@@ -106,6 +106,9 @@
 
     private(set) var selection = Set<ElementID>()
     private(set) var tool = Tool.select
+    /// Session preference; snapping rounds interaction points to the canvas
+    /// grid even while the grid itself is hidden.
+    var isSnapToGridEnabled = true
     private(set) var anchorEditingState = AnchorEditingState.inactive
     private var editor: SceneEditor
     private var assets: [AssetID: SionAsset]
@@ -512,7 +515,7 @@
     func insertShape(at point: SionPoint, kind: ShapeKind) throws -> ElementID {
       // Click insertion anchors the default frame at the pointer.
       let frame = SionRect(
-        origin: point,
+        origin: snappedToGrid(point),
         size: SionCreationDefaults.shapeSize(for: kind)
       )
 
@@ -530,6 +533,7 @@
 
     @discardableResult
     func insertShape(centeredAt point: SionPoint, kind: ShapeKind) throws -> ElementID {
+      let point = snappedToGrid(point)
       let size = SionCreationDefaults.shapeSize(for: kind)
       let frame = SionRect(
         x: point.x - (size.width / 2),
@@ -544,7 +548,7 @@
     @discardableResult
     func insertText(_ text: String, at point: SionPoint) throws -> ElementID {
       let frame = SionRect(
-        origin: point,
+        origin: snappedToGrid(point),
         size: SionCreationDefaults.textSize
       )
 
@@ -562,6 +566,7 @@
 
     @discardableResult
     func insertText(_ text: String, centeredAt point: SionPoint) throws -> ElementID {
+      let point = snappedToGrid(point)
       let size = SionCreationDefaults.textSize
       let frame = SionRect(
         x: point.x - (size.width / 2),
@@ -584,6 +589,7 @@
       displayPixelSize: SionSize,
       at point: SionPoint
     ) throws -> ElementID {
+      let point = snappedToGrid(point)
       let originalAsset = try SionAsset(
         data: originalData,
         mediaType: mediaType,
@@ -821,6 +827,30 @@
       notifySelectionChange(from: removed)
     }
 
+    func setGridVisibility(_ visibility: GridVisibility) throws {
+      var canvas = editor.document.scene.canvas
+      guard canvas.grid.visibility != visibility else { return }
+
+      canvas.grid.visibility = visibility
+      try perform(
+        name: visibility == .visible ? "Show Grid" : "Hide Grid",
+        command: .setCanvas(canvas)
+      )
+    }
+
+    /// Rounds a model point to the canvas grid when snapping is enabled.
+    func snappedToGrid(_ point: SionPoint) -> SionPoint {
+      guard isSnapToGridEnabled else { return point }
+
+      let spacing = editor.document.scene.canvas.grid.spacing
+      guard spacing > 0, spacing.isFinite else { return point }
+
+      return SionPoint(
+        x: (point.x / spacing).rounded() * spacing,
+        y: (point.y / spacing).rounded() * spacing
+      )
+    }
+
     func beginMove() throws {
       guard canMoveSelection else { return }
 
@@ -830,7 +860,16 @@
     func moveSelection(by offset: SionVector) throws {
       guard !selection.isEmpty, offset != .zero else { return }
 
-      _ = try editor.updateGesture(with: .translate(elementIDs: selection, by: offset))
+      var appliedOffset = offset
+      if isSnapToGridEnabled, let currentBounds = selectionBounds() {
+        // Snap the absolute origin, not the per-event delta, so drags land
+        // on grid points instead of accumulating rounding error.
+        appliedOffset = snappedToGrid(currentBounds.origin + offset) - currentBounds.origin
+      }
+
+      guard appliedOffset != .zero else { return }
+
+      _ = try editor.updateGesture(with: .translate(elementIDs: selection, by: appliedOffset))
       notifyModelChange(notification: .skip)
     }
 
@@ -986,6 +1025,13 @@
 
       registerUndo(actionName: name)
       notifyModelChange(notification: .done)
+    }
+
+    private func selectionBounds() -> SionRect? {
+      selectedElements
+        .filter { $0.content.connector == nil }
+        .map(\.geometry.frame.standardized)
+        .reduce(nil) { $0?.union($1) ?? $1 }
     }
 
     private func registerUndo(actionName: String) {

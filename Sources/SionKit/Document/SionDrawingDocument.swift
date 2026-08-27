@@ -2,6 +2,45 @@
   import AppKit
   import SionCore
 
+  enum MermaidExportWarning: Equatable {
+    case partial
+    case none
+
+    init?(coverage: MermaidCoverage) {
+      switch coverage {
+      case .complete:
+        return nil
+      case .partial:
+        self = .partial
+      case .none:
+        self = .none
+      }
+    }
+
+    var messageText: String {
+      switch self {
+      case .partial:
+        return "Mermaid will omit content"
+      case .none:
+        return "Mermaid cannot represent this drawing"
+      }
+    }
+
+    func informativeText(for omissions: [MermaidOmission]) -> String {
+      let summary = omissions.map { omission in
+        let suffix = omission.count == 1 ? "" : "s"
+        return "\(omission.count) \(omission.kind.rawValue)\(suffix)"
+      }.joined(separator: ", ")
+
+      switch self {
+      case .partial:
+        return "Unsupported visible content will be omitted: \(summary)."
+      case .none:
+        return "The file will contain omission comments only: \(summary)."
+      }
+    }
+  }
+
   @MainActor
   /// Bridges AppKit document lifecycle to Sion's validated recovery archive.
   public final class SionDrawingDocument: NSDocument {
@@ -150,10 +189,38 @@
     @objc func exportMermaid(_ sender: Any?) {
       commitPendingWindowEdits()
 
-      let source = MermaidExporter.export(document: editingController.document).source
+      let export = MermaidExporter.export(document: editingController.document)
+      guard let warning = MermaidExportWarning(coverage: export.coverage) else {
+        presentMermaidExportPanel(export)
+        return
+      }
+
+      presentMermaidExportWarning(warning, export: export)
+    }
+
+    private func presentMermaidExportWarning(
+      _ warning: MermaidExportWarning,
+      export: MermaidExport
+    ) {
+      guard let window = windowControllers.first?.window else { return }
+
+      let alert = NSAlert()
+      alert.alertStyle = .warning
+      alert.messageText = warning.messageText
+      alert.informativeText = warning.informativeText(for: export.omissions)
+      alert.addButton(withTitle: "Export Anyway")
+      alert.addButton(withTitle: "Cancel")
+      alert.beginSheetModal(for: window) { [weak self] response in
+        guard response == .alertFirstButtonReturn else { return }
+
+        self?.presentMermaidExportPanel(export)
+      }
+    }
+
+    private func presentMermaidExportPanel(_ export: MermaidExport) {
       presentExportPanel(
         suggestedFilename: exportFilename(extension: "mmd"),
-        data: Data(source.utf8)
+        data: Data(export.source.utf8)
       )
     }
 

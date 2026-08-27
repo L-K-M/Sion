@@ -248,6 +248,15 @@ final class SionCanvasInteractionTests: XCTestCase {
       with: try mouseEvent(.leftMouseDown, canvas: canvas, at: frame.center)
     )
     controller.undoSceneEdit()
+    XCTAssertFalse(controller.hasPendingEditorGesture)
+
+    canvas.mouseDragged(
+      with: try mouseEvent(
+        .leftMouseDragged,
+        canvas: canvas,
+        at: frame.center + SionVector(dx: 40, dy: 20)
+      )
+    )
 
     XCTAssertEqual(
       controller.document.scene.element(withID: element.id)?.geometry.frame,

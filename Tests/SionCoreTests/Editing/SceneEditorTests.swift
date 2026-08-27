@@ -784,13 +784,30 @@ final class SceneEditorTests: XCTestCase {
   }
 
   func testRedoDoesNotEndPendingGesture() throws {
+    let actionName = "Add Shape"
+    let shape = SceneElement.shape(
+      frame: SionRect(x: 20, y: 30, width: 160, height: 96)
+    )
     var editor = try SceneEditor()
+
+    try editor.perform(
+      SceneTransaction(
+        name: actionName,
+        command: .insert(elements: [shape], at: nil)
+      )
+    )
+    XCTAssertEqual(editor.undo(), actionName)
+    XCTAssertTrue(editor.canRedo)
+
     try editor.beginGesture(named: "Move")
 
     XCTAssertNil(editor.redo())
     XCTAssertTrue(editor.hasPendingGesture)
+    XCTAssertFalse(editor.canRedo)
 
     _ = try editor.cancelGesture()
+    XCTAssertTrue(editor.canRedo)
+    XCTAssertEqual(editor.redo(), actionName)
   }
 
   private func elementID(_ string: String) -> ElementID {

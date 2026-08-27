@@ -5,6 +5,106 @@ import XCTest
 
 @MainActor
 final class SionEditorControllerTextEditingTests: XCTestCase {
+  func testEmptyShapeTextEditPreservesNilAndCreatesNoUndo() throws {
+    let element = SceneElement.shape(
+      frame: SionRect(x: 20, y: 20, width: 220, height: 80)
+    )
+    let document = SionDocument(scene: SionScene(elements: [element]))
+    let undoManager = UndoManager()
+    var changes = [String]()
+    let controller = try SionEditorController(
+      package: SionPackage(document: document),
+      undoManagerProvider: { undoManager },
+      didChange: { changes.append($0.label) }
+    )
+
+    try controller.beginTextEdit(on: element.id)
+    try controller.updateTextEdit("", on: element.id)
+    try controller.endTextEdit()
+
+    XCTAssertEqual(controller.document, document)
+    guard case .shape(let shape) = controller.document.scene.elements[0].content else {
+      return XCTFail("Expected shape content.")
+    }
+    XCTAssertNil(shape.label)
+    XCTAssertTrue(changes.isEmpty)
+    XCTAssertFalse(undoManager.canUndo)
+  }
+
+  func testEmptyConnectorTextEditPreservesNilAndCreatesNoUndo() throws {
+    let element = SceneElement.connector(
+      source: .free(SionPoint(x: 20, y: 20)),
+      target: .free(SionPoint(x: 220, y: 20)),
+      routingStyle: .straight
+    )
+    let document = SionDocument(scene: SionScene(elements: [element]))
+    let undoManager = UndoManager()
+    var changes = [String]()
+    let controller = try SionEditorController(
+      package: SionPackage(document: document),
+      undoManagerProvider: { undoManager },
+      didChange: { changes.append($0.label) }
+    )
+
+    try controller.beginTextEdit(on: element.id)
+    try controller.updateTextEdit("", on: element.id)
+    try controller.endTextEdit()
+
+    XCTAssertEqual(controller.document, document)
+    guard case .connector(let connector) = controller.document.scene.elements[0].content else {
+      return XCTFail("Expected connector content.")
+    }
+    XCTAssertNil(connector.label)
+    XCTAssertTrue(changes.isEmpty)
+    XCTAssertFalse(undoManager.canUndo)
+  }
+
+  func testRevertedNilLabelEditRestoresExactElement() throws {
+    let element = SceneElement.shape(
+      frame: SionRect(x: 20, y: 20, width: 220, height: 80)
+    )
+    let document = SionDocument(scene: SionScene(elements: [element]))
+    let undoManager = UndoManager()
+    var changes = [String]()
+    let controller = try SionEditorController(
+      package: SionPackage(document: document),
+      undoManagerProvider: { undoManager },
+      didChange: { changes.append($0.label) }
+    )
+
+    try controller.beginTextEdit(on: element.id)
+    try controller.updateTextEdit("Draft", on: element.id)
+    try controller.updateTextEdit("", on: element.id)
+    try controller.endTextEdit()
+
+    XCTAssertEqual(controller.document, document)
+    XCTAssertEqual(changes, ["done", "undone"])
+    XCTAssertFalse(undoManager.canUndo)
+  }
+
+  func testUnchangedStandaloneTextEditCreatesNoUndo() throws {
+    let element = SceneElement.text(
+      frame: SionRect(x: 20, y: 20, width: 220, height: 56),
+      text: "Original"
+    )
+    let document = SionDocument(scene: SionScene(elements: [element]))
+    let undoManager = UndoManager()
+    var changes = [String]()
+    let controller = try SionEditorController(
+      package: SionPackage(document: document),
+      undoManagerProvider: { undoManager },
+      didChange: { changes.append($0.label) }
+    )
+
+    try controller.beginTextEdit(on: element.id)
+    try controller.updateTextEdit("Original", on: element.id)
+    try controller.endTextEdit()
+
+    XCTAssertEqual(controller.document, document)
+    XCTAssertTrue(changes.isEmpty)
+    XCTAssertFalse(undoManager.canUndo)
+  }
+
   func testInlineTextIsLiveAndOneUndoableChange() throws {
     let element = SceneElement.text(
       frame: SionRect(x: 20, y: 20, width: 220, height: 56),

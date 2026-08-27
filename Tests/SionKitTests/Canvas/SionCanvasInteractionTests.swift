@@ -6,6 +6,54 @@ import XCTest
 
 @MainActor
 final class SionCanvasInteractionTests: XCTestCase {
+  func testInlineEditorSuppressesBackingTextForEveryEditableKind() throws {
+    _ = NSApplication.shared
+    var connector = SceneElement.connector(
+      source: .free(SionPoint(x: 40, y: 180)),
+      target: .free(SionPoint(x: 280, y: 180)),
+      routingStyle: .straight
+    )
+    connector.content = .connector(
+      ConnectorContent(
+        source: .free(SionPoint(x: 40, y: 180)),
+        target: .free(SionPoint(x: 280, y: 180)),
+        routingStyle: .straight,
+        label: TextContent(string: "Flow")
+      )
+    )
+    let elements = [
+      SceneElement.shape(
+        frame: SionRect(x: 40, y: 40, width: 180, height: 80),
+        text: "Shape"
+      ),
+      SceneElement.text(
+        frame: SionRect(x: 40, y: 40, width: 180, height: 80),
+        text: "Standalone"
+      ),
+      connector,
+    ]
+
+    for element in elements {
+      let controller = try makeController(elements: [element])
+      let canvas = makeCanvas(controller: controller)
+      let paintedPixels = try backingPixels(of: canvas)
+
+      canvas.beginTextEditing(element.id)
+      let editingPixels = try backingPixels(of: canvas)
+      canvas.discardPendingEdits()
+
+      let referenceController = try makeController(
+        elements: [removingEditableText(from: element)]
+      )
+      let referencePixels = try backingPixels(
+        of: makeCanvas(controller: referenceController)
+      )
+
+      XCTAssertFalse(paintedPixels == referencePixels)
+      XCTAssertTrue(editingPixels == referencePixels)
+    }
+  }
+
   func testCanvasCreationSelectsEachNewElement() throws {
     let controller = try makeController()
     let canvas = makeCanvas(controller: controller)
@@ -194,6 +242,54 @@ final class SionCanvasInteractionTests: XCTestCase {
       editorController: controller,
       creationFailureFeedback: creationFailureFeedback
     )
+  }
+
+  private func backingPixels(of canvas: SionCanvasView) throws -> Data {
+    let representation = try XCTUnwrap(
+      NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: Int(canvas.bounds.width),
+        pixelsHigh: Int(canvas.bounds.height),
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+      )
+    )
+    let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: representation))
+    let previousContext = NSGraphicsContext.current
+    NSGraphicsContext.current = context
+    defer { NSGraphicsContext.current = previousContext }
+
+    canvas.draw(canvas.bounds)
+    context.flushGraphics()
+    let bytes = try XCTUnwrap(representation.bitmapData)
+    return Data(
+      bytes: bytes,
+      count: representation.bytesPerRow * representation.pixelsHigh
+    )
+  }
+
+  private func removingEditableText(from element: SceneElement) -> SceneElement {
+    var element = element
+    switch element.content {
+    case .shape(var shape):
+      shape.label = nil
+      element.content = .shape(shape)
+    case .text(var text):
+      text.string = ""
+      element.content = .text(text)
+    case .connector(var connector):
+      connector.label = nil
+      element.content = .connector(connector)
+    case .path, .image, .group:
+      break
+    }
+
+    return element
   }
 
   private func click(canvas: SionCanvasView, at point: SionPoint) throws {

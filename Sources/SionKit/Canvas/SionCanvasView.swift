@@ -119,6 +119,108 @@
       addCursorRect(bounds, cursor: cursor)
     }
 
+    private var hoverTrackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+      super.updateTrackingAreas()
+
+      if let hoverTrackingArea {
+        removeTrackingArea(hoverTrackingArea)
+      }
+
+      let area = NSTrackingArea(
+        rect: bounds,
+        options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
+        owner: self,
+        userInfo: nil
+      )
+      addTrackingArea(area)
+      hoverTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+      updateCursor(at: modelPoint(from: event))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+      updateCursor(at: modelPoint(from: event))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+      NSCursor.arrow.set()
+    }
+
+    /// The canvas reads as a physical surface: hands for moves, crosshairs
+    /// for creation tools, diagonal arrows over resize handles.
+    private func updateCursor(at point: SionPoint) {
+      cursor(for: point).set()
+    }
+
+    private func cursor(for point: SionPoint) -> NSCursor {
+      switch editorController.tool {
+      case .select:
+        if editorController.anchorEditingState != .inactive {
+          return .crosshair
+        }
+      case .shape, .text, .connector, .magnets:
+        return .crosshair
+      }
+
+      if let element = editorController.selectedElement,
+        element.lockState == .editable,
+        element.content.connector == nil,
+        let handle = resizeHandle(at: point, for: element)
+      {
+        return Self.resizeCursor(for: handle)
+      }
+
+      if let element = editorController.element(at: point),
+        element.lockState == .editable,
+        element.content.connector == nil
+      {
+        return .openHand
+      }
+
+      return .arrow
+    }
+
+    /// Corner handles take diagonal arrows; edge handles take axis arrows.
+    private static func resizeCursor(for handle: ResizeHandle) -> NSCursor {
+      switch handle {
+      case .northWest, .southEast:
+        return northwestSoutheastResizeCursor
+      case .northEast, .southWest:
+        return northeastSouthwestResizeCursor
+      case .north, .south:
+        return .resizeUpDown
+      case .east, .west:
+        return .resizeLeftRight
+      }
+    }
+
+    private static let northwestSoutheastResizeCursor = makeResizeCursor(
+      symbolName: "arrow.up.left.and.arrow.down.right"
+    )
+
+    private static let northeastSouthwestResizeCursor = makeResizeCursor(
+      symbolName: "arrow.up.right.and.arrow.down.left"
+    )
+
+    private static func makeResizeCursor(symbolName: String) -> NSCursor {
+      let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+      guard
+        let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+          .withSymbolConfiguration(configuration)
+      else {
+        return .crosshair
+      }
+
+      return NSCursor(
+        image: symbol,
+        hotSpot: NSPoint(x: symbol.size.width / 2, y: symbol.size.height / 2)
+      )
+    }
+
     var visibleCenter: SionPoint { visibleCanvasCenter() }
 
     func commitPendingEdits() {
@@ -268,6 +370,7 @@
     override func mouseUp(with event: NSEvent) {
       guard let drag else { return }
       self.drag = nil
+      updateCursor(at: modelPoint(from: event))
 
       switch drag {
       case .move:
@@ -557,6 +660,7 @@
       do {
         try editorController.beginMove()
         drag = .move(lastPoint: point)
+        NSCursor.closedHand.set()
       } catch {
         drag = nil
       }

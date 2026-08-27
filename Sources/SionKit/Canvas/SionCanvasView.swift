@@ -47,7 +47,7 @@
       )
       case create(creation: Creation, start: SionPoint, current: SionPoint)
       case connector(sourceID: ElementID?, start: SionPoint, current: SionPoint)
-      case marquee(origin: SionPoint, current: SionPoint, extendsSelection: Bool)
+      case marquee(origin: SionPoint, current: SionPoint)
     }
 
     private let editorController: SionEditorController
@@ -283,12 +283,8 @@
           current: target.point
         )
         needsDisplay = true
-      case .marquee(let origin, _, let extendsSelection):
-        self.drag = .marquee(
-          origin: origin,
-          current: point,
-          extendsSelection: extendsSelection
-        )
+      case .marquee(let origin, _):
+        self.drag = .marquee(origin: origin, current: point)
         needsDisplay = true
       }
     }
@@ -322,8 +318,14 @@
           to: target.elementID,
           targetPoint: end
         )
-      case .marquee(let origin, let current, let extendsSelection):
-        endMarquee(from: origin, to: current, extendsSelection: extendsSelection)
+      case .marquee(let origin, let current):
+        // Modifier state at release decides replace versus extend, matching
+        // the gesture the user believes they performed.
+        endMarquee(
+          from: origin,
+          to: current,
+          extending: event.modifierFlags.contains(.shift)
+        )
       }
     }
 
@@ -377,7 +379,9 @@
       try? editorController.deleteSelection()
     }
 
-    /// Escape cancels inwards: live gesture, then text editing, then selection.
+    /// Escape cancels inwards: text editing, then a live gesture, then selection.
+    /// keyDown covers the canvas as first responder; cancelOperation catches
+    /// Escape bubbling from a hosted text editor.
     @objc override func cancelOperation(_ sender: Any?) {
       cancelInteraction()
     }
@@ -592,20 +596,11 @@
       }
 
       guard let element = editorController.element(at: point) else {
-        if event.modifierFlags.contains(.shift) {
-          drag = .marquee(
-            origin: point,
-            current: point,
-            extendsSelection: true
-          )
-        } else {
+        // Shift keeps the current selection as the marquee's base.
+        if !event.modifierFlags.contains(.shift) {
           editorController.select(nil)
-          drag = .marquee(
-            origin: point,
-            current: point,
-            extendsSelection: false
-          )
         }
+        drag = .marquee(origin: point, current: point)
         return
       }
 
@@ -1576,7 +1571,7 @@
     }
 
     private func drawMarquee() {
-      guard case .marquee(let origin, let current, _) = drag else { return }
+      guard case .marquee(let origin, let current) = drag else { return }
 
       let start = NSPoint(x: origin.x, y: origin.y)
       let end = NSPoint(x: current.x, y: current.y)
@@ -1586,7 +1581,10 @@
         width: abs(end.x - start.x),
         height: abs(end.y - start.y)
       )
-      guard rect.width >= 1 || rect.height >= 1 else { return }
+      guard
+        rect.width >= CanvasMetrics.minimumMarqueeSize
+          || rect.height >= CanvasMetrics.minimumMarqueeSize
+      else { return }
 
       NSColor.controlAccentColor.withAlphaComponent(CanvasMetrics.marqueeFillOpacity).setFill()
       rect.fill()
@@ -1598,13 +1596,9 @@
       border.stroke()
     }
 
-    /// Selects every visible element the marquee touched: shapes by frame,
-    /// connectors when their routed path crosses the rectangle.
-    private func endMarquee(
-      from origin: SionPoint,
-      to current: SionPoint,
-      extendsSelection: Bool
-    ) {
+    /// Commits the rubber band: touched elements join the selection, replacing
+    /// it unless Shift extends at release time.
+    private func endMarquee(from origin: SionPoint, to current: SionPoint, extending: Bool) {
       let marqueeRect = SionRect(
         origin: origin,
         size: SionSize(width: current.x - origin.x, height: current.y - origin.y)
@@ -1614,30 +1608,9 @@
           || marqueeRect.height >= CanvasMetrics.minimumMarqueeSize
       else { return }
 
-      var selectedIDs = Set<ElementID>()
-      for element in editorController.document.scene.elements {
-        guard element.visibility == .visible, element.lockState == .editable else { continue }
-
-        if element.content.connector == nil {
-          if element.geometry.frame.standardized.intersects(marqueeRect) {
-            selectedIDs.insert(element.id)
-          }
-          continue
-        }
-
-        guard let route = editorController.connectorRoute(for: element) else { continue }
-
-        let crossesMarquee =
-          route.polylinePoints.contains { marqueeRect.contains($0) }
-          || route.polylineSegments.contains { $0.intersectsInterior(of: marqueeRect) }
-        if crossesMarquee {
-          selectedIDs.insert(element.id)
-        }
-      }
-
       editorController.select(
-        selectedIDs,
-        mode: extendsSelection ? .extend : .replace
+        editorController.elementIDsIntersecting(marqueeRect),
+        mode: extending ? .extend : .replace
       )
     }
 

@@ -152,9 +152,7 @@ extension SceneCommand {
     }
 
     var removedIDs = requestedIDs
-    for id in requestedIDs {
-      removedIDs.formUnion(scene.descendantIDs(of: id))
-    }
+    removedIDs.formUnion(descendants(of: requestedIDs, in: scene))
 
     for element in scene.elements where removedIDs.contains(element.id) {
       guard element.lockState == .editable else {
@@ -218,18 +216,22 @@ extension SceneCommand {
   ) throws {
     try requireElements(requestedIDs, in: scene)
 
+    // In a validated scene only groups own children, so one descendant walk
+    // over every requested ID replaces a per-group traversal.
     var translatedIDs = requestedIDs
-    for id in requestedIDs {
-      guard scene.element(withID: id)?.content.isGroup == true else {
-        continue
-      }
+    translatedIDs.formUnion(descendants(of: requestedIDs, in: scene))
 
-      translatedIDs.formUnion(scene.descendantIDs(of: id))
+    // Validate the full move before mutating any element.
+    for element in scene.elements where translatedIDs.contains(element.id) {
+      guard element.lockState == .editable else {
+        throw SceneEditingError.elementLocked(element.id)
+      }
     }
 
-    let orderedIDs = scene.elements.map(\.id).filter(translatedIDs.contains)
-    for id in orderedIDs {
-      try updateEditableElement(id, in: &scene) { element in
+    for index in scene.elements.indices {
+      guard translatedIDs.contains(scene.elements[index].id) else { continue }
+
+      try updateEditableElement(at: index, in: &scene) { element in
         element.geometry.frame.origin = translated(element.geometry.frame.origin, by: offset)
         element.content = translatedConnectorContent(
           element.content,
@@ -248,8 +250,8 @@ extension SceneCommand {
 
     let movesObstacle =
       offset != .zero
-      && orderedIDs.contains { id in
-        scene.element(withID: id)?.content.connector == nil
+      && scene.elements.contains { element in
+        translatedIDs.contains(element.id) && element.content.connector == nil
       }
     if movesObstacle {
       invalidateResolvedConnectorRoutes(in: &scene)
@@ -268,10 +270,13 @@ extension SceneCommand {
 
     try requireElements(requestedIDSet, in: scene)
 
+    let indicesByID = self.indicesByID(in: scene)
     let movedElements = try requestedIDs.map { id -> SceneElement in
-      guard let element = scene.element(withID: id) else {
+      guard let index = indicesByID[id] else {
         throw SceneEditingError.elementNotFound(id)
       }
+
+      let element = scene.elements[index]
 
       guard element.lockState == .editable else {
         throw SceneEditingError.elementLocked(id)
@@ -351,9 +356,11 @@ extension SceneCommand {
   }
 
   private func requireElements(_ ids: Set<ElementID>, in scene: SionScene) throws {
-    for id in ids.sorted(by: { $0.description < $1.description })
-    where scene.element(withID: id) == nil {
-      throw SceneEditingError.elementNotFound(id)
+    let existingIDs = Set(scene.elements.map(\.id))
+    let missingIDs = ids.subtracting(existingIDs).sorted { $0.description < $1.description }
+
+    if let firstMissing = missingIDs.first {
+      throw SceneEditingError.elementNotFound(firstMissing)
     }
   }
 
@@ -374,9 +381,22 @@ extension SceneCommand {
     in scene: inout SionScene,
     update: (inout SceneElement) throws -> Void
   ) throws {
-    try updateElement(id, in: &scene) { element in
+    guard let index = scene.index(of: id) else {
+      throw SceneEditingError.elementNotFound(id)
+    }
+
+    try updateEditableElement(at: index, in: &scene, update: update)
+  }
+
+  /// Indices stay valid while a command mutates elements only in place.
+  private func updateEditableElement(
+    at index: Int,
+    in scene: inout SionScene,
+    update: (inout SceneElement) throws -> Void
+  ) throws {
+    try updateElement(at: index, in: &scene) { element in
       guard element.lockState == .editable else {
-        throw SceneEditingError.elementLocked(id)
+        throw SceneEditingError.elementLocked(element.id)
       }
 
       try update(&element)
@@ -392,7 +412,50 @@ extension SceneCommand {
       throw SceneEditingError.elementNotFound(id)
     }
 
+    try updateElement(at: index, in: &scene, update: update)
+  }
+
+  private func updateElement(
+    at index: Int,
+    in scene: inout SionScene,
+    update: (inout SceneElement) throws -> Void
+  ) throws {
     try update(&scene.elements[index])
+  }
+
+  private func indicesByID(in scene: SionScene) -> [ElementID: Int] {
+    var indices: [ElementID: Int] = [:]
+    indices.reserveCapacity(scene.elements.count)
+
+    for (index, element) in scene.elements.enumerated() {
+      indices[element.id] = index
+    }
+
+    return indices
+  }
+
+  /// One adjacency pass collects descendants of every requested root.
+  private func descendants(of requestedIDs: Set<ElementID>, in scene: SionScene) -> Set<ElementID> {
+    var childrenByParent: [ElementID: [ElementID]] = [:]
+    for element in scene.elements {
+      guard let parentID = element.parentID else { continue }
+
+      childrenByParent[parentID, default: []].append(element.id)
+    }
+
+    var descendants = Set<ElementID>()
+    var pending = Array(requestedIDs)
+
+    // The insert guard also terminates walks through mid-transaction cycles.
+    while let candidate = pending.popLast() {
+      for child in childrenByParent[candidate] ?? [] {
+        guard descendants.insert(child).inserted else { continue }
+
+        pending.append(child)
+      }
+    }
+
+    return descendants
   }
 
   private func translated(_ point: SionPoint, by offset: SionVector) -> SionPoint {

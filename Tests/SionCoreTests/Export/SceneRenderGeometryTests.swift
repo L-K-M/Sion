@@ -3,6 +3,8 @@ import XCTest
 @testable import SionCore
 
 final class SceneRenderGeometryTests: XCTestCase {
+  private let contentPadding = 32.0
+
   func testContentBoundsIncludeWideStroke() {
     var shape = SceneElement.shape(
       frame: SionRect(x: 100, y: 100, width: 100, height: 100),
@@ -17,11 +19,24 @@ final class SceneRenderGeometryTests: XCTestCase {
     let bounds = SceneRenderGeometry.contentBounds(
       of: SionScene(elements: [shape])
     )
+    let strokeRadius = (shape.style.stroke?.width ?? 0) / 2
 
-    XCTAssertLessThanOrEqual(bounds.minX, -32)
-    XCTAssertLessThanOrEqual(bounds.minY, -32)
-    XCTAssertGreaterThanOrEqual(bounds.maxX, 332)
-    XCTAssertGreaterThanOrEqual(bounds.maxY, 332)
+    XCTAssertLessThanOrEqual(
+      bounds.minX,
+      shape.geometry.frame.minX - strokeRadius - contentPadding
+    )
+    XCTAssertLessThanOrEqual(
+      bounds.minY,
+      shape.geometry.frame.minY - strokeRadius - contentPadding
+    )
+    XCTAssertGreaterThanOrEqual(
+      bounds.maxX,
+      shape.geometry.frame.maxX + strokeRadius + contentPadding
+    )
+    XCTAssertGreaterThanOrEqual(
+      bounds.maxY,
+      shape.geometry.frame.maxY + strokeRadius + contentPadding
+    )
   }
 
   func testContentBoundsIncludeDistantShadow() {
@@ -29,20 +44,24 @@ final class SceneRenderGeometryTests: XCTestCase {
       frame: SionRect(x: 0, y: 0, width: 100, height: 100),
       kind: .rectangle
     )
-    shape.style.shadows = [
-      ShadowStyle(
-        color: .primaryInk,
-        offset: SionVector(dx: 300, dy: 200),
-        blurRadius: 40
-      )
-    ]
+    let shadow = ShadowStyle(
+      color: .primaryInk,
+      offset: SionVector(dx: 300, dy: 200),
+      blurRadius: 40
+    )
+    shape.style.shadows = [shadow]
 
     let bounds = SceneRenderGeometry.contentBounds(
       of: SionScene(elements: [shape])
     )
-
-    XCTAssertGreaterThan(bounds.maxX, 432)
-    XCTAssertGreaterThan(bounds.maxY, 332)
+    XCTAssertGreaterThanOrEqual(
+      bounds.maxX,
+      shape.geometry.frame.maxX + shadow.offset.dx + shadow.blurRadius + contentPadding
+    )
+    XCTAssertGreaterThanOrEqual(
+      bounds.maxY,
+      shape.geometry.frame.maxY + shadow.offset.dy + shadow.blurRadius + contentPadding
+    )
   }
 
   func testContentBoundsIncludeLocalPathCommandsOutsideFrame() {
@@ -65,14 +84,17 @@ final class SceneRenderGeometryTests: XCTestCase {
     let bounds = SceneRenderGeometry.contentBounds(
       of: SionScene(elements: [element])
     )
+    let pathHull = SionRect(x: -100, y: -100, width: 600, height: 500)
+    let strokeRadius = (element.style.stroke?.width ?? 0) / 2
+    let paintedPadding = strokeRadius + contentPadding
 
-    XCTAssertLessThanOrEqual(bounds.minX, -132)
-    XCTAssertLessThanOrEqual(bounds.minY, -132)
-    XCTAssertGreaterThanOrEqual(bounds.maxX, 532)
-    XCTAssertGreaterThanOrEqual(bounds.maxY, 432)
+    XCTAssertLessThanOrEqual(bounds.minX, pathHull.minX - paintedPadding)
+    XCTAssertLessThanOrEqual(bounds.minY, pathHull.minY - paintedPadding)
+    XCTAssertGreaterThanOrEqual(bounds.maxX, pathHull.maxX + paintedPadding)
+    XCTAssertGreaterThanOrEqual(bounds.maxY, pathHull.maxY + paintedPadding)
   }
 
-  func testContentBoundsIncludeConnectorLabelAndMarker() {
+  func testContentBoundsIncludeConnectorEndMarker() {
     var connector = SceneElement.connector(
       source: .free(SionPoint(x: 0, y: 0)),
       target: .free(SionPoint(x: 100, y: 0)),
@@ -83,9 +105,7 @@ final class SceneRenderGeometryTests: XCTestCase {
         source: .free(SionPoint(x: 0, y: 0)),
         target: .free(SionPoint(x: 100, y: 0)),
         routingStyle: .straight,
-        targetDecoration: .filledArrow,
-        label: TextContent(string: "Endpoint"),
-        labelPosition: 1
+        targetDecoration: .filledArrow
       )
     )
     connector.style.stroke = StrokeStyle(color: .primaryInk, width: 20)
@@ -94,9 +114,34 @@ final class SceneRenderGeometryTests: XCTestCase {
       of: SionScene(elements: [connector])
     )
 
-    XCTAssertGreaterThanOrEqual(bounds.maxX, 212)
-    XCTAssertLessThanOrEqual(bounds.minY, -102)
-    XCTAssertGreaterThanOrEqual(bounds.maxY, 102)
+    XCTAssertGreaterThanOrEqual(bounds.maxX, 180 + contentPadding)
+    XCTAssertLessThanOrEqual(bounds.minY, -80 - contentPadding)
+    XCTAssertGreaterThanOrEqual(bounds.maxY, 80 + contentPadding)
+  }
+
+  func testContentBoundsIncludeConnectorLabel() {
+    var connector = SceneElement.connector(
+      source: .free(SionPoint(x: 0, y: 0)),
+      target: .free(SionPoint(x: 100, y: 0)),
+      routingStyle: .straight
+    )
+    connector.content = .connector(
+      ConnectorContent(
+        source: .free(SionPoint(x: 0, y: 0)),
+        target: .free(SionPoint(x: 100, y: 0)),
+        routingStyle: .straight,
+        label: TextContent(string: "Endpoint"),
+        labelPosition: 1
+      )
+    )
+
+    let bounds = SceneRenderGeometry.contentBounds(
+      of: SionScene(elements: [connector])
+    )
+
+    XCTAssertGreaterThanOrEqual(bounds.maxX, 180 + contentPadding)
+    XCTAssertLessThanOrEqual(bounds.minY, -18 - contentPadding)
+    XCTAssertGreaterThanOrEqual(bounds.maxY, 18 + contentPadding)
   }
 
   func testAutomaticBoundaryEndpointFollowsElementRotation() throws {

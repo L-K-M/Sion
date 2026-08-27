@@ -53,6 +53,7 @@
     private let creationFailureFeedback: @MainActor () -> Void
     private var observerID: UUID?
     private var drag: Drag?
+    private var magnificationObservation: NSKeyValueObservation?
     private var textEditor: NSScrollView?
     private var editedElementID: ElementID?
     private var inlineTextUndoManager: UndoManager?
@@ -149,6 +150,17 @@
 
       editorController.removeObserver(observerID)
       self.observerID = nil
+    }
+
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+
+      // Zoom-adaptive grid rendering must re-run whenever magnification
+      // changes, including layer-backed scaling that skips normal layout.
+      magnificationObservation = enclosingScrollView?.observe(\.magnification) {
+        [weak self] _, _ in
+        self?.needsDisplay = true
+      }
     }
 
     override func draw(_ dirtyRect: NSRect) {

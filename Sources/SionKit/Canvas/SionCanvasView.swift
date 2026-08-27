@@ -157,7 +157,11 @@
         try? editorController.moveSelection(by: offset)
         self.drag = .move(lastPoint: point)
       case .resize(let elementID, let corner, let startFrame):
-        let frame = resizedFrame(startFrame, moving: corner, to: point)
+        let frame = resizedFrame(
+          startFrame,
+          moving: corner,
+          to: editorController.snappedToGrid(point)
+        )
         try? editorController.resize(elementID, to: frame)
       case .connector(let sourceID, let start, _):
         self.drag = .connector(sourceID: sourceID, start: start, current: point)
@@ -234,6 +238,32 @@
 
     @objc override func selectAll(_ sender: Any?) {
       editorController.selectAll()
+    }
+
+    @objc func toggleGridVisibility(_ sender: Any?) {
+      let grid = editorController.document.scene.canvas.grid
+      try? editorController.setGridVisibility(
+        grid.visibility == .visible ? .hidden : .visible
+      )
+    }
+
+    @objc func toggleSnapToGrid(_ sender: Any?) {
+      editorController.isSnapToGridEnabled.toggle()
+    }
+
+    /// NSMenuItemValidation is informal on NSView; no override/super exists.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+      switch menuItem.action {
+      case #selector(toggleGridVisibility(_:)):
+        let grid = editorController.document.scene.canvas.grid
+        menuItem.state = grid.visibility == .visible ? .on : .off
+        return true
+      case #selector(toggleSnapToGrid(_:)):
+        menuItem.state = editorController.isSnapToGridEnabled ? .on : .off
+        return true
+      default:
+        return true
+      }
     }
 
     @objc func paste(_ sender: Any?) {

@@ -318,13 +318,13 @@
           to: target.elementID,
           targetPoint: end
         )
-      case .marquee(let origin, let current):
+      case .marquee(let origin, _):
         // Modifier state at release decides replace versus extend, matching
         // the gesture the user believes they performed.
         endMarquee(
           from: origin,
-          to: current,
-          extending: event.modifierFlags.contains(.shift)
+          to: modelPoint(from: event),
+          mode: event.modifierFlags.contains(.shift) ? .extend : .replace
         )
       }
     }
@@ -394,9 +394,9 @@
 
       if let activeDrag = drag {
         switch activeDrag {
-        case .move, .resize:
+        case .move, .resize, .rotate, .cornerRadius:
           editorController.cancelActiveGesture()
-        case .connector, .marquee:
+        case .create, .connector, .marquee:
           break
         }
 
@@ -1582,36 +1582,50 @@
         height: abs(end.y - start.y)
       )
       guard
-        rect.width >= CanvasMetrics.minimumMarqueeSize
-          || rect.height >= CanvasMetrics.minimumMarqueeSize
+        rect.width >= minimumMarqueeModelSize
+          || rect.height >= minimumMarqueeModelSize
       else { return }
 
       NSColor.controlAccentColor.withAlphaComponent(CanvasMetrics.marqueeFillOpacity).setFill()
       rect.fill()
       NSColor.controlAccentColor.setStroke()
       let border = NSBezierPath(rect: rect)
-      border.lineWidth = CanvasMetrics.selectionLineWidth
+      border.lineWidth = CanvasMetrics.selectionLineWidth * inverseMagnification
+      let marqueeDash = CanvasMetrics.selectionDash.map {
+        $0 * CGFloat(inverseMagnification)
+      }
       border.setLineDash(
-        CanvasMetrics.selectionDash, count: CanvasMetrics.selectionDash.count, phase: 0)
+        marqueeDash,
+        count: marqueeDash.count,
+        phase: 0
+      )
       border.stroke()
     }
 
     /// Commits the rubber band: touched elements join the selection, replacing
     /// it unless Shift extends at release time.
-    private func endMarquee(from origin: SionPoint, to current: SionPoint, extending: Bool) {
+    private func endMarquee(
+      from origin: SionPoint,
+      to current: SionPoint,
+      mode: SionEditorController.SelectionMode
+    ) {
       let marqueeRect = SionRect(
         origin: origin,
         size: SionSize(width: current.x - origin.x, height: current.y - origin.y)
       ).standardized
       guard
-        marqueeRect.width >= CanvasMetrics.minimumMarqueeSize
-          || marqueeRect.height >= CanvasMetrics.minimumMarqueeSize
+        marqueeRect.width >= minimumMarqueeModelSize
+          || marqueeRect.height >= minimumMarqueeModelSize
       else { return }
 
       editorController.select(
         editorController.elementIDsIntersecting(marqueeRect),
-        mode: extending ? .extend : .replace
+        mode: mode
       )
+    }
+
+    private var minimumMarqueeModelSize: Double {
+      CanvasMetrics.minimumMarqueeScreenSize * inverseMagnification
     }
 
     private func drawConnectorPreview() {
@@ -2207,7 +2221,7 @@
     static let textRenderCacheLimit = 512
     static let textRenderCacheEvictionDivisor = 4
     static let marqueeFillOpacity = 0.08
-    static let minimumMarqueeSize = 2.0
+    static let minimumMarqueeScreenSize = 2.0
   }
 
   private enum PasteboardType {

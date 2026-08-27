@@ -6,6 +6,8 @@
  */
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { IpcRendererEvent } from 'electron';
+import type { WindowBootstrap } from '../shared/windowBootstrap';
+import { SaveDialogPurpose } from '../shared/saveDialog';
 
 const thalyxApi = {
   dialog: {
@@ -15,10 +17,11 @@ const thalyxApi = {
       defaultName: string,
       contents: string,
       filters?: Array<{ name: string; extensions: string[] }>,
+      purpose: SaveDialogPurpose = SaveDialogPurpose.Export,
     ): Promise<string | null> => {
       // contents forwarded: main saves atomically in the SAME call when a
       // path is chosen (no second grant round-trip)
-      return ipcRenderer.invoke('dialog:saveFile', defaultName, contents, filters);
+      return ipcRenderer.invoke('dialog:saveFile', defaultName, contents, filters, purpose);
     },
   },
   file: {
@@ -58,6 +61,9 @@ const thalyxApi = {
   },
   appx: {
     version: (): Promise<string> => ipcRenderer.invoke('appx:version'),
+    bootstrap: (): Promise<WindowBootstrap> => ipcRenderer.invoke('appx:bootstrap'),
+    setAssociatedPath: (path: string | null): Promise<WindowBootstrap> =>
+      ipcRenderer.invoke('appx:setAssociatedPath', path),
     onMenu: (cb: (action: { action: string; arg?: unknown }) => void): (() => void) => {
       const listener = (_e: IpcRendererEvent, payload: { action: string; arg?: unknown }) =>
         cb(payload);
@@ -76,6 +82,23 @@ const thalyxApi = {
         cb(payload);
       ipcRenderer.on('thalyx:recovery-scratch', listener);
       return () => ipcRenderer.removeListener('thalyx:recovery-scratch', listener);
+    },
+    onBeforeClose: (flush: () => Promise<void>): (() => void) => {
+      let flushing = false;
+      const listener = () => {
+        if (flushing) return;
+
+        flushing = true;
+        void flush()
+          .then(() => ipcRenderer.invoke('appx:closeReady'))
+          .catch((error: unknown) => {
+            flushing = false;
+            void ipcRenderer.invoke('appx:closeFailed');
+            console.error('[close] save failed; window remains open', { error });
+          });
+      };
+      ipcRenderer.on('thalyx:before-close', listener);
+      return () => ipcRenderer.removeListener('thalyx:before-close', listener);
     },
     setDocumentEdited: (edited: boolean): Promise<void> =>
       ipcRenderer.invoke('appx:setDocumentEdited', edited),

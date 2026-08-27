@@ -15,6 +15,7 @@ import {
   newId,
   newNode as newNodeFactory,
 } from '../../shared/model/create';
+import { restoreDocument } from '../../shared/model/restore';
 import { importMermaid } from '../../shared/mermaid/import';
 import { layoutAll, layoutSubset } from '../../shared/layout/dagreLayout';
 import { tidyUp } from '../../shared/layout/tidy';
@@ -22,6 +23,7 @@ import {
   absolutePosition,
   boundsOfNodes,
   depthOfNode,
+  descendantIdsOf,
   descendantsOf,
   edgesAmong,
   getNode,
@@ -29,6 +31,7 @@ import {
 } from '../../shared/model/queries';
 import type { GuideLine } from '../../shared/snap/snap';
 import { LABEL_MAX } from '../../shared/model/schema';
+import { MIN_CONTAINER_HEIGHT, MIN_CONTAINER_WIDTH } from '../../shared/model/nodeSizes';
 import type {
   ArrowHead,
   EdgeKind,
@@ -214,21 +217,175 @@ export function setNodesLocked(ids: string[], locked: boolean): void {
   });
 }
 
+enum WaypointInvalidationScope {
+  Node = 'node',
+  Subtree = 'subtree',
+}
+
+function invalidateWaypointsForMovedNodes(
+  doc: ThalyxDoc,
+  nodeIds: Iterable<string>,
+  scope: WaypointInvalidationScope = WaypointInvalidationScope.Subtree,
+): void {
+  if (!doc.edges.some((edge) => edge.waypoints && edge.waypoints.length > 0)) return;
+
+  const roots = [...nodeIds];
+  const affected = new Set(roots);
+  if (scope === WaypointInvalidationScope.Subtree) {
+    for (const id of descendantIdsOf(doc, roots)) affected.add(id);
+  }
+  if (affected.size === 0) return;
+
+  for (const edge of doc.edges) {
+    if (edge.waypoints && (affected.has(edge.source) || affected.has(edge.target))) {
+      delete edge.waypoints;
+    }
+  }
+}
+
 /** Drag frames: apply positions without history entries. */
 export function moveNodesTransient(positions: Array<{ id: string; x: number; y: number }>): void {
   transient((d) => {
     const map = new Map(positions.map((p) => [p.id, p]));
+    const affected = new Set(descendantIdsOf(d, map.keys()));
+    for (const id of map.keys()) affected.add(id);
+
+    const before = indexNodeGeometry(d.nodes).positions;
     for (const n of d.nodes) {
       const p = map.get(n.id);
       if (p && !n.locked) {
+        if (n.x === p.x && n.y === p.y) continue;
         n.x = p.x;
         n.y = p.y;
       }
     }
+
+    const after = indexNodeGeometry(d.nodes).positions;
+    const moved = [...affected].filter((id) => {
+      const oldPosition = before.get(id);
+      const newPosition = after.get(id);
+
+      return oldPosition?.x !== newPosition?.x || oldPosition?.y !== newPosition?.y;
+    });
+
+    invalidateWaypointsForMovedNodes(d, moved, WaypointInvalidationScope.Node);
   });
 }
 
-/** Resize frames (NodeResizer). Also transient; wrap in a gesture. */
+interface IndexedNodeGeometry {
+  byId: Map<string, ThalyxNode>;
+  positions: Map<string, { x: number; y: number }>;
+}
+
+/** Resolve every absolute position once; parent lookup stays constant-time. */
+function indexNodeGeometry(nodes: ThalyxNode[]): IndexedNodeGeometry {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const positions = new Map<string, { x: number; y: number }>();
+
+  for (const node of nodes) {
+    if (positions.has(node.id)) continue;
+
+    const chain: ThalyxNode[] = [];
+    const seen = new Set<string>();
+    let cursor: ThalyxNode | undefined = node;
+    while (cursor && !positions.has(cursor.id) && !seen.has(cursor.id)) {
+      seen.add(cursor.id);
+      chain.push(cursor);
+      cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+    }
+
+    let position = cursor ? (positions.get(cursor.id) ?? { x: 0, y: 0 }) : { x: 0, y: 0 };
+    while (chain.length > 0) {
+      const current = chain.pop()!;
+      position = { x: position.x + current.x, y: position.y + current.y };
+      positions.set(current.id, position);
+    }
+  }
+
+  return { byId, positions };
+}
+
+function ancestorIds(node: ThalyxNode, byId: Map<string, ThalyxNode>): Set<string> {
+  const ancestors = new Set<string>();
+  let cursor = node.parentId;
+  while (cursor !== undefined && !ancestors.has(cursor)) {
+    ancestors.add(cursor);
+    cursor = byId.get(cursor)?.parentId;
+  }
+
+  return ancestors;
+}
+
+function parentsBeforeChildren(nodes: ThalyxNode[]): ThalyxNode[] {
+  const ordered: ThalyxNode[] = [];
+  const emitted = new Set<string>();
+  let pending = nodes;
+
+  while (pending.length > 0) {
+    const deferred: ThalyxNode[] = [];
+    for (const node of pending) {
+      if (node.parentId !== undefined && !emitted.has(node.parentId)) {
+        deferred.push(node);
+        continue;
+      }
+
+      emitted.add(node.id);
+      ordered.push(node);
+    }
+    if (deferred.length === pending.length) return nodes;
+
+    pending = deferred;
+  }
+
+  return ordered;
+}
+
+/** Reparent dropped nodes by full containment while preserving absolute positions. */
+export function reparentNodesTransient(ids: string[]): void {
+  transient((doc) => {
+    const { byId, positions } = indexNodeGeometry(doc.nodes);
+    const containers = doc.nodes
+      .filter((node) => node.kind === 'container')
+      .map((node) => ({
+        node,
+        position: positions.get(node.id)!,
+        ancestors: ancestorIds(node, byId),
+        area: node.width * node.height,
+      }));
+    let changed = false;
+
+    for (const id of new Set(ids)) {
+      const node = byId.get(id);
+      const absolute = positions.get(id);
+      if (!node || !absolute || node.locked) continue;
+
+      let destination: (typeof containers)[number] | undefined;
+      for (const candidate of containers) {
+        if (candidate.node.id === id || candidate.ancestors.has(id)) continue;
+
+        const contains =
+          absolute.x >= candidate.position.x &&
+          absolute.y >= candidate.position.y &&
+          absolute.x + node.width <= candidate.position.x + candidate.node.width &&
+          absolute.y + node.height <= candidate.position.y + candidate.node.height;
+        if (!contains || (destination && candidate.area >= destination.area)) continue;
+
+        destination = candidate;
+      }
+
+      const nextParentId = destination?.node.id;
+      if (node.parentId === nextParentId) continue;
+
+      node.parentId = nextParentId;
+      node.x = absolute.x - (destination?.position.x ?? 0);
+      node.y = absolute.y - (destination?.position.y ?? 0);
+      changed = true;
+    }
+
+    if (changed) doc.nodes = parentsBeforeChildren(doc.nodes);
+  });
+}
+
 export function resizeNodeTransient(
   id: string,
   box: { x?: number; y?: number; width: number; height: number },
@@ -236,10 +393,24 @@ export function resizeNodeTransient(
   transient((d) => {
     const n = d.nodes.find((x) => x.id === id);
     if (!n || n.locked) return;
+    const minWidth = n.kind === 'container' ? MIN_CONTAINER_WIDTH : 8;
+    const minHeight = n.kind === 'container' ? MIN_CONTAINER_HEIGHT : 8;
+    const nextWidth = Math.max(minWidth, box.width);
+    const nextHeight = Math.max(minHeight, box.height);
+    const positionChanged =
+      (box.x !== undefined && box.x !== n.x) || (box.y !== undefined && box.y !== n.y);
+    const dimensionsChanged = nextWidth !== n.width || nextHeight !== n.height;
+    if (!positionChanged && !dimensionsChanged) return;
+
     if (box.x !== undefined) n.x = box.x;
     if (box.y !== undefined) n.y = box.y;
-    n.width = Math.max(8, box.width);
-    n.height = Math.max(8, box.height);
+    n.width = nextWidth;
+    n.height = nextHeight;
+    invalidateWaypointsForMovedNodes(
+      d,
+      [id],
+      positionChanged ? WaypointInvalidationScope.Subtree : WaypointInvalidationScope.Node,
+    );
   });
 }
 
@@ -249,13 +420,17 @@ export function setNodesPosition(
   pos: (node: ThalyxNode) => { x: number; y: number },
 ): void {
   tracked((d) => {
+    const moved: string[] = [];
     for (const n of d.nodes) {
       if (ids.includes(n.id) && !n.locked) {
         const p = pos(n);
+        if (n.x === p.x && n.y === p.y) continue;
         n.x = p.x;
         n.y = p.y;
+        moved.push(n.id);
       }
     }
+    invalidateWaypointsForMovedNodes(d, moved);
   });
 }
 
@@ -267,32 +442,40 @@ function selectedNodes(d: ThalyxDoc, sel: SessionState): ThalyxNode[] {
   return d.nodes.filter((n) => sel.selection.nodeIds.includes(n.id));
 }
 
-/**
- * Delete the current selection. Deleting a node deletes its edges AND its
- * descendants (containers take their children with them) — all in ONE history
- * entry (invariant §7.2.1).
- */
-export function deleteSelection(): void {
+function expandedSelectionNodeIds(doc: ThalyxDoc, selectedIds: Iterable<string>): Set<string> {
+  const nodeIds = new Set(selectedIds);
+  const containerIds = doc.nodes
+    .filter((node) => node.kind === 'container' && nodeIds.has(node.id))
+    .map((node) => node.id);
+  for (const id of descendantIdsOf(doc, containerIds)) nodeIds.add(id);
+
+  return nodeIds;
+}
+
+function deleteSelectionIds(selectedNodeIds: string[], selectedEdgeIds: string[]): void {
+  if (selectedNodeIds.length === 0 && selectedEdgeIds.length === 0) return;
+
   tracked(
-    (d) => {
-      const sel = getStore().session;
-      const nodeIds = new Set(sel.selection.nodeIds);
-      // expand containers to include descendants
-      for (const id of [...nodeIds]) {
-        const n = getNode(d, id);
-        if (n && n.kind === 'container') {
-          for (const desc of descendantsOf(d, id)) nodeIds.add(desc.id);
-        }
+    (doc) => {
+      const nodeIds = expandedSelectionNodeIds(doc, selectedNodeIds);
+      const edgeIds = new Set(selectedEdgeIds);
+      for (const edge of doc.edges) {
+        if (nodeIds.has(edge.source) || nodeIds.has(edge.target)) edgeIds.add(edge.id);
       }
-      const edgeIds = new Set(sel.selection.edgeIds);
-      for (const e of d.edges) {
-        if (nodeIds.has(e.source) || nodeIds.has(e.target)) edgeIds.add(e.id);
-      }
-      d.nodes = d.nodes.filter((n) => !nodeIds.has(n.id));
-      d.edges = d.edges.filter((e) => !edgeIds.has(e.id));
+
+      const nodes = doc.nodes.filter((node) => !nodeIds.has(node.id));
+      const edges = doc.edges.filter((edge) => !edgeIds.has(edge.id));
+      if (nodes.length !== doc.nodes.length) doc.nodes = nodes;
+      if (edges.length !== doc.edges.length) doc.edges = edges;
     },
     { selection: { nodeIds: [], edgeIds: [] }, editingLabel: null },
   );
+}
+
+/** Delete the current selection and contained descendants as one intent. */
+export function deleteSelection(): void {
+  const selection = getStore().session.selection;
+  deleteSelectionIds(selection.nodeIds, selection.edgeIds);
 }
 
 export interface ReIdResult {
@@ -300,6 +483,19 @@ export interface ReIdResult {
   edges: ThalyxEdge[];
   /** original id → fresh id (for callers that must map positions etc.) */
   idMap: Map<string, string>;
+}
+
+/** Detach copied roots without losing their absolute canvas position. */
+function detachedSubgraphRoots(doc: ThalyxDoc, nodes: ThalyxNode[]): ThalyxNode[] {
+  const included = new Set(nodes.map((node) => node.id));
+  return nodes.map((node) => {
+    if (node.parentId !== undefined && included.has(node.parentId)) return node;
+
+    const position = absolutePosition(doc, node);
+    const detached = { ...node, x: position.x, y: position.y };
+    delete detached.parentId;
+    return detached;
+  });
 }
 
 /** Re-id a set of nodes + intra-set edges with fresh ids (paste/duplicate core). */
@@ -314,11 +510,14 @@ function reIdSubgraph(
   const idMap = new Map<string, string>();
   for (const n of nodes) idMap.set(n.id, newId());
   const remapId = (id: string): string => idMap.get(id) ?? id;
+  const connectableIds = new Set(
+    nodes.filter((node) => node.kind !== 'mermaid').map((node) => node.id),
+  );
   const newNodes = nodes.map((n) => ({
     ...n,
     id: idMap.get(n.id)!,
-    x: n.x + dx,
-    y: n.y + dy,
+    x: n.x + (n.parentId !== undefined && idMap.has(n.parentId) ? 0 : dx),
+    y: n.y + (n.parentId !== undefined && idMap.has(n.parentId) ? 0 : dy),
     // Containment must stay within the pasted subgraph — a parentId pointing
     // outside it would dangle (invariant §7.2.2).
     parentId:
@@ -327,16 +526,21 @@ function reIdSubgraph(
   }));
   // Edges must resolve inside the pasted subgraph (invariant §7.2.1).
   const newEdges = edges
-    .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+    .filter(
+      (edge) =>
+        edge.source !== edge.target &&
+        connectableIds.has(edge.source) &&
+        connectableIds.has(edge.target),
+    )
     .map((e) => ({
       ...e,
       id: newId(),
       source: remapId(e.source),
       target: remapId(e.target),
-      waypoints: e.waypoints?.map((p) => ({ ...p })),
+      waypoints: e.waypoints?.map((p) => ({ x: p.x + dx, y: p.y + dy })),
       meta: e.meta ? JSON.parse(JSON.stringify(e.meta)) : undefined,
     }));
-  return { nodes: newNodes, edges: newEdges, idMap };
+  return { nodes: parentsBeforeChildren(newNodes), edges: newEdges, idMap };
 }
 
 /**
@@ -350,18 +554,14 @@ export function duplicateSelection(): void {
   if (selected.length === 0) return;
   // containers duplicate with their descendants iff descendants are selected too;
   // a partially-selected container still duplicates whole (children re-id)
-  const withDescendants: ThalyxNode[] = [];
-  const seen = new Set<string>();
-  for (const n of selected) {
-    for (const m of [n, ...descendantsOf(state.doc, n.id)]) {
-      if (!seen.has(m.id)) {
-        seen.add(m.id);
-        withDescendants.push(m);
-      }
-    }
-  }
+  const included = expandedSelectionNodeIds(
+    state.doc,
+    selected.map((node) => node.id),
+  );
+  const withDescendants = state.doc.nodes.filter((node) => included.has(node.id));
   const intra = edgesAmong(state.doc, new Set(withDescendants.map((n) => n.id)));
-  const dup = reIdSubgraph(withDescendants, intra, 16, 16);
+  const detached = detachedSubgraphRoots(state.doc, withDescendants);
+  const dup = reIdSubgraph(detached, intra, 16, 16);
   tracked(
     (d) => {
       d.nodes.push(...dup.nodes);
@@ -388,13 +588,17 @@ export function autoLayout(directionOverride?: 'TB' | 'BT' | 'LR' | 'RL'): void 
       : layoutAll(state.doc, { rankdir: direction });
   if (positions.size === 0) return; // empty canvas: no no-op undo entry
   tracked((d) => {
+    const moved: string[] = [];
     for (const n of d.nodes) {
       const p = positions.get(n.id);
       if (p && !n.locked) {
+        if (n.x === p.x && n.y === p.y) continue;
         n.x = p.x;
         n.y = p.y;
+        moved.push(n.id);
       }
     }
+    invalidateWaypointsForMovedNodes(d, moved);
   });
 }
 
@@ -406,13 +610,17 @@ export function tidyUpSelection(): void {
   if (nodes.length < 2) return;
   const { positions } = tidyUp(state.doc, nodes);
   tracked((d) => {
+    const moved: string[] = [];
     for (const n of d.nodes) {
       const p = positions.get(n.id);
       if (p) {
+        if (n.x === p.x && n.y === p.y) continue;
         n.x = p.x;
         n.y = p.y;
+        moved.push(n.id);
       }
     }
+    invalidateWaypointsForMovedNodes(d, moved);
   });
 }
 
@@ -423,6 +631,11 @@ export function tidyUpSelection(): void {
  * label editor. If a node already sits within the corridor, connect to it
  * instead (draw.io rule).
  */
+const OPPOSITE_ANCHOR: Record<
+  Exclude<ThalyxEdge['sourceAnchor'], 'auto'>,
+  Exclude<ThalyxEdge['targetAnchor'], 'auto'>
+> = { n: 's', s: 'n', e: 'w', w: 'e' };
+
 export function growConnectedNode(
   sourceId: string,
   dir: 'n' | 's' | 'e' | 'w',
@@ -431,11 +644,12 @@ export function growConnectedNode(
   const state = getStore();
   const doc = state.doc;
   const source = doc.nodes.find((n) => n.id === sourceId);
-  if (!source || source.kind === 'mermaid') return null;
+  if (!source || source.kind !== 'shape') return null;
   const sAbs = absolutePosition(doc, source);
   const GAP = 48;
 
   const sourceRect = { x: sAbs.x, y: sAbs.y, w: source.width, h: source.height };
+  const oppositeAnchor = OPPOSITE_ANCHOR[dir];
   let best: { id: string; dist: number } | null = null;
   for (const n of doc.nodes) {
     if (n.id === sourceId || n.hidden || n.kind === 'mermaid' || n.kind === 'container') continue;
@@ -469,7 +683,12 @@ export function growConnectedNode(
         ((e.source === sourceId && e.target === best!.id) ||
           (e.source === best!.id && e.target === sourceId)),
     );
-    if (!exists) connectEdge(sourceId, best.id, 'arrow');
+    if (!exists) {
+      connectEdge(sourceId, best.id, 'arrow', {
+        sourceAnchor: dir,
+        targetAnchor: oppositeAnchor,
+      });
+    }
     setStore((s) => ({
       session: { ...s.session, selection: { nodeIds: [best!.id], edgeIds: [] } },
     }));
@@ -497,12 +716,35 @@ export function growConnectedNode(
     height: source.height,
     style: { ...source.style },
   });
+  let ancestorId = source.parentId;
+  while (ancestorId !== undefined) {
+    const ancestor = getNode(doc, ancestorId);
+    if (!ancestor) break;
+
+    const ancestorAbsolute = absolutePosition(doc, ancestor);
+    const fitsAncestor =
+      grown.x >= ancestorAbsolute.x &&
+      grown.y >= ancestorAbsolute.y &&
+      grown.x + grown.width <= ancestorAbsolute.x + ancestor.width &&
+      grown.y + grown.height <= ancestorAbsolute.y + ancestor.height;
+    if (fitsAncestor) {
+      grown.x -= ancestorAbsolute.x;
+      grown.y -= ancestorAbsolute.y;
+      grown.parentId = ancestor.id;
+      break;
+    }
+
+    ancestorId = ancestor.parentId;
+  }
+
   const session = getStore().session;
   const arrowEnd = session.lastEdgeStyle.arrowEnd;
   const line = session.lastEdgeStyle.line;
   const edge = newEdgeFactory({
     source: sourceId,
     target: grown.id,
+    sourceAnchor: dir,
+    targetAnchor: oppositeAnchor,
     arrowStart: 'none',
     arrowEnd,
     style: { line },
@@ -542,6 +784,7 @@ export function alignSelection(edge: AlignEdge): void {
     if (nodes.length < 2) return;
     const bounds = boundsOfNodes(d, nodes);
     if (!bounds) return;
+    const moved: string[] = [];
     for (const n of nodes) {
       let target: number;
       switch (edge) {
@@ -568,11 +811,17 @@ export function alignSelection(edge: AlignEdge): void {
       const parent = n.parentId ? getNode(d, n.parentId) : undefined;
       const parentAbs = parent ? absolutePosition(d, parent) : { x: 0, y: 0 };
       if (edge === 'left' || edge === 'hcenter' || edge === 'right') {
-        n.x = target - parentAbs.x;
+        const x = target - parentAbs.x;
+        if (n.x === x) continue;
+        n.x = x;
       } else {
-        n.y = target - parentAbs.y;
+        const y = target - parentAbs.y;
+        if (n.y === y) continue;
+        n.y = y;
       }
+      moved.push(n.id);
     }
+    invalidateWaypointsForMovedNodes(d, moved);
   });
 }
 
@@ -762,6 +1011,8 @@ export function dissolveContainer(): void {
 export interface AddEdgeInit {
   source: string;
   target: string;
+  sourceAnchor?: ThalyxEdge['sourceAnchor'];
+  targetAnchor?: ThalyxEdge['targetAnchor'];
   kind?: EdgeKind;
   label?: string;
   arrowStart?: ArrowHead;
@@ -776,6 +1027,7 @@ export function addEdge(init: AddEdgeInit): string {
   const target = getNode(doc, init.target);
   if (!source || !target)
     throw new Error(`addEdge: unknown endpoint (${init.source} → ${init.target})`);
+  if (init.source === init.target) throw new Error('addEdge: self-connections are not allowed');
   if (source.kind === 'mermaid' || target.kind === 'mermaid') {
     throw new Error('addEdge: mermaid islands cannot participate in edges');
   }
@@ -793,11 +1045,29 @@ export function addEdge(init: AddEdgeInit): string {
  * Connect two nodes (the arrow/line tools and handle drags land here).
  * Inherits the last-used edge style (§10.1 delta 1) and records it back.
  */
-export function connectEdge(source: string, target: string, tool: Tool): string {
+export interface ConnectionAnchors {
+  sourceAnchor?: ThalyxEdge['sourceAnchor'];
+  targetAnchor?: ThalyxEdge['targetAnchor'];
+}
+
+export function connectEdge(
+  source: string,
+  target: string,
+  tool: Tool,
+  anchors: ConnectionAnchors = {},
+): string {
   const session = getStore().session;
-  const arrowEnd = tool === 'line' ? 'none' : session.lastEdgeStyle.arrowEnd;
+  const arrowEnd =
+    tool === 'line' ? 'none' : tool === 'arrow' ? 'arrow' : session.lastEdgeStyle.arrowEnd;
   const line = session.lastEdgeStyle.line;
-  const id = addEdge({ source, target, arrowStart: 'none', arrowEnd, style: { line } });
+  const id = addEdge({
+    source,
+    target,
+    ...anchors,
+    arrowStart: 'none',
+    arrowEnd,
+    style: { line },
+  });
   setStore((s) => ({
     session: { ...s.session, lastEdgeStyle: { arrowEnd, line } },
   }));
@@ -849,16 +1119,90 @@ export function altDragDuplicate(
   );
 }
 
+/** Finish Alt-drag inside its existing history gesture. */
+export function finishAltDragDuplicate(selectedIds: string[]): string[] {
+  const state = getStore();
+  const original = state.history.pending;
+  if (!original) return [];
+
+  const selected = original.nodes.filter((node) => selectedIds.includes(node.id));
+  if (selected.length === 0) {
+    endGesture();
+    return [];
+  }
+
+  const selectedSet = expandedSelectionNodeIds(
+    original,
+    selected.map((node) => node.id),
+  );
+  const selectedNodes = original.nodes.filter((node) => selectedSet.has(node.id));
+
+  const roots = selectedNodes.filter(
+    (node) => node.parentId === undefined || !selectedSet.has(node.parentId),
+  );
+  const currentById = new Map(state.doc.nodes.map((node) => [node.id, node]));
+  const firstRoot = roots[0];
+  const currentRoot = firstRoot ? currentById.get(firstRoot.id) : undefined;
+  const originalAbsolute = firstRoot ? absolutePosition(original, firstRoot) : { x: 0, y: 0 };
+  const currentAbsolute = currentRoot ? absolutePosition(state.doc, currentRoot) : originalAbsolute;
+  const dx = currentAbsolute.x - originalAbsolute.x;
+  const dy = currentAbsolute.y - originalAbsolute.y;
+
+  const originalEdges = edgesAmong(original, selectedSet);
+  const duplicate = reIdSubgraph(selectedNodes, originalEdges, 0, 0);
+  for (const edge of duplicate.edges) {
+    if (!edge.waypoints) continue;
+    edge.waypoints = edge.waypoints.map((point) => ({
+      x: point.x + dx,
+      y: point.y + dy,
+    }));
+  }
+
+  for (const root of roots) {
+    const copyId = duplicate.idMap.get(root.id);
+    const copy = duplicate.nodes.find((node) => node.id === copyId);
+    const moved = currentById.get(root.id);
+    if (!copy || !moved) continue;
+
+    const absolute = absolutePosition(state.doc, moved);
+    delete copy.parentId;
+    copy.x = absolute.x;
+    copy.y = absolute.y;
+  }
+
+  transient((doc) => {
+    doc.nodes = [...original.nodes, ...duplicate.nodes];
+    doc.edges = [...original.edges, ...duplicate.edges];
+  });
+
+  const copyRootIds = roots.flatMap((root) => {
+    const id = duplicate.idMap.get(root.id);
+    return id ? [id] : [];
+  });
+  reparentNodesTransient(copyRootIds);
+  setStore((store) => ({
+    session: {
+      ...store.session,
+      selection: { nodeIds: duplicate.nodes.map((node) => node.id), edgeIds: [] },
+    },
+  }));
+  endGesture();
+  return duplicate.nodes.map((node) => node.id);
+}
+
 /** Nudge (§10.2): move the selection by dx/dy (1 px, or 8 with Shift). */
 export function nudgeSelection(dx: number, dy: number): void {
   tracked((d) => {
     const sel = getStore().session;
+    const moved: string[] = [];
     for (const n of d.nodes) {
       if (sel.selection.nodeIds.includes(n.id) && !n.locked) {
         n.x += dx;
         n.y += dy;
+        moved.push(n.id);
       }
     }
+    invalidateWaypointsForMovedNodes(d, moved);
   });
 }
 
@@ -869,18 +1213,39 @@ export function setLastEdgeStyle(style: {
   setStore((s) => ({ session: { ...s.session, lastEdgeStyle: style } }));
 }
 
-export function updateEdge(
-  id: string,
-  patch: Partial<Omit<ThalyxEdge, 'id' | 'source' | 'target'>>,
-): void {
-  tracked((d) => {
-    const e = d.edges.find((x) => x.id === id);
-    if (!e) return;
-    const p = { ...patch }; // never mutate the caller's object
-    if (p.label !== undefined) p.label = p.label.slice(0, LABEL_MAX);
-    Object.assign(e, p);
-    if (e.labelT !== undefined) e.labelT = Math.min(1, Math.max(0, e.labelT));
+type EdgePatch = Partial<Omit<ThalyxEdge, 'id' | 'source' | 'target'>>;
+
+function applyEdgeModelPatch(edge: ThalyxEdge, patch: EdgePatch): void {
+  const next = { ...patch };
+  if (next.label !== undefined) next.label = next.label.slice(0, LABEL_MAX);
+  Object.assign(edge, next);
+  if (edge.labelT !== undefined) edge.labelT = Math.min(1, Math.max(0, edge.labelT));
+}
+
+function applyEdgePatch(doc: ThalyxDoc, id: string, patch: EdgePatch): void {
+  const edge = doc.edges.find((candidate) => candidate.id === id);
+  if (edge) applyEdgeModelPatch(edge, patch);
+}
+
+export function updateEdge(id: string, patch: EdgePatch): void {
+  tracked((doc) => applyEdgePatch(doc, id, patch));
+}
+
+/** Update a connector selection as one user action and Undo entry. */
+export function updateEdges(ids: string[], patch: (edge: ThalyxEdge) => EdgePatch): void {
+  if (ids.length === 0) return;
+  const selected = new Set(ids);
+
+  tracked((doc) => {
+    for (const edge of doc.edges) {
+      if (selected.has(edge.id)) applyEdgeModelPatch(edge, patch(edge));
+    }
   });
+}
+
+/** Pointer-frame edge patch; the surrounding gesture owns its undo entry. */
+export function updateEdgeTransient(id: string, patch: EdgePatch): void {
+  transient((doc) => applyEdgePatch(doc, id, patch));
 }
 
 /** Waypoint drag: transient frames inside a gesture; tracked on drop. */
@@ -983,7 +1348,40 @@ export function clearSelection(): void {
 }
 
 export function setTool(tool: Tool): void {
-  setStore((s) => ({ session: { ...s.session, tool } }));
+  setStore((state) => ({
+    session: { ...state.session, tool, toolLocked: false },
+  }));
+}
+
+export enum ToolActivationMode {
+  ToggleLock = 'toggle-lock',
+  ResetLock = 'reset-lock',
+  Lock = 'lock',
+}
+
+const LOCKABLE_TOOLS = new Set<Tool>(['shape', 'text', 'container']);
+
+export function activateTool(
+  tool: Tool,
+  mode: ToolActivationMode = ToolActivationMode.ToggleLock,
+): void {
+  setStore((state) => {
+    if (!LOCKABLE_TOOLS.has(tool)) {
+      return { session: { ...state.session, tool, toolLocked: false } };
+    }
+
+    const repeated = state.session.tool === tool;
+    const toolLocked =
+      mode === ToolActivationMode.Lock
+        ? true
+        : mode === ToolActivationMode.ResetLock
+          ? false
+          : repeated
+            ? !state.session.toolLocked
+            : false;
+
+    return { session: { ...state.session, tool, toolLocked } };
+  });
 }
 
 export function setPendingShape(shape: ShapeKind): void {
@@ -1084,20 +1482,43 @@ export function updateNodeMermaidSource(id: string, source: string): void {
   });
 }
 
-export async function copySelectionInternal(nodeIds: string[], edgeIds: string[]): Promise<void> {
+export async function copySelectionInternal(
+  nodeIds: string[],
+  edgeIds: string[],
+): Promise<boolean> {
+  void edgeIds; // An edge is portable only when both endpoint nodes are copied.
   const state = getStore();
-  const include = new Set(nodeIds);
-  const nodes = state.doc.nodes.filter((n) => include.has(n.id));
-  const ids = new Set(nodes.map((n) => n.id));
-  const edges = state.doc.edges.filter(
-    (e) => ids.has(e.source) && ids.has(e.target) && edgeIds.includes(e.id),
-  );
-  const payload = JSON.stringify({ type: 'thalyx/clipboard', version: 1, nodes, edges });
+  const include = expandedSelectionNodeIds(state.doc, nodeIds);
+  const nodes = state.doc.nodes.filter((node) => include.has(node.id));
+  if (nodes.length === 0) return false;
+
+  const detached = detachedSubgraphRoots(state.doc, nodes);
+  const edges = edgesAmong(state.doc, include);
+  const payload = JSON.stringify({ type: 'thalyx/clipboard', version: 1, nodes: detached, edges });
   try {
     await navigator.clipboard.writeText(payload);
+    return true;
   } catch {
     console.warn('clipboard unavailable');
+    return false;
   }
+}
+
+export async function cutSelectionInternal(nodeIds: string[], edgeIds: string[]): Promise<boolean> {
+  if (nodeIds.length === 0) {
+    const selectedEdgeIds = new Set(edgeIds);
+    const hasSelectedEdge = getStore().doc.edges.some((edge) => selectedEdgeIds.has(edge.id));
+    if (!hasSelectedEdge) return false;
+
+    deleteSelectionIds([], edgeIds);
+    return true;
+  }
+
+  const copied = await copySelectionInternal(nodeIds, edgeIds);
+  if (!copied) return false;
+
+  deleteSelectionIds(nodeIds, edgeIds);
+  return true;
 }
 
 export async function pasteFromClipboard(): Promise<void> {
@@ -1109,24 +1530,18 @@ export async function pasteFromClipboard(): Promise<void> {
   }
   try {
     const parsed = JSON.parse(text) as {
-      type?: string;
-      nodes?: Parameters<typeof newNodeFactory>[0][] & { id?: string; kind?: string }[];
-      edges?: Parameters<typeof newEdgeFactory>[0][] & { id?: string };
+      type?: unknown;
+      nodes?: unknown;
+      edges?: unknown;
     };
     if (parsed.type === 'thalyx/clipboard' && Array.isArray(parsed.nodes)) {
-      // fresh node ids + edge endpoint remap (pasteInternal re-ids edges)
-      const idMap = new Map<string, string>();
-      const nodes = parsed.nodes.map((n) => {
-        const fresh = newId();
-        if (typeof n?.id === 'string') idMap.set(n.id as string, fresh);
-        return { ...n, id: fresh };
+      const normalized = restoreDocument({
+        version: 1,
+        source: 'thalyx/clipboard',
+        nodes: parsed.nodes,
+        edges: Array.isArray(parsed.edges) ? parsed.edges : [],
       });
-      const edges = (parsed.edges ?? []).map((e) => ({
-        ...e,
-        source: (typeof e.source === 'string' ? idMap.get(e.source) : undefined) ?? e.source,
-        target: (typeof e.target === 'string' ? idMap.get(e.target) : undefined) ?? e.target,
-      }));
-      pasteInternal(nodes as never[], edges as never[]);
+      pasteInternal(normalized.nodes, normalized.edges);
       return;
     }
   } catch {

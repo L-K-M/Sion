@@ -1,148 +1,144 @@
-# Thalyx audit
+# Thalyx review
 
-Reviewed 2026-08-26 at `1c60efb`. Unit tests, type-check, lint, and production
-build were run. All 184 unit tests pass; lint emits four warnings. The build
-succeeds with missing-font and ineffective-code-splitting warnings.
+Scope: object creation, connectors, document windows, lifecycle, performance, and related UI.
 
-## Implement now
+## Fixed
 
-These have direct evidence and low product ambiguity. Each should use its own
-PR unless two items share the same root cause.
+### Object creation
 
-1. **Critical — recovery writes permit path traversal.** `recovery:write`
-   validates only string length, while read and clear use the restricted doc-id
-   schema. A compromised renderer can send `../...` and make
-   `recoveryWrite()` escape the recovery directory. Use the same schema for all
-   recovery operations and test rejection before fixing.
+- Placement now owns click and drag gestures on canvas, frames, nodes, and edges.
+- Click-versus-drag uses screen distance, so zoom no longer changes intent.
+- Click, drag, preview, minimum sizes, and grid snapping now agree.
+- Pointer identity, Escape, pointer cancel, blur, and document changes cancel safely.
+- Preview updates are animation-frame throttled.
+- One-shot and locked tools now behave consistently from toolbar and keyboard.
+- Text remains visible when blank. Frames are renameable and keep usable minimum sizes.
+- New children clamp inside frames instead of silently becoming top-level objects.
+- Dragging across frame boundaries reparents while preserving absolute position and node order.
+- Nested quick-grow chooses the deepest containing frame.
+- Alt-drag, duplicate, paste, resize, and Undo preserve nesting, coordinates, and routes.
+- Non-QWERTY letter shortcuts now use the typed character.
 
-2. **High — Recent Files fails after relaunch.** The menu is rebuilt from saved
-   paths, but selecting `openRecent` never grants that path to the IPC allowlist.
-   The subsequent read throws `path not granted`. Grant only the exact selected
-   recent path in main before notifying the renderer; prune missing recents.
+### Connectors
 
-3. **High — launch-file delivery races renderer setup.** After `createWindow()`,
-   startup argv is sent immediately even though the React listener is installed
-   later. The existing pending-path queue is bypassed because `mainWindow` is
-   already non-null. Queue until `ready-to-show`/renderer readiness and add an
-   Electron regression test.
+- Handle drags store their exact north/east/south/west anchors.
+- Rendered endpoints stay on those magnets after moves and reloadable model conversion.
+- Self-connections are rejected in UI, actions, restore, Mermaid import, and clipboard input.
+- Disabled handles remain measured but cannot steal placement gestures.
+- Click-to-connect is disabled, preventing latent half-connections.
+- Arrow markers now use valid SVG references; Arrow remains arrowed after Line use.
+- Elbow routing leaves and enters pinned sides correctly, including reversed, same-side,
+  perpendicular, ellipse, and diamond cases.
+- Straight and curved routes ignore stale elbow waypoints.
+- Curved labels use the same Bézier as their path.
+- Edge selection, labels, arrowheads, and manual-route hit areas render consistently.
+- Label and waypoint drags coalesce into one Undo entry and clean up on cancel or blur.
+- Routes clear only when endpoint geometry changes; no-op drag, align, and resize preserve them.
+- Copy, Cut, paste, duplicate, and Alt-drag retain internal connectors and translated routes.
+- Hand mode no longer edits or blocks on connector paint.
+- SVG/PNG/PDF geometry now matches canvas curves, labels, waypoints, and bounds.
 
-4. **High — autosave can mark newer edits saved.** A write captures document A,
-   then document B can become dirty before A's asynchronous write resolves.
-   A's completion calls `markSaved()` unconditionally, clearing B's dirty flag.
-   Track a document revision or serialized snapshot and mark saved only when the
-   completed write still matches current state. Surface write failures.
+### Multiple windows and documents
 
-5. **High — New/Open can discard unsaved work without confirmation.** Menu New,
-   Open, Recent, imports, OS open-file events, and scratch restoration replace
-   the store immediately. Add a Save/Discard/Cancel guard shared by all document
-   replacement paths. Autosave is not consent to overwrite the user's file.
+- Each native window has isolated document state, bootstrap data, title, dialogs, and recovery.
+- New, New Window, Open, Open Recent, OS open-file, and startup arguments route correctly.
+- Multiple startup paths create populated windows without an extra blank window.
+- Relative second-instance paths use that instance's working directory.
+- Startup bootstrap is pull-based, replayable, and safe across renderer reloads.
+- Untitled windows use unique recovery identities; recovery contents resolve live on reload.
+- Native files have one canonical owner. Duplicate opens focus the existing owner.
+- Save As reserves its target through the write and handles symlink aliases.
+- Mermaid imports remain untitled and cannot overwrite their source with Thalyx JSON.
+- Document Save only emits `.thalyx`; Open supports Thalyx, JSON, Mermaid, and All Files.
+- Autosave, manual save, Save As, close flush, recovery cleanup, and saved-state marking are
+  serialized. Edits made during a save remain dirty.
+- Save and close commit active inline drafts before serialization.
+- Save failures show an actionable alert.
+- Window state, menus, recents, updater readiness, print, zoom, export, and About route to the
+  correct window.
+- Quit waits for window flushes; a reported flush failure cancels Quit.
 
-6. **Medium — segmented controls never show their selected state.** Components
-   emit `aria-pressed`, but CSS selects `aria-checked`. This affects context and
-   export dialogs. Correct the selector and add an interaction/visual assertion.
+### Performance
 
-7. **Medium — PNG/PDF export bypasses native saving and leaks object URLs.** In
-   Electron, temporary anchor downloads do not provide the promised native file
-   workflow, can save to an unexpected location, and never revoke their blob
-   URLs. Add a bounded binary-save IPC abstraction and use it for PNG/PDF.
+- Canvas observes node, edge, grid, tool, and selection slices instead of whole state objects.
+- Each edge observes only its endpoint ancestry instead of scanning every node per frame.
+- Connection validation uses a memoized ID set.
+- Descendant expansion, reparenting, duplication, and Alt-drag use indexed batch traversals.
+- Waypoint invalidation exits early and compares absolute geometry before mutating.
 
-8. **Medium — recovery-write size is unbounded.** Normal file IPC caps payloads
-   at 50 MB, but recovery accepts arbitrary strings. Apply the same byte limit
-   before disk work to prevent renderer-triggered memory/disk pressure.
+## Remaining work
 
-9. **Medium — container creation produces a 48 px-tall frame.** Its title and
-   padding consume most of that height, so a newly created frame is barely
-   useful and visually resembles a node. Start with a practical frame size or
-   support drag-to-size placement.
+### Correctness and hardening
 
-10. **Medium — context controls obscure the canvas on small windows.** A fixed
-    264 px panel begins beside the toolbar; the 360 px Mermaid panel can open on
-    the opposite side. At the 640 px minimum window width they leave almost no
-    usable canvas and can overlap. Add compact/collapsible responsive modes.
+- Add a close-attempt token. A write exceeding the five-second main-process deadline can leave
+  the renderer inert, then acknowledge a stale close later.
+- Include asynchronous Paste and Mermaid Apply in the close barrier.
+- Make updater installation recover when any window refuses or times out during close.
+- Quarantine corrupt recovery entries and offer Discard instead of reopening an error forever.
+- Scope file grants and recovery IDs to their owning renderer. They are currently app-global.
+- Add a separate case/Unicode-folded ownership key for nonexistent Save As targets on
+  case-insensitive filesystems.
+- Browser-mode document replacement still needs Save/Discard/Cancel; native Open now uses a new
+  window instead of replacing dirty state.
+- PNG/PDF export still bypasses native Save As, may land in an unexpected directory, and leaves
+  download object URLs alive.
+- Browser autosave still downloads a file on every debounce after the first Save. Keep background
+  writes in recovery storage unless a writable File System Access handle exists.
+- Open, import, export, updater, and clipboard paths need the same actionable error reporting now
+  used by Save.
 
-11. **Medium — errors vanish or become unhandled rejections.** Open, save,
-    autosave, recent-file, import, export, updater, and clipboard paths often
-    launch `void` promises without user-visible recovery. Add a common error
-    toast with retry/details; never close Export after failure.
+### Performance and packaging
 
-12. **Medium — Cut may delete without a valid copy.** Menu Cut clears plain text
-    and immediately deletes selection instead of awaiting the application's
-    structured copy. Copy successfully first, then delete.
+- Mermaid, Cytoscape, and export dependencies still produce multi-megabyte renderer chunks. Remove
+  duplicate static imports and lazy-load specialized paths to reduce startup work.
+- Missing Inter font assets make layout platform-dependent. Ship licensed assets or remove the dead
+  declarations. Configure CI to reject future lint warnings.
 
-13. **Medium — browser-mode saves repeatedly download during autosave.** Once an
-    untitled browser document gets a filename, `platform.file.write()` downloads
-    a new file after every debounce. Keep autosave in recovery/browser storage;
-    download only on explicit Save/Export unless a writable File System Access
-    handle exists.
+### Interaction and missing behavior
 
-14. **Medium — the renderer bundle is oversized.** The main renderer chunk is
-    about 2.53 MB minified, with additional Mermaid/Cytoscape chunks over 1 MB.
-    Imports intended to be dynamic are also static, so Vite reports that they
-    cannot split. Remove duplicate static edges and lazy-load Mermaid and PDF
-    export paths to reduce startup work and input stutter.
+- Implement quick-connect drag to an existing node or empty-canvas shape picker. It currently
+  supports click-to-grow only.
+- Add inline connector-label editing for Enter, typing, and double-click.
+- Make manual-route dragging move the nearest segment, not a source-side-derived rail.
+- Complete Space/right-button panning over connector labels in Select mode.
+- Add valid/invalid magnet feedback while dragging, especially for rejected self-targets.
+- Implement the advertised Tab shape cycle and repeated grow chaining.
+- Remember the last applied node style and connector style for subsequent creation.
 
-15. **Low — configured fonts are missing.** Build output reports missing
-    `inter-regular.woff2` and `.ttf`; runtime falls back to system fonts. Remove
-    dead declarations or ship licensed assets so layout is deterministic.
+### Layout and polish
 
-16. **Low — lint warnings hide signal.** `Canvas` omits `rfInstance` from a hook
-    dependency list, an eslint suppression is stale, and two modules mix shared
-    exports with components. Resolve them and make CI reject warnings.
+- Compact or scroll the tall tool strip at the supported 640×480 minimum window size.
+- Reflow the inspector and Mermaid panel instead of covering most of a narrow canvas.
+- Replace platform-dependent glyph icons with one accessible SVG icon set.
+- Give recovery/open errors Retry, Discard, and Locate actions.
+- Add keyboard-visible focus treatment and labels for every icon-only control.
 
-## Product and visual improvements
+## Product ideas
 
-These are worthwhile but need design validation before implementation.
+- Animate a short “pluck” from the chosen magnet when a connector is pinned.
+- Preview reparenting with a tinted frame and a springy drop settle.
+- Add a document switcher showing every open window, dirty state, and recovery state.
+- Offer route suggestions as faint rails; dragging through one accepts it.
+- Add recent-document thumbnails and a command palette for tools, windows, and exports.
+- Add an optional minimap/outline with viewport jump navigation.
+- Add a quiet zoom, save, and selection-status pill with a one-click Fit action.
+- Add label/Mermaid search that dims nonmatches and jumps between results.
+- Add presentation mode with chrome-free, ordered diagram walkthroughs.
+- Add named node and connector style presets applied as one Undo action.
+- Offer an optional first-run editable sample that teaches the core gestures.
 
-17. **Command palette.** A searchable Mod+K palette would expose tools, layout,
-    export, theme, and Mermaid commands without memorizing shortcuts.
+## Verification notes
 
-18. **Minimap/outline for large diagrams.** Make it optional and collapsible;
-    show containers and current viewport, with click-to-jump navigation.
+- Add malformed, oversized, traversal, and cross-window tests for every IPC boundary.
+- Add restart-level Recent Files, recovery, disk-failure, and overlapping-save tests.
+- Add screenshot checks for selected controls, narrow windows, both themes, long labels, and 200%
+  display scaling.
+- Turn logged performance cases into enforced budgets for startup, drag, layout, and export.
+- Automate role, name, state, keyboard traversal, contrast, and focus-containment checks.
 
-19. **Zoom/status pill.** Show zoom percentage, selection count, save state, and
-    a one-click Fit action in a quiet bottom bar. Today autosave is invisible.
+Current branch:
 
-20. **Connector preview and invalid-target feedback.** Highlight the candidate
-    target and animate rejected self/island connections instead of silently
-    doing nothing.
-
-21. **Drag-to-create with live dimensions.** Click-place is fast, but dragging a
-    shape or frame should size it immediately; a click can retain default size.
-
-22. **Alignment/distribution controls.** Tidy is coarse. Add explicit left,
-    center, right, top, middle, bottom, and equal-spacing actions for multi-select.
-
-23. **Search and jump.** Mod+F should find labels and Mermaid source, dim other
-    objects, and move the viewport between matches.
-
-24. **Presentation mode.** Hide chrome, fit the diagram, and traverse containers
-    or selected nodes as steps. This turns diagrams into lightweight walkthroughs.
-
-25. **Named color/style presets.** Let users save a node and connector style as
-    a small reusable token. Applying one should remain a single undo action.
-
-26. **Delight: diagram pulse.** A restrained “trace flow” action could animate a
-    pulse along outgoing connectors from the selected node, useful for demos and
-    understanding unfamiliar graphs. Respect reduced-motion settings.
-
-27. **Delight: semantic quick-grow.** After a quick-connect chevron creates a
-    node, offer ephemeral choices such as Decision, Process, Note, or Database;
-    keyboard digits choose without opening a persistent panel.
-
-28. **First-run sample.** Replace the empty canvas with an optional tiny editable
-    diagram that teaches select, connect, type-to-edit, and Mermaid round-trip.
-    Keep “blank canvas” one click away.
-
-## Verification gaps
-
-- No test attacks every IPC boundary with malformed, oversized, and traversal
-  inputs.
-- No test covers Recent Files after a full app restart.
-- No test proves startup argv/open-file delivery before renderer readiness.
-- No test exercises overlapping autosave writes or disk-write failures.
-- No screenshot assertions cover selected controls, narrow-window overlap,
-  light/dark contrast, long labels, or 200% display scaling.
-- Performance tests log several results without enforcing budgets; they can
-  regress while CI stays green.
-- Accessibility coverage is mostly manual: no automated role/name/state,
-  keyboard traversal, contrast, or focus-containment checks.
+- Unit, type, lint, formatting, and build checks cover the implemented paths.
+- Electron/Web Playwright regressions were added for creation, anchors, self-connections, and
+  multi-window isolation.
+- This environment lacks `libglib-2.0.so.0`, so Chromium/Electron could not launch here.

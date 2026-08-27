@@ -11,7 +11,7 @@ import * as A from '../../store/actions';
 import { LabelTextarea } from '../hooks/useLabelEditing';
 import { ConnectionHandles } from './ConnectionHandles';
 
-export const TextNode = memo(function TextNode({ data, selected, id }: NodeProps) {
+export const TextNode = memo(function TextNode({ data, selected, id, isConnectable }: NodeProps) {
   const node = (data as ThalyxNodeData).node as ThalyxNode;
   const lines = node.label.length > 0 ? node.label.split('\n') : [];
   const editing = useStore((st) => st.session.editingLabel);
@@ -33,7 +33,7 @@ export const TextNode = memo(function TextNode({ data, selected, id }: NodeProps
         lineClassName="thalyx-resize-line"
         handleClassName="thalyx-resize-handle"
       />
-      <ConnectionHandles />
+      <ConnectionHandles isConnectable={isConnectable} />
       {editing?.kind === 'node' && editing.id === id ? (
         <LabelTextarea
           value={node.label}
@@ -46,6 +46,7 @@ export const TextNode = memo(function TextNode({ data, selected, id }: NodeProps
         />
       ) : (
         <div className="thalyx-node-label">
+          {lines.length === 0 ? <span className="thalyx-text-placeholder">Text</span> : null}
           {lines.map((line, i) => (
             <div key={i}>{line}</div>
           ))}

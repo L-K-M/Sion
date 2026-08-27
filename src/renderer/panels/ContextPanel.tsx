@@ -149,7 +149,10 @@ export const ContextPanel = memo(function ContextPanel() {
               { value: 'thick', label: '━' },
             ]}
             onChange={(v) => {
-              for (const e of edges) A.updateEdge(e.id, { style: { ...e.style, line: v } });
+              A.updateEdges(
+                edges.map((edge) => edge.id),
+                (edge) => ({ style: { ...edge.style, line: v } }),
+              );
             }}
             title="Line"
           />
@@ -163,7 +166,10 @@ export const ContextPanel = memo(function ContextPanel() {
               { value: 'curved', label: '︵' },
             ]}
             onChange={(v: EdgeKind) => {
-              for (const e of edges) A.updateEdge(e.id, { kind: v });
+              A.updateEdges(
+                edges.map((edge) => edge.id),
+                () => ({ kind: v }),
+              );
             }}
             title="Route"
           />
@@ -173,7 +179,10 @@ export const ContextPanel = memo(function ContextPanel() {
             value={edges[0]?.arrowStart ?? 'none'}
             options={ARROW_HEADS.map((h: ArrowHead) => ({ value: h, label: arrowLabel(h) }))}
             onChange={(v: ArrowHead) => {
-              for (const e of edges) A.updateEdge(e.id, { arrowStart: v });
+              A.updateEdges(
+                edges.map((edge) => edge.id),
+                () => ({ arrowStart: v }),
+              );
             }}
             title="Start arrowhead"
           />
@@ -183,7 +192,10 @@ export const ContextPanel = memo(function ContextPanel() {
             value={edges[0]?.arrowEnd ?? 'arrow'}
             options={ARROW_HEADS.map((h: ArrowHead) => ({ value: h, label: arrowLabel(h) }))}
             onChange={(v: ArrowHead) => {
-              for (const e of edges) A.updateEdge(e.id, { arrowEnd: v });
+              A.updateEdges(
+                edges.map((edge) => edge.id),
+                () => ({ arrowEnd: v }),
+              );
             }}
             title="End arrowhead"
           />

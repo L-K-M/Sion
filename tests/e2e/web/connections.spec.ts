@@ -9,7 +9,14 @@ const BASE = '/?testHooks=1';
 
 async function docState(page: Page): Promise<{
   nodes: Array<{ id: string; x: number; y: number; label: string }>;
-  edges: Array<{ id: string; source: string; target: string; label?: string }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    label?: string;
+    sourceAnchor: string;
+    targetAnchor: string;
+  }>;
 }> {
   return await page.evaluate(() =>
     JSON.parse(
@@ -86,6 +93,8 @@ test('connect two nodes by dragging from a handle (arrow tool)', async ({ page }
   expect(state.edges).toHaveLength(1);
   expect(state.edges[0]!.source).toBe(state.nodes[0]!.id);
   expect(state.edges[0]!.target).toBe(state.nodes[1]!.id);
+  expect(state.edges[0]!.sourceAnchor).toBe('e');
+  expect(state.edges[0]!.targetAnchor).toBe('w');
   await expect(page.locator('.react-flow__edge-path')).toHaveCount(1);
   expect(
     (await page.locator('.react-flow__edge-path').first().getAttribute('d'))!.length,

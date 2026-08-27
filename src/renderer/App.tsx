@@ -7,20 +7,14 @@ import { Toolbar } from './panels/Toolbar';
 import { ContextPanel } from './panels/ContextPanel';
 import { HelpOverlay } from './panels/HelpOverlay';
 import { MermaidPanel } from './panels/MermaidPanel';
-import { useDocumentLifecycle } from './files/useDocumentLifecycle';
+import { DocumentLifecyclePhase, useDocumentLifecycle } from './files/useDocumentLifecycle';
 import { ExportDialog } from './panels/ExportDialog';
 import { useKeymap } from './canvas/hooks/useKeymap';
 import { useEffectiveTheme } from './theme/useEffectiveTheme';
 import { useEffect } from 'react';
 
-function Shell() {
-  useDocumentLifecycle();
+function Workspace({ theme }: { theme: string }) {
   useKeymap();
-  const theme = useEffectiveTheme();
-
-  useEffect(() => {
-    document.documentElement.dataset['theme'] = theme;
-  }, [theme]);
 
   return (
     <div className="thalyx-root" data-theme={theme}>
@@ -32,6 +26,31 @@ function Shell() {
       <HelpOverlay />
     </div>
   );
+}
+
+function Shell() {
+  const phase = useDocumentLifecycle();
+  const theme = useEffectiveTheme();
+
+  useEffect(() => {
+    document.documentElement.dataset['theme'] = theme;
+  }, [theme]);
+
+  if (phase !== DocumentLifecyclePhase.Ready) {
+    const message =
+      phase === DocumentLifecyclePhase.Error
+        ? 'Could not open this document.'
+        : phase === DocumentLifecyclePhase.Closing
+          ? 'Saving…'
+          : 'Opening…';
+    return (
+      <div className="thalyx-root thalyx-lifecycle" data-theme={theme} role="status">
+        {message}
+      </div>
+    );
+  }
+
+  return <Workspace theme={theme} />;
 }
 
 export function App() {

@@ -2,7 +2,7 @@
  * Keymap (PLAN.md §10.2, M4a scope; chevrons/grow/layout chords land in M4c).
  *
  * Matching rules (§10.2):
- *  - plain single letters match on e.code (layout-safe enough for tools here);
+ *  - plain single letters match on e.key so non-QWERTY layouts work;
  *  - chords containing Alt, and Shift+digit/punctuation chords, match on
  *    e.code (macOS Option composes characters; Shift+1 → '!' everywhere);
  *  - ignored while composing or while an input/textarea/contentEditable has
@@ -15,14 +15,31 @@ import { useEffect } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { useStore } from '../../store/store';
 import * as A from '../../store/actions';
-import { beginEditingWithChar } from './useLabelEditing';
-import type { ShapeKind, Tool } from '../../../shared/model/types';
+import { beginEditingWithChar } from './beginEditingWithChar';
+import type { ShapeKind } from '../../../shared/model/types';
+import { ToolShortcut, toolShortcut } from './toolShortcut';
+import {
+  fitCanvas,
+  fitSelection,
+  resetCanvasZoom,
+  zoomCanvasIn,
+  zoomCanvasOut,
+} from '../viewportActions';
 
 function isTypingTarget(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
   if (!t) return false;
   const tag = t.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+}
+
+function activateShapeTool(shape: ShapeKind): void {
+  const session = useStore.getState().session;
+  const repeatedShape = session.tool === 'shape' && session.pendingShape === shape;
+  const mode = repeatedShape ? A.ToolActivationMode.ToggleLock : A.ToolActivationMode.ResetLock;
+
+  A.setPendingShape(shape);
+  A.activateTool('shape', mode);
 }
 
 export function useKeymap(): void {
@@ -57,6 +74,21 @@ export function useKeymap(): void {
             e.preventDefault();
             if (e.shiftKey) A.redo();
             else A.undo();
+            return;
+          case 'Equal':
+          case 'NumpadAdd':
+            e.preventDefault();
+            zoomCanvasIn(rf);
+            return;
+          case 'Minus':
+          case 'NumpadSubtract':
+            e.preventDefault();
+            zoomCanvasOut(rf);
+            return;
+          case 'Digit0':
+          case 'Numpad0':
+            e.preventDefault();
+            resetCanvasZoom(rf);
             return;
           case 'KeyY':
             e.preventDefault();
@@ -101,17 +133,13 @@ export function useKeymap(): void {
       if (e.shiftKey && !e.altKey) {
         if (e.code === 'Digit1') {
           e.preventDefault();
-          void rf.fitView({ padding: 0.2, maxZoom: 1.25, duration: 200 });
+          fitCanvas(rf);
           return;
         }
         if (e.code === 'Digit2') {
           e.preventDefault();
           const { nodeIds } = useStore.getState().session.selection;
-          if (nodeIds.length > 0) {
-            void rf.fitView({ nodes: nodeIds.map((id) => ({ id })), padding: 0.2, duration: 200 });
-          } else {
-            void rf.fitView({ padding: 0.2, duration: 200 });
-          }
+          fitSelection(rf, nodeIds);
           return;
         }
         if (e.code === 'Slash') {
@@ -250,45 +278,23 @@ export function useKeymap(): void {
       }
 
       // --- Tool keys (bare letters / digits) ---------------------------------
-      const toolKeys: Record<string, () => void> = {
-        KeyV: () => A.setTool('select' as Tool),
-        Digit1: () => A.setTool('select' as Tool),
-        KeyR: () => {
-          A.setPendingShape('rect' as ShapeKind);
-          A.setTool('shape' as Tool);
-        },
-        Digit2: () => {
-          A.setPendingShape('rect' as ShapeKind);
-          A.setTool('shape' as Tool);
-        },
-        KeyO: () => {
-          A.setPendingShape('ellipse' as ShapeKind);
-          A.setTool('shape' as Tool);
-        },
-        Digit3: () => {
-          A.setPendingShape('ellipse' as ShapeKind);
-          A.setTool('shape' as Tool);
-        },
-        KeyD: () => {
-          A.setPendingShape('diamond' as ShapeKind);
-          A.setTool('shape' as Tool);
-        },
-        Digit4: () => {
-          A.setPendingShape('diamond' as ShapeKind);
-          A.setTool('shape' as Tool);
-        },
-        KeyA: () => A.setTool('arrow' as Tool),
-        Digit5: () => A.setTool('arrow' as Tool),
-        KeyL: () => A.setTool('line' as Tool),
-        Digit6: () => A.setTool('line' as Tool),
-        KeyT: () => A.setTool('text' as Tool),
-        Digit7: () => A.setTool('text' as Tool),
-        KeyF: () => A.setTool('container' as Tool),
-        Digit8: () => A.setTool('container' as Tool),
-        KeyH: () => A.setTool('hand' as Tool),
-        KeyQ: () => A.toggleChevrons(),
+      // Ignore OS key-repeat so holding R cannot unexpectedly lock the tool.
+      if (e.repeat) return;
+
+      const toolActions: Record<ToolShortcut, () => void> = {
+        [ToolShortcut.Select]: () => A.activateTool('select'),
+        [ToolShortcut.Rectangle]: () => activateShapeTool('rect'),
+        [ToolShortcut.Ellipse]: () => activateShapeTool('ellipse'),
+        [ToolShortcut.Diamond]: () => activateShapeTool('diamond'),
+        [ToolShortcut.Arrow]: () => A.activateTool('arrow'),
+        [ToolShortcut.Line]: () => A.activateTool('line'),
+        [ToolShortcut.Text]: () => A.activateTool('text'),
+        [ToolShortcut.Container]: () => A.activateTool('container'),
+        [ToolShortcut.Hand]: () => A.activateTool('hand'),
+        [ToolShortcut.Chevrons]: () => A.toggleChevrons(),
       };
-      const action = toolKeys[e.code];
+      const shortcut = toolShortcut(e.key, e.code);
+      const action = shortcut ? toolActions[shortcut] : undefined;
       if (action) {
         e.preventDefault();
         action();

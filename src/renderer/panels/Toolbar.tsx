@@ -3,7 +3,7 @@
  * five toolbar shapes (§3: rect, rounded, ellipse, diamond, cylinder), text,
  * grid toggle, theme toggle. Full keymap + more tools land in M4; arrows in M3.
  */
-import { useCallback } from 'react';
+import { useCallback, type MouseEvent } from 'react';
 import { useStore } from '../store/store';
 import * as A from '../store/actions';
 import { shapePath } from '../../shared/geometry/shapes';
@@ -29,18 +29,30 @@ const SHAPES: Array<{ shape: ShapeKind; label: string; title: string }> = [
 export function Toolbar() {
   const tool = useStore((s) => s.session.tool);
   const pendingShape = useStore((s) => s.session.pendingShape);
+  const toolLocked = useStore((s) => s.session.toolLocked);
   const grid = useStore((s) => s.doc.canvas.grid);
   const themeSetting = useStore((s) => s.session.theme);
   const theme = useEffectiveTheme();
 
-  const pickTool = useCallback((t: Tool) => {
-    A.setTool(t);
+  const pickTool = useCallback((nextTool: Tool, event: MouseEvent<HTMLButtonElement>) => {
+    const mode = event.altKey ? A.ToolActivationMode.Lock : A.ToolActivationMode.ToggleLock;
+    A.activateTool(nextTool, mode);
   }, []);
 
-  const pickShape = useCallback((shape: ShapeKind) => {
-    A.setPendingShape(shape);
-    A.setTool('shape');
-  }, []);
+  const pickShape = useCallback(
+    (shape: ShapeKind, event: MouseEvent<HTMLButtonElement>) => {
+      const repeatedShape = tool === 'shape' && pendingShape === shape;
+      const mode = event.altKey
+        ? A.ToolActivationMode.Lock
+        : repeatedShape
+          ? A.ToolActivationMode.ToggleLock
+          : A.ToolActivationMode.ResetLock;
+
+      A.setPendingShape(shape);
+      A.activateTool('shape', mode);
+    },
+    [pendingShape, tool],
+  );
 
   const cycleTheme = useCallback(() => {
     // system → light → dark → system (§10.1 delta 5)
@@ -53,10 +65,10 @@ export function Toolbar() {
       {TOOLBUTTONS.map((b) => (
         <button
           key={b.tool}
-          className={`thalyx-toolbtn${tool === b.tool ? ' is-active' : ''}`}
+          className={`thalyx-toolbtn${tool === b.tool ? ' is-active' : ''}${tool === b.tool && toolLocked ? ' is-locked' : ''}`}
           title={b.title}
           aria-pressed={tool === b.tool}
-          onClick={() => pickTool(b.tool)}
+          onClick={(event) => pickTool(b.tool, event)}
         >
           {b.label}
         </button>
@@ -65,10 +77,10 @@ export function Toolbar() {
       {SHAPES.map((s) => (
         <button
           key={s.shape}
-          className={`thalyx-toolbtn${tool === 'shape' && pendingShape === s.shape ? ' is-active' : ''}`}
+          className={`thalyx-toolbtn${tool === 'shape' && pendingShape === s.shape ? ' is-active' : ''}${tool === 'shape' && pendingShape === s.shape && toolLocked ? ' is-locked' : ''}`}
           title={s.title}
           aria-pressed={tool === 'shape' && pendingShape === s.shape}
-          onClick={() => pickShape(s.shape)}
+          onClick={(event) => pickShape(s.shape, event)}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
             <path
@@ -82,9 +94,9 @@ export function Toolbar() {
       ))}
       <div className="thalyx-toolbar-sep" role="separator" />
       <button
-        className="thalyx-toolbtn"
+        className={`thalyx-toolbtn${tool === 'text' ? ' is-active' : ''}${tool === 'text' && toolLocked ? ' is-locked' : ''}`}
         title="Text (T)"
-        onClick={() => pickTool('text')}
+        onClick={(event) => pickTool('text', event)}
         aria-pressed={tool === 'text'}
       >
         <span style={{ fontWeight: 700 }}>T</span>

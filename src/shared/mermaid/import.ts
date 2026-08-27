@@ -242,6 +242,7 @@ export async function importMermaid(text: string, parse: ParseFn): Promise<Impor
 
   // --- edges ---
   for (const e of db.getEdges()) {
+    if (e.start === e.end) continue;
     const [arrowStart, arrowEnd] = (EDGE_TYPE_TO_HEADS[e.type] ?? ['none', 'arrow']) as [
       import('../model/types').ArrowHead,
       import('../model/types').ArrowHead,

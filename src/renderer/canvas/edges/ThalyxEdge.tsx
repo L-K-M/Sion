@@ -3,7 +3,7 @@
  * arrowhead markers, line styles, 6px corner rounding, a draggable label
  * chip at labelT, and manual waypoint dragging. Hidden edges render nothing.
  */
-import { memo, useCallback, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -13,12 +13,20 @@ import {
   type EdgeProps,
 } from '@xyflow/react';
 import { useStore } from '../../store/store';
+import { useShallow } from 'zustand/react/shallow';
 import * as A from '../../store/actions';
-import { absolutePosition } from '../../../shared/model/queries';
 import { edgeEndpoints, type Point } from '../../../shared/geometry/anchors';
 import { pointAtT, route } from '../../../shared/geometry/elbow';
 import { colorStyle } from '../../theme/colorStyle';
 import type { ThalyxEdgeData } from '../rfSelectors';
+import { markerId, markerReference } from './edgeMarkers';
+import { sidePosition } from './sidePosition';
+import { absoluteFromContext, edgeEndpointContext } from './edgeEndpointContext';
+import { manualElbowWaypoints } from '../../../shared/geometry/manualWaypoints';
+import { edgePathPoints } from './edgePathPoints';
+import { isPrimaryPointerButton, startPointerDrag } from './pointerDrag';
+import { canEditEdge } from './edgeInteractionMode';
+import { bezierCurve, bezierPointAtT, nearestBezierT } from '../../../shared/geometry/bezier';
 
 function toPolylineD(points: Point[], cornerRadius = 6): string {
   if (points.length < 2) return '';
@@ -87,22 +95,27 @@ export const ThalyxEdgeComponent = memo(function ThalyxEdgeComponent({
   sourceY,
   targetX,
   targetY,
-  sourcePosition,
-  targetPosition,
   data,
+  selected,
 }: EdgeProps) {
   const edgeModel = (data as ThalyxEdgeData | undefined)?.edge;
-  const doc = useStore((s) => s.doc);
+  const edgeEditable = useStore((state) => canEditEdge(state.session.tool));
+  const endpointNodes = useStore(
+    useShallow((state) =>
+      edgeModel ? edgeEndpointContext(state.doc, edgeModel.source, edgeModel.target) : [],
+    ),
+  );
   const rf = useReactFlow();
   const gestureRef = useRef(false);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
 
   const geometry = useMemo(() => {
     if (!edgeModel) return null;
-    const sourceNode = doc.nodes.find((n) => n.id === edgeModel.source);
-    const targetNode = doc.nodes.find((n) => n.id === edgeModel.target);
+    const sourceNode = endpointNodes[0];
+    const targetNode = endpointNodes[1];
     if (!sourceNode || !targetNode) return null;
-    const sAbs = absolutePosition(doc, sourceNode);
-    const tAbs = absolutePosition(doc, targetNode);
+    const sAbs = absoluteFromContext(endpointNodes, sourceNode);
+    const tAbs = absoluteFromContext(endpointNodes, targetNode);
     const { source, target, sourceSide, targetSide } = edgeEndpoints(
       sourceNode,
       sAbs,
@@ -114,18 +127,26 @@ export const ThalyxEdgeComponent = memo(function ThalyxEdgeComponent({
     const sRect = { x: sAbs.x, y: sAbs.y, width: sourceNode.width, height: sourceNode.height };
     const tRect = { x: tAbs.x, y: tAbs.y, width: targetNode.width, height: targetNode.height };
 
-    let points: Point[];
-    if (edgeModel.waypoints && edgeModel.waypoints.length > 0) {
-      points = [source, ...edgeModel.waypoints, target];
-    } else if (edgeModel.kind === 'elbow') {
-      points = route(source, target, sRect, tRect, sourceSide, targetSide);
-    } else {
-      points = [source, target];
-    }
-    return { points };
-  }, [doc, edgeModel]);
+    const points = edgePathPoints(edgeModel.kind, source, target, edgeModel.waypoints, () =>
+      route(source, target, sRect, tRect, sourceSide, targetSide),
+    );
+    const curve =
+      edgeModel.kind === 'curved' ? bezierCurve(source, target, sourceSide, targetSide) : null;
+    return {
+      points,
+      sourceSide,
+      targetSide,
+      sourceRect: sRect,
+      targetRect: tRect,
+      curve,
+    };
+  }, [edgeModel, endpointNodes]);
 
-  const strokeColor = edgeModel ? colorStyle(edgeModel.style.stroke, 'stroke') : 'var(--ink)';
+  const strokeColor = selected
+    ? 'var(--accent)'
+    : edgeModel
+      ? colorStyle(edgeModel.style.stroke, 'stroke')
+      : 'var(--ink)';
 
   const pathD = useMemo(() => {
     if (!geometry || !edgeModel) return '';
@@ -144,51 +165,61 @@ export const ThalyxEdgeComponent = memo(function ThalyxEdgeComponent({
       const [bezierPath] = getBezierPath({
         sourceX: p0?.x ?? sourceX,
         sourceY: p0?.y ?? sourceY,
-        sourcePosition,
+        sourcePosition: sidePosition(geometry.sourceSide),
         targetX: p1?.x ?? targetX,
         targetY: p1?.y ?? targetY,
-        targetPosition,
+        targetPosition: sidePosition(geometry.targetSide),
       });
       return bezierPath;
     }
     return toPolylineD(geometry.points, edgeModel.style.rounded ? 6 : 0);
-  }, [geometry, edgeModel, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition]);
+  }, [geometry, edgeModel, sourceX, sourceY, targetX, targetY]);
 
   const labelPos = useMemo(() => {
     if (!geometry || !edgeModel?.label) return null;
+    if (geometry.curve) return bezierPointAtT(geometry.curve, edgeModel.labelT ?? 0.5);
+
     return pointAtT(geometry.points, edgeModel.labelT ?? 0.5);
   }, [geometry, edgeModel]);
 
   const runPointerDrag = useCallback(
     (e: React.PointerEvent, onMove: (flowPoint: Point) => void) => {
+      if (!edgeEditable || !isPrimaryPointerButton(e.button)) return;
+
       e.stopPropagation();
       if (!gestureRef.current) {
         gestureRef.current = true;
         A.beginGesture();
       }
-      const move = (ev: PointerEvent) => {
-        onMove(rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY }));
-      };
-      const up = () => {
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        if (gestureRef.current) {
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = startPointerDrag(window, {
+        pointerId: e.pointerId,
+        onMove(ev) {
+          onMove(rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY }));
+        },
+        onFinish() {
+          dragCleanupRef.current = null;
+          if (!gestureRef.current) return;
+
           gestureRef.current = false;
           A.endGesture();
-        }
-      };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+        },
+      });
     },
-    [rf],
+    [edgeEditable, rf],
   );
+
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   /** Label chip drag: update labelT to the nearest point on the route. */
   const onLabelPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!geometry) return;
       runPointerDrag(e, (p) => {
-        A.updateEdge(id, { labelT: nearestT(geometry.points, p) });
+        const labelT = geometry.curve
+          ? nearestBezierT(geometry.curve, p)
+          : nearestT(geometry.points, p);
+        A.updateEdgeTransient(id, { labelT });
       });
     },
     [geometry, id, runPointerDrag],
@@ -204,7 +235,18 @@ export const ThalyxEdgeComponent = memo(function ThalyxEdgeComponent({
       if (!geometry || !edgeModel) return;
       if (edgeModel.kind !== 'elbow') return;
       runPointerDrag(e, (p) => {
-        A.setEdgeWaypoints(id, [{ x: Math.round(p.x), y: Math.round(p.y) }], { transient: true });
+        const source = geometry.points[0]!;
+        const target = geometry.points[geometry.points.length - 1]!;
+        const waypoints = manualElbowWaypoints(
+          source,
+          target,
+          geometry.sourceSide,
+          geometry.targetSide,
+          geometry.sourceRect,
+          geometry.targetRect,
+          p,
+        );
+        A.setEdgeWaypoints(id, waypoints, { transient: true });
       });
     },
     [geometry, edgeModel, id, runPointerDrag],
@@ -219,7 +261,7 @@ export const ThalyxEdgeComponent = memo(function ThalyxEdgeComponent({
   const markerFor = (end: 'start' | 'end'): string | undefined => {
     const head = end === 'start' ? edgeModel!.arrowStart : edgeModel!.arrowEnd;
     if (head === 'none') return undefined;
-    return `marker-${id}-${end}`;
+    return markerReference(id, end);
   };
 
   return (
@@ -228,13 +270,13 @@ export const ThalyxEdgeComponent = memo(function ThalyxEdgeComponent({
         {(['start', 'end'] as const).map((end) => {
           const head = end === 'start' ? edgeModel.arrowStart : edgeModel.arrowEnd;
           if (head === 'none') return null;
-          const markerId = `marker-${id}-${end}`;
+          const idForMarker = markerId(id, end);
           const size = 8;
           const orient = end === 'end' ? 'auto' : 'auto-start-reverse';
           return (
             <marker
               key={end}
-              id={markerId}
+              id={idForMarker}
               viewBox={`0 0 ${size} ${size}`}
               markerWidth={size}
               markerHeight={size}
@@ -262,21 +304,23 @@ export const ThalyxEdgeComponent = memo(function ThalyxEdgeComponent({
           );
         })}
       </defs>
-      {/* invisible wide path for easier grabbing */}
+      <BaseEdge
+        id={id}
+        path={pathD}
+        interactionWidth={0}
+        style={{ stroke: strokeColor, strokeWidth, strokeDasharray: dash }}
+        markerStart={markerFor('start')}
+        markerEnd={markerFor('end')}
+      />
+      {/* This hit area stays above BaseEdge so waypoint drags receive pointer input. */}
       <path
+        className="thalyx-edge-hitarea"
         d={pathD}
         fill="none"
         stroke="transparent"
         strokeWidth={16}
-        style={{ pointerEvents: 'stroke', cursor: 'move' }}
+        style={{ pointerEvents: edgeEditable ? 'stroke' : 'none', cursor: 'move' }}
         onPointerDown={onEdgePointerDown}
-      />
-      <BaseEdge
-        id={id}
-        path={pathD}
-        style={{ stroke: strokeColor, strokeWidth, strokeDasharray: dash }}
-        markerStart={markerFor('start')}
-        markerEnd={markerFor('end')}
       />
       {edgeModel.label ? (
         <EdgeLabelRenderer>

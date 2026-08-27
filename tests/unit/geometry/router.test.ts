@@ -11,6 +11,12 @@ import { newNode } from '../../../src/shared/model/create';
 import type { Rect } from '../../../src/shared/geometry/anchors';
 
 const S = (x: number, y: number, w = 100, h = 60): Rect => ({ x, y, width: w, height: h });
+const sidePoint = (rect: Rect, side: 'n' | 's' | 'e' | 'w') => {
+  if (side === 'n') return { x: rect.x + rect.width / 2, y: rect.y };
+  if (side === 's') return { x: rect.x + rect.width / 2, y: rect.y + rect.height };
+  if (side === 'e') return { x: rect.x + rect.width, y: rect.y + rect.height / 2 };
+  return { x: rect.x, y: rect.y + rect.height / 2 };
+};
 
 describe('elbow router side-case matrix (§11.3)', () => {
   it('opposite horizontal sides (e→w): Z through the midline', () => {
@@ -42,21 +48,22 @@ describe('elbow router side-case matrix (§11.3)', () => {
     expect(pts[1]!.y).toBe(pts[2]!.y); // shared rail y
   });
 
-  it('orthogonal sides (e→n): L corner', () => {
+  it('orthogonal sides (e→n): uses both outward stubs', () => {
     const src = S(0, 0);
     const tgt = S(300, -200);
     const pts = route({ x: 100, y: 30 }, { x: 350, y: -200 }, src, tgt, 'e', 'n');
-    expect(pts.length).toBe(3);
-    // the corner shares y with the start (travel x first out of the source)
-    expect(pts[1]!.y).toBe(30);
+    expect(pts.length).toBe(5);
+    expect(pts[1]).toEqual({ x: 116, y: 30 });
+    expect(pts.at(-2)).toEqual({ x: 350, y: -216 });
   });
 
-  it('orthogonal sides (s→e): L corner traveling y first', () => {
+  it('orthogonal sides (s→e): uses both outward stubs', () => {
     const src = S(0, 0);
     const tgt = S(300, 200);
-    const pts = route({ x: 50, y: 60 }, { x: 300, y: 230 }, src, tgt, 's', 'e');
-    expect(pts.length).toBe(3);
-    expect(pts[1]!.x).toBe(50);
+    const pts = route({ x: 50, y: 60 }, { x: 400, y: 230 }, src, tgt, 's', 'e');
+    expect(pts.length).toBe(5);
+    expect(pts[1]).toEqual({ x: 50, y: 76 });
+    expect(pts.at(-2)).toEqual({ x: 416, y: 230 });
   });
 
   it('same side (e→e): U via a rail beyond the outermost bound', () => {
@@ -100,14 +107,7 @@ describe('elbow router side-case matrix (§11.3)', () => {
       [S(0, 0), S(0, 0), 'n', 's'], // overlapping rects — degenerate but finite
     ];
     for (const [src, tgt, ss, ts] of rects) {
-      const pts = route(
-        { x: src.x + src.width / 2, y: src.y + src.height / 2 },
-        { x: tgt.x + tgt.width / 2, y: tgt.y + tgt.height / 2 },
-        src,
-        tgt,
-        ss,
-        ts,
-      );
+      const pts = route(sidePoint(src, ss), sidePoint(tgt, ts), src, tgt, ss, ts);
       expect(pts.length).toBeGreaterThanOrEqual(2);
       for (const p of pts) {
         expect(Number.isFinite(p.x)).toBe(true);

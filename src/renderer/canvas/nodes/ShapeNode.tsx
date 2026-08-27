@@ -13,7 +13,7 @@ import * as A from '../../store/actions';
 import { LabelTextarea } from '../hooks/useLabelEditing';
 import { ConnectionHandles } from './ConnectionHandles';
 
-export const ShapeNode = memo(function ShapeNode({ data, selected, id }: NodeProps) {
+export const ShapeNode = memo(function ShapeNode({ data, selected, id, isConnectable }: NodeProps) {
   const node = (data as ThalyxNodeData).node as ThalyxNode;
   const lines = node.label.length > 0 ? node.label.split('\n') : [];
   return (
@@ -50,7 +50,7 @@ export const ShapeNode = memo(function ShapeNode({ data, selected, id }: NodePro
           strokeLinejoin="round"
         />
       </svg>
-      <ConnectionHandles />
+      <ConnectionHandles isConnectable={isConnectable} />
       <NodeLabel id={id!} label={node.label} fontSize={node.style.fontSize} lines={lines} />
     </div>
   );

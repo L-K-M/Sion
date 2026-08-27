@@ -119,7 +119,7 @@ export interface ThalyxEdge {
   id: EdgeId;
   source: NodeId;
   target: NodeId;
-  /** 'auto' = floating (MVP always 'auto'; sides reserved for M9 ports) */
+  /** 'auto' floats; cardinal anchors pin the originating handle. */
   sourceAnchor: 'auto' | 'n' | 's' | 'e' | 'w';
   targetAnchor: 'auto' | 'n' | 's' | 'e' | 'w';
   kind: EdgeKind;

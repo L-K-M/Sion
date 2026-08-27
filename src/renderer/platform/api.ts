@@ -3,6 +3,8 @@
  * with a browser fallback (Playwright web-mode + vite dev without Electron).
  */
 import type { ThalyxApi } from '../../preload/index';
+import type { WindowBootstrap } from '../../shared/windowBootstrap';
+import { SaveDialogPurpose } from '../../shared/saveDialog';
 
 type BrowserFile = {
   path: string | null;
@@ -25,6 +27,19 @@ function browserDownload(name: string, blob: Blob): void {
 }
 
 const api = (): ThalyxApi | undefined => (globalThis as unknown as { thalyx?: ThalyxApi }).thalyx;
+
+const BROWSER_SCRATCH_KEY = 'thalyx:windowScratchId';
+let bootstrapPromise: Promise<WindowBootstrap> | null = null;
+
+function browserBootstrap(): WindowBootstrap {
+  let scratchId = sessionStorage.getItem(BROWSER_SCRATCH_KEY);
+  if (!scratchId) {
+    scratchId = crypto.randomUUID();
+    sessionStorage.setItem(BROWSER_SCRATCH_KEY, scratchId);
+  }
+
+  return { scratchId, openPath: null, recovery: null, updateReady: false };
+}
 
 export const platform = {
   isElectron: (): boolean => api() !== undefined,
@@ -64,10 +79,11 @@ export const platform = {
       defaultName: string,
       contents: string,
       filters?: Array<{ name: string; extensions: string[] }>,
+      purpose: SaveDialogPurpose = SaveDialogPurpose.Export,
     ): Promise<string | null> {
       if (api()) {
         // main saves atomically in the same call when a path is chosen
-        return api()!.dialog.saveFile(defaultName, contents, filters);
+        return api()!.dialog.saveFile(defaultName, contents, filters, purpose);
       }
       const name = window.prompt('Save as', defaultName);
       if (!name) return null;
@@ -140,6 +156,25 @@ export const platform = {
   },
 
   appx: {
+    bootstrap(): Promise<WindowBootstrap> {
+      if (!bootstrapPromise) {
+        bootstrapPromise = api()?.appx.bootstrap() ?? Promise.resolve(browserBootstrap());
+      }
+
+      return bootstrapPromise;
+    },
+    async setAssociatedPath(path: string | null): Promise<WindowBootstrap> {
+      if (api()) {
+        const bootstrap = await api()!.appx.setAssociatedPath(path);
+        bootstrapPromise = Promise.resolve(bootstrap);
+        return bootstrap;
+      }
+
+      const bootstrap = browserBootstrap();
+      bootstrap.openPath = path;
+      bootstrapPromise = Promise.resolve(bootstrap);
+      return bootstrap;
+    },
     onMenu(cb: (action: { action: string; arg?: unknown }) => void): () => void {
       return api()?.appx.onMenu(cb) ?? (() => undefined);
     },
@@ -148,6 +183,9 @@ export const platform = {
     },
     onRecoveryScratch(cb: (p: { docId: string; contents: string }) => void): () => void {
       return api()?.appx.onRecoveryScratch(cb) ?? (() => undefined);
+    },
+    onBeforeClose(flush: () => Promise<void>): () => void {
+      return api()?.appx.onBeforeClose(flush) ?? (() => undefined);
     },
     async setDocumentEdited(edited: boolean): Promise<void> {
       await api()?.appx.setDocumentEdited(edited);

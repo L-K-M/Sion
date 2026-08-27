@@ -24,6 +24,12 @@ body {
   display: flex;
 }
 
+.thalyx-lifecycle {
+  display: grid;
+  place-items: center;
+  color: var(--gray-stroke);
+}
+
 /* --- toolbar ---------------------------------------------------------- */
 
 .thalyx-toolbar {
@@ -48,6 +54,7 @@ body {
 }
 
 .thalyx-toolbtn {
+  position: relative;
   width: 32px;
   height: 32px;
   display: grid;
@@ -70,12 +77,33 @@ body {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
+.thalyx-toolbtn.is-locked::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 /* --- canvas ------------------------------------------------------------ */
 
 .thalyx-canvas-root {
   position: relative;
   flex: 1;
   min-width: 0;
+}
+
+.thalyx-creation-preview {
+  position: absolute;
+  z-index: 20;
+  box-sizing: border-box;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events: none;
 }
 
 .react-flow {
@@ -113,6 +141,11 @@ body {
   overflow: hidden;
   white-space: pre;
   line-height: 1.25;
+}
+
+.thalyx-text-placeholder {
+  opacity: 0.38;
+  font-style: italic;
 }
 
 .thalyx-container {
@@ -192,9 +225,15 @@ body {
   transition: opacity 120ms ease;
 }
 
+.thalyx-handle:not(.connectable) {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
 .react-flow__node:hover .thalyx-handle,
 .react-flow__node.selected .thalyx-handle,
-.react-flow__node.connectablestart .thalyx-handle {
+.react-flow__handle.connectingfrom,
+.react-flow__handle.connectingto {
   opacity: 1;
 }
 
@@ -273,6 +312,14 @@ body {
   font-family: inherit;
   line-height: 1.25;
   outline: none;
+}
+
+.thalyx-container > .thalyx-label-editor {
+  inset: 4px 8px auto;
+  width: calc(100% - 16px);
+  height: 26px;
+  padding: 2px 4px;
+  text-align: left;
 }
 
 /* --- context panel (§10.3) -------------------------------------------------- */
@@ -605,6 +652,10 @@ body {
   padding: 3px 10px;
   cursor: pointer;
   font-size: 12px;
+}
+
+.thalyx-toast-error {
+  border-color: var(--red-stroke);
 }
 
 /* --- mermaid panel (§9.5) ----------------------------------------------------- */

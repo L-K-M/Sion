@@ -30,7 +30,6 @@ export function installTestHooks(): void {
       if (!import.meta.env.DEV && !new URLSearchParams(window.location.search).has('testHooks')) {
         throw new Error('patchDoc is dev/test-only');
       }
-      // eslint-disable-next-line no-new-func
       const patch = new Function('d', patchSrc) as (d: unknown) => void;
       A.applyDocPatch((d) => {
         patch(d);

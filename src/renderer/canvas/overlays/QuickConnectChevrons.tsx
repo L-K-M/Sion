@@ -87,8 +87,7 @@ export const QuickConnectChevrons = memo(function QuickConnectChevrons() {
   if (!node) return null;
   // Locked nodes can still be grown FROM (creating a new node doesn't move them)
   const abs = absolutePosition(doc, node);
-  const isMermaid = node.kind === 'mermaid';
-  if (isMermaid) return null;
+  if (node.kind !== 'shape') return null;
 
   const chevrons: Array<{
     dir: 'n' | 's' | 'e' | 'w';

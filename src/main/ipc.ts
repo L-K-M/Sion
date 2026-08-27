@@ -6,11 +6,11 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
-  shell,
-  webUtils,
   clipboard,
   app,
   nativeImage,
+  type IpcMainInvokeEvent,
+  type OpenDialogOptions,
 } from 'electron';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
@@ -18,26 +18,47 @@ import { z } from 'zod';
 import {
   addRecent,
   backupOnce,
-  docIdForPath,
   readPrefs,
   recoveryClear,
   recoveryList,
   recoveryRead,
   recoveryWrite,
   writeAtomic,
-  writePrefs,
+  updatePrefs,
 } from './files';
 import { openExternalSafely } from './security';
+import type { WindowBootstrap } from '../shared/windowBootstrap';
+import { DOCUMENT_OPEN_FILTERS } from '../shared/documentOpenFilters';
+import { SaveDialogPurpose } from '../shared/saveDialog';
+import { saveTargetPath, type DocumentPathReservation } from './documentSaveReservation';
 import {
   MAX_CONTENT_BYTES,
   validateContentSize,
   validateDocId,
   validateRecoveryWrite,
+  validateSavePath,
 } from './ipcValidation';
 
 /** §14.5: paths the renderer may touch — granted via dialogs/recents/drops. */
 const grantedPaths = new Set<string>();
-const ALLOWED_EXTENSIONS = new Set(['.thalyx', '.mmd', '.mermaid', '.json']);
+const ALLOWED_EXTENSIONS = new Set([
+  '.thalyx',
+  '.mmd',
+  '.mermaid',
+  '.json',
+  '.txt',
+  '.svg',
+  '.png',
+  '.pdf',
+]);
+
+const DOCUMENT_SAVE_FILTERS = [{ name: 'Thalyx document', extensions: ['thalyx'] }];
+const EXPORT_SAVE_FILTERS = [
+  { name: 'Mermaid', extensions: ['mmd'] },
+  { name: 'SVG', extensions: ['svg'] },
+  { name: 'PNG', extensions: ['png'] },
+  { name: 'PDF', extensions: ['pdf'] },
+];
 
 function grant(path: string): void {
   grantedPaths.add(resolve(path));
@@ -58,20 +79,43 @@ function assertExtension(path: string): void {
   }
 }
 
-export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
+export interface IpcRegistration {
+  getActiveWindow: () => BrowserWindow | null;
+  getBootstrap: (window: BrowserWindow) => WindowBootstrap | Promise<WindowBootstrap>;
+  assertPathAvailable: (window: BrowserWindow, path: string) => void | Promise<void>;
+  associatePath: (
+    window: BrowserWindow,
+    path: string | null,
+  ) => WindowBootstrap | Promise<WindowBootstrap>;
+  reservePath: (
+    window: BrowserWindow,
+    path: string,
+  ) => DocumentPathReservation | Promise<DocumentPathReservation>;
+  onRecentsChanged: () => void;
+  onCloseReady: (window: BrowserWindow) => void | Promise<void>;
+  onCloseFailed: (window: BrowserWindow) => void;
+}
+
+let getActiveWindow: () => BrowserWindow | null = () => null;
+
+function windowForEvent(event: IpcMainInvokeEvent): BrowserWindow | null {
+  return BrowserWindow.fromWebContents(event.sender);
+}
+
+export function registerIpc(registration: IpcRegistration): void {
+  getActiveWindow = registration.getActiveWindow;
   // --- dialog ---------------------------------------------------------------
   ipcMain.handle(
     'dialog:openFile',
-    async (_e, filters?: Array<{ name: string; extensions: string[] }>) => {
-      const win = getMainWindow();
-      const res = await dialog.showOpenDialog(win!, {
+    async (event, filters?: Array<{ name: string; extensions: string[] }>) => {
+      const win = windowForEvent(event);
+      const options: OpenDialogOptions = {
         properties: ['openFile'],
-        filters: filters ?? [
-          { name: 'Thalyx documents', extensions: ['thalyx'] },
-          { name: 'Mermaid', extensions: ['mmd', 'mermaid'] },
-          { name: 'All files', extensions: ['*'] },
-        ],
-      });
+        filters: filters ?? DOCUMENT_OPEN_FILTERS,
+      };
+      const res = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options);
       const path = res.filePaths[0];
       if (path) grant(path);
       return path ?? null;
@@ -81,32 +125,53 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   ipcMain.handle(
     'dialog:saveFile',
     async (
-      _e,
+      event,
       defaultName: string,
       contents: string | undefined,
       filters?: Array<{ name: string; extensions: string[] }>,
+      purpose: SaveDialogPurpose = SaveDialogPurpose.Export,
     ) => {
-      const win = getMainWindow();
+      purpose = z.nativeEnum(SaveDialogPurpose).parse(purpose);
+      const win = windowForEvent(event);
       if (!win) return null;
+      const saveFilters =
+        purpose === SaveDialogPurpose.Document
+          ? DOCUMENT_SAVE_FILTERS
+          : (filters ?? EXPORT_SAVE_FILTERS);
       const res = await dialog.showSaveDialog(win, {
         defaultPath: defaultName,
-        filters: filters ?? [
-          { name: 'Thalyx document', extensions: ['thalyx'] },
-          { name: 'Mermaid', extensions: ['mmd'] },
-          { name: 'SVG', extensions: ['svg'] },
-          { name: 'PNG', extensions: ['png'] },
-          { name: 'PDF', extensions: ['pdf'] },
-        ],
+        filters: saveFilters,
       });
       if (res.canceled || !res.filePath) return null;
       assertExtension(res.filePath); // validate BEFORE granting
-      grant(res.filePath);
+      validateSavePath(res.filePath, purpose);
+      if (purpose === SaveDialogPurpose.Document && typeof contents !== 'string') {
+        throw new Error('document save contents are required');
+      }
       if (typeof contents === 'string') {
         validateContentSize(contents);
-        await backupOnce(res.filePath);
-        await writeAtomic(res.filePath, contents);
       }
-      return res.filePath;
+
+      const reservation =
+        purpose === SaveDialogPurpose.Document
+          ? await registration.reservePath(win, res.filePath)
+          : null;
+      const targetPath = saveTargetPath(res.filePath, reservation);
+      try {
+        assertExtension(targetPath);
+        validateSavePath(targetPath, purpose);
+        if (typeof contents === 'string') {
+          await backupOnce(targetPath);
+          await writeAtomic(targetPath, contents);
+        }
+        reservation?.commit();
+      } catch (error) {
+        reservation?.rollback();
+        throw error;
+      }
+
+      grant(targetPath);
+      return targetPath;
     },
   );
 
@@ -168,12 +233,15 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
     return prefs.recents.map((r) => ({ path: r.path, name: r.name }));
   });
   ipcMain.handle('recents:add', async (_e, path: string) => {
-    const prefs = await addRecent(await readPrefs(), path);
-    await writePrefs(prefs);
-    if (grantedPaths.has(resolve(path))) grant(path); // only re-grant already-granted paths
+    z.string().min(1).max(4096).parse(path);
+    assertGranted(path);
+    assertExtension(path);
+    await updatePrefs((prefs) => addRecent(prefs, path));
+    registration.onRecentsChanged();
   });
   ipcMain.handle('recents:clear', async () => {
-    await writePrefs({ ...(await readPrefs()), recents: [] });
+    await updatePrefs((prefs) => ({ ...prefs, recents: [] }));
+    registration.onRecentsChanged();
   });
 
   // --- prefs ------------------------------------------------------------------
@@ -184,9 +252,10 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
   });
   ipcMain.handle('prefs:set', async (_e, key: string, value: unknown) => {
     z.string().min(1).max(64).parse(key);
-    const prefs = await readPrefs();
-    (prefs as unknown as Record<string, unknown>)[key] = value;
-    await writePrefs(prefs);
+    await updatePrefs((prefs) => {
+      (prefs as unknown as Record<string, unknown>)[key] = value;
+      return prefs;
+    });
   });
 
   // --- shell / clipboard / app -------------------------------------------------
@@ -198,40 +267,55 @@ export function registerIpc(getMainWindow: () => BrowserWindow | null): void {
     clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(bytes)));
   });
   ipcMain.handle('appx:version', () => app.getVersion());
-  ipcMain.handle('appx:setDocumentEdited', (_e, edited: boolean) => {
-    const win = getMainWindow();
-    if (win) win.setDocumentEdited(edited);
-  });
-  ipcMain.handle('appx:setTitle', (_e, title: string) => {
-    z.string().max(512).parse(title);
-    const win = getMainWindow();
-    if (win) win.setTitle(title);
-  });
-  ipcMain.handle('export:print', () => {
-    const win = getMainWindow();
-    win?.webContents.print({}); // native dialog (D11)
-  });
 
-  // --- events from main to renderer ---------------------------------------------
-  const send = (channel: string, payload: unknown) => {
-    getMainWindow()?.webContents.send(channel, payload);
-  };
-  // called by index.ts on menu actions / open-file events
-  (globalThis as Record<string, unknown>).__thalyxSend = send;
-  (globalThis as Record<string, unknown>).__thalyxGrant = grant;
-  (globalThis as Record<string, unknown>).__thalyxDocIdForPath = docIdForPath;
-  void shell;
-  void webUtils;
+  ipcMain.handle('appx:bootstrap', (event) => {
+    const win = windowForEvent(event);
+    if (!win) throw new Error('document window unavailable');
+
+    return registration.getBootstrap(win);
+  });
+  ipcMain.handle('appx:setAssociatedPath', async (event, path: string | null) => {
+    z.string().max(4096).nullable().parse(path);
+    const win = windowForEvent(event);
+    if (!win) throw new Error('document window unavailable');
+    if (path !== null) {
+      assertGranted(path);
+      assertExtension(path);
+      await registration.assertPathAvailable(win, path);
+    }
+
+    return registration.associatePath(win, path);
+  });
+  ipcMain.handle('appx:closeReady', async (event) => {
+    const win = windowForEvent(event);
+    if (win) await registration.onCloseReady(win);
+  });
+  ipcMain.handle('appx:closeFailed', (event) => {
+    const win = windowForEvent(event);
+    if (win) registration.onCloseFailed(win);
+  });
+  ipcMain.handle('appx:setDocumentEdited', (event, edited: boolean) => {
+    windowForEvent(event)?.setDocumentEdited(edited);
+  });
+  ipcMain.handle('appx:setTitle', (event, title: string) => {
+    z.string().max(512).parse(title);
+    windowForEvent(event)?.setTitle(title);
+  });
+  ipcMain.handle('export:print', (event) => {
+    windowForEvent(event)?.webContents.print({}); // native dialog (D11)
+  });
 }
 
-export function sendToRenderer(channel: string, payload: unknown): void {
-  const send = (globalThis as Record<string, unknown>).__thalyxSend as
-    ((c: string, p: unknown) => void) | undefined;
-  send?.(channel, payload);
+export function sendToRenderer(
+  channel: string,
+  payload: unknown,
+  target: BrowserWindow | null = getActiveWindow(),
+): void {
+  if (!target || target.isDestroyed()) return;
+
+  target.webContents.send(channel, payload);
 }
 
 export function grantPath(path: string): void {
-  const grant = (globalThis as Record<string, unknown>).__thalyxGrant as
-    ((p: string) => void) | undefined;
-  grant?.(path);
+  grant(path);
 }

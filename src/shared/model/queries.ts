@@ -46,6 +46,30 @@ export function descendantsOf(doc: ThalyxDoc, id: string): ThalyxNode[] {
   return out;
 }
 
+/** Union of several descendant trees using one parent index. */
+export function descendantIdsOf(doc: ThalyxDoc, rootIds: Iterable<string>): Set<string> {
+  const children = new Map<string, string[]>();
+  for (const node of doc.nodes) {
+    if (node.parentId === undefined) continue;
+
+    const siblings = children.get(node.parentId) ?? [];
+    siblings.push(node.id);
+    children.set(node.parentId, siblings);
+  }
+
+  const pending = [...rootIds].flatMap((id) => children.get(id) ?? []);
+  const descendants = new Set<string>();
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    if (descendants.has(id)) continue;
+
+    descendants.add(id);
+    pending.push(...(children.get(id) ?? []));
+  }
+
+  return descendants;
+}
+
 export function isAncestorOf(doc: ThalyxDoc, ancestorId: string, nodeId: string): boolean {
   let cursor = getNode(doc, nodeId)?.parentId;
   let steps = 0;

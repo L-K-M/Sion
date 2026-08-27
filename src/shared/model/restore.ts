@@ -292,7 +292,7 @@ export function restoreDocument(raw: unknown): ThalyxDoc {
   const seenEdgeIds = new Set<string>();
   for (const re of rawEdges.slice(0, EDGES_MAX)) {
     const edge = coerceEdge(re);
-    if (!edge) continue;
+    if (!edge || edge.source === edge.target) continue;
     const source = byId.get(edge.source);
     const target = byId.get(edge.target);
     if (!source || !target) continue; // invariant 1: drop dangling

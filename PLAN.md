@@ -404,7 +404,7 @@ export interface ThalyxEdge {
   id: EdgeId;
   source: NodeId;
   target: NodeId;
-  sourceAnchor: 'auto' | 'n' | 's' | 'e' | 'w';   // 'auto' = floating (MVP always 'auto'; sides reserved for M9 ports)
+  sourceAnchor: 'auto' | 'n' | 's' | 'e' | 'w';   // 'auto' floats; cardinal values pin handles
   targetAnchor: 'auto' | 'n' | 's' | 'e' | 'w';
   kind: 'elbow' | 'straight' | 'curved';
   label?: string;
@@ -1046,8 +1046,8 @@ rectangles read friendlier; `R` explicitly selects sharp `rect`).
   `proOptions={{hideAttribution: false}}` (keep attribution; it's honest).
 - Node components are `React.memo`'d and read only their own `data`; edges likewise. No
   whole-store subscriptions inside node/edge components (perf doctrine from React Flow docs).
-- Containers: RF `parentId` + `extent: 'parent'` for children while dragging inside; dragging a
-  node across a container boundary re-parents on drop (hit-test containers under the cursor).
+- Containers use RF `parentId`; dragging a node across a container boundary re-parents on drop
+  while preserving its absolute position.
 
 ### 11.2 Floating attachment (anchors)
 
@@ -1055,7 +1055,7 @@ rectangles read friendlier; `R` explicitly selects sharp `rect`).
 endpoint = intersection of the source→target center segment with the node's shape boundary
 (rect/ellipse/diamond analytic; other shapes use their bounding rect — visually fine). For pinned
 sides (M9), the side midpoint. React Flow `Handle`s exist on all four sides (`id='n'|'s'|'e'|'w'`)
-but MVP always stores `'auto'`; RF handles are the drag *affordance*, the model stays floating.
+and handle drags store those cardinal sides so connections remain pinned to their magnets.
 Recompute every render — geometry is derived (D12).
 
 ### 11.3 Elbow router (MVP)

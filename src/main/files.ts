@@ -6,8 +6,9 @@ import { app } from 'electron';
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { TaskQueue } from './taskQueue';
 
 const recoveryDir = () => join(app.getPath('userData'), 'recovery');
 
@@ -18,7 +19,7 @@ export function docIdForPath(absPath: string): string {
 
 /** ATOMIC write: unique tmp in the same directory, fsync, then rename (§12.4). */
 export async function writeAtomic(path: string, contents: string): Promise<void> {
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
   const fh = await open(tmp, 'w');
   try {
     await fh.writeFile(contents, 'utf8');
@@ -52,6 +53,7 @@ interface ManifestEntry {
 }
 
 const manifestPath = () => join(recoveryDir(), 'manifest.json');
+const recoveryManifestWrites = new TaskQueue();
 
 const DOC_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -85,9 +87,11 @@ export async function recoveryWrite(
 ): Promise<void> {
   await mkdir(recoveryDir(), { recursive: true });
   await writeAtomic(join(recoveryDir(), `${docId}.thalyx`), contents);
-  const entries = (await readManifest()).filter((e) => e.docId !== docId);
-  entries.push({ docId, originalPath, savedAt: Date.now() });
-  await writeManifest(entries);
+  await recoveryManifestWrites.run(async () => {
+    const entries = (await readManifest()).filter((entry) => entry.docId !== docId);
+    entries.push({ docId, originalPath, savedAt: Date.now() });
+    await writeManifest(entries);
+  });
 }
 
 export async function recoveryList(): Promise<ManifestEntry[]> {
@@ -103,7 +107,9 @@ export async function recoveryClear(docId: string): Promise<void> {
   assertDocId(docId);
   const file = join(recoveryDir(), `${docId}.thalyx`);
   if (existsSync(file)) await rm(file);
-  await writeManifest((await readManifest()).filter((e) => e.docId !== docId));
+  await recoveryManifestWrites.run(async () => {
+    await writeManifest((await readManifest()).filter((entry) => entry.docId !== docId));
+  });
 }
 
 export async function recoveryListFiles(): Promise<string[]> {
@@ -131,6 +137,7 @@ export interface Prefs {
 }
 
 const prefsPath = () => join(app.getPath('userData'), 'prefs.json');
+const preferenceWrites = new TaskQueue();
 
 const prefsSchema = z.object({
   theme: z.enum(['system', 'light', 'dark']).default('system'),
@@ -161,8 +168,22 @@ export async function readPrefs(): Promise<Prefs> {
   }
 }
 
-export async function writePrefs(prefs: Prefs): Promise<void> {
+async function writePrefsFile(prefs: Prefs): Promise<void> {
   await writeAtomic(prefsPath(), JSON.stringify(prefs, null, 2));
+}
+
+export async function writePrefs(prefs: Prefs): Promise<void> {
+  await preferenceWrites.run(() => writePrefsFile(prefs));
+}
+
+export async function updatePrefs(
+  update: (prefs: Prefs) => Prefs | Promise<Prefs>,
+): Promise<Prefs> {
+  return preferenceWrites.run(async () => {
+    const next = await update(await readPrefs());
+    await writePrefsFile(next);
+    return next;
+  });
 }
 
 /** Existence-checked recents (§12.5). */

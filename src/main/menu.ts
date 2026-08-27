@@ -14,6 +14,7 @@ export type MenuAction =
   | 'selectAll'
   | 'delete'
   | 'new'
+  | 'newWindow'
   | 'open'
   | 'save'
   | 'saveAs'
@@ -100,6 +101,11 @@ export function buildMenu(
       label: 'File',
       submenu: [
         { label: 'New', accelerator: cmd('Mod+N'), click: () => onAction('new') },
+        {
+          label: 'New Window',
+          accelerator: cmd('Mod+Shift+N'),
+          click: () => onAction('newWindow'),
+        },
         { label: 'Open…', accelerator: cmd('Mod+O'), click: () => onAction('open') },
         {
           label: 'Open Recent',

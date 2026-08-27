@@ -1,112 +1,289 @@
-/**
- * Document file lifecycle for the renderer (PLAN.md §12.4): open/save/saveAs,
- * dirty tracking, 800 ms debounced autosave (path → atomic in-place; untitled
- * → recovery dir), scratch-doc restore, menus.
- */
-import { useEffect, useRef } from 'react';
-import { useStore } from '../store/store';
+/** Document bootstrap, save, recovery, menu, and close coordination. */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useReactFlow } from '@xyflow/react';
+import { useStore, resetStore } from '../store/store';
 import * as A from '../store/actions';
 import { platform } from '../platform/api';
 import { parseDoc, serializeDoc } from '../../shared/files/thalyxFile';
-import { resetStore } from '../store/store';
 import { parseMermaid } from '../mermaid/runtime';
-import { isProbablyMermaid } from '../../shared/mermaid/detect';
+import { associatedPathForOpen } from './documentAssociation';
+import { commitActiveInput } from './commitActiveInput';
+import { clearManualSaveFailure, runManualSave, showManualSaveFailure } from './manualSave';
 import { newDoc } from '../../shared/model/create';
 import { isCompletedSaveCurrent } from './saveGuard';
 import { SerializedTaskQueue } from './serializedTaskQueue';
+import { SaveDialogPurpose } from '../../shared/saveDialog';
+import type { WindowBootstrap } from '../../shared/windowBootstrap';
+import {
+  fitCanvas,
+  fitSelection,
+  resetCanvasZoom,
+  zoomCanvasIn,
+  zoomCanvasOut,
+} from '../canvas/viewportActions';
 
-function docIdForSession(): string {
-  // untitled scratch doc id, persisted across relaunches via prefs
-  const KEY = 'thalyx:scratchDocId';
-  let id = localStorage.getItem(KEY);
-  if (!id) {
-    id = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
-    localStorage.setItem(KEY, id);
-  }
-  return id;
+const AUTOSAVE_DELAY_MS = 800;
+
+enum ManualSaveMode {
+  CurrentOrPrompt = 'current-or-prompt',
+  SaveAs = 'save-as',
 }
 
-async function openPathIntoStore(path: string): Promise<void> {
+enum SnapshotWriteReason {
+  Autosave = 'autosave',
+  Close = 'close',
+}
+
+export enum DocumentLifecyclePhase {
+  Loading = 'loading',
+  Ready = 'ready',
+  Closing = 'closing',
+  Error = 'error',
+}
+
+async function openPathIntoStore(path: string): Promise<WindowBootstrap | null> {
   const text = await platform.file.read(path);
-  if (/\.mmd$|\.mermaid$/i.test(path) || isProbablyMermaid(text)) {
+  if (associatedPathForOpen(path, text) === null) {
     const ok = await A.importMermaidAsNew(text, parseMermaid);
-    if (ok) {
-      A.openFilePath(path);
-      await platform.recents.add(path);
-    }
-    return;
+    if (!ok) return null;
+
+    const bootstrap = await platform.appx.setAssociatedPath(null);
+    A.setFilePath(null);
+    await platform.recents.add(path);
+    return bootstrap;
   }
-  const doc = parseDoc(text);
-  resetStore(doc);
+
+  const parsed = parseDoc(text);
+  const bootstrap = await platform.appx.setAssociatedPath(path);
+  resetStore(parsed);
   A.openFilePath(path);
   await platform.recents.add(path);
+  return bootstrap;
 }
 
-export function useDocumentLifecycle(): void {
-  const doc = useStore((s) => s.doc);
-  const dirty = useStore((s) => s.session.dirtySinceSave);
-  const filePath = useStore((s) => s.session.filePath);
-  const timer = useRef<number | null>(null);
-  const writeQueue = useRef(new SerializedTaskQueue());
-  const docRef = useRef(doc);
-  const pathRef = useRef(filePath);
-  const dirtyRef = useRef(dirty);
-  useEffect(() => {
-    docRef.current = doc;
-    pathRef.current = filePath;
-    dirtyRef.current = dirty;
-  });
+function showUpdateToast(): void {
+  if (document.querySelector('.thalyx-toast[data-update-toast]')) return;
 
-  // --- autosave (800 ms debounce, §12.4) ---------------------------------
+  const toast = document.createElement('div');
+  toast.className = 'thalyx-toast';
+  toast.setAttribute('data-update-toast', '1');
+  toast.setAttribute('role', 'status');
+  toast.innerHTML = '<span>Update ready — restart to install?</span>';
+
+  const restart = document.createElement('button');
+  restart.textContent = 'Restart';
+  restart.onclick = () => {
+    void (
+      globalThis as unknown as { thalyx: { updater: { quitAndInstall(): Promise<void> } } }
+    ).thalyx.updater.quitAndInstall();
+  };
+
+  const later = document.createElement('button');
+  later.textContent = 'Later';
+  later.onclick = () => toast.remove();
+
+  toast.append(restart, later);
+  document.body.append(toast);
+}
+
+function markSavedIfCurrent(savedContents: string, savedPath: string): boolean {
+  const state = useStore.getState();
+  const currentContents = serializeDoc(state.doc);
+  if (!isCompletedSaveCurrent(savedContents, savedPath, currentContents, state.session.filePath)) {
+    return false;
+  }
+
+  A.markSaved();
+  return true;
+}
+
+function freezeDocumentInput(): () => void {
+  commitActiveInput(document);
+  const root = document.documentElement;
+  const wasInert = root.inert;
+  root.inert = true;
+  root.dataset['closing'] = 'true';
+
+  return () => {
+    root.inert = wasInert;
+    delete root.dataset['closing'];
+  };
+}
+
+export function useDocumentLifecycle(): DocumentLifecyclePhase {
+  const reactFlow = useReactFlow();
+  const doc = useStore((state) => state.doc);
+  const dirty = useStore((state) => state.session.dirtySinceSave);
+  const filePath = useStore((state) => state.session.filePath);
+  const timer = useRef<number | null>(null);
+  const scratchIdRef = useRef<string | null>(null);
+  const writeQueue = useRef(new SerializedTaskQueue());
+  const [phase, setPhase] = useState(DocumentLifecyclePhase.Loading);
+
+  const clearScratchRecovery = useCallback(async () => {
+    const scratchId = scratchIdRef.current;
+    if (!scratchId) return;
+
+    await platform.recovery.clear(scratchId);
+  }, []);
+
+  const writeCurrentSnapshot = useCallback(
+    async (reason: SnapshotWriteReason): Promise<void> => {
+      const state = useStore.getState();
+      const targetPath = state.session.filePath;
+      if (!state.session.dirtySinceSave) {
+        if (targetPath) await clearScratchRecovery();
+        return;
+      }
+
+      const contents = serializeDoc(state.doc);
+      if (!targetPath) {
+        const scratchId = scratchIdRef.current;
+        if (!scratchId) throw new Error('document recovery identity unavailable');
+
+        await platform.recovery.write(scratchId, contents, null);
+        return;
+      }
+
+      await platform.file.write(targetPath, contents);
+      if (reason === SnapshotWriteReason.Close) {
+        await clearScratchRecovery();
+        return;
+      }
+
+      if (markSavedIfCurrent(contents, targetPath)) await clearScratchRecovery();
+    },
+    [clearScratchRecovery],
+  );
+
+  const saveDocument = useCallback(
+    async (mode: ManualSaveMode): Promise<void> => {
+      clearManualSaveFailure(document);
+      await runManualSave(document, async () => {
+        await writeQueue.current.run(async () => {
+          const state = useStore.getState();
+          const contents = serializeDoc(state.doc);
+          let targetPath = mode === ManualSaveMode.SaveAs ? null : state.session.filePath;
+
+          if (targetPath) {
+            await platform.file.write(targetPath, contents);
+          } else {
+            const defaultName =
+              (state.session.filePath ?? 'Untitled.thalyx').split(/[\\/]/).pop() ??
+              'Untitled.thalyx';
+            targetPath = await platform.dialog.saveFile(
+              defaultName,
+              contents,
+              undefined,
+              SaveDialogPurpose.Document,
+            );
+            if (!targetPath) return;
+
+            const bootstrap = await platform.appx.setAssociatedPath(targetPath);
+            scratchIdRef.current = bootstrap.scratchId;
+            A.setFilePath(targetPath);
+            await platform.recents.add(targetPath);
+          }
+
+          if (markSavedIfCurrent(contents, targetPath)) await clearScratchRecovery();
+        });
+      });
+    },
+    [clearScratchRecovery],
+  );
+
+  // Bootstrap is sender-scoped and replayable after a renderer reload.
   useEffect(() => {
-    if (!dirty) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const bootstrap = await platform.appx.bootstrap();
+        if (cancelled) return;
+
+        scratchIdRef.current = bootstrap.scratchId;
+        if (bootstrap.updateReady) showUpdateToast();
+        if (bootstrap.openPath) {
+          const association = await openPathIntoStore(bootstrap.openPath);
+          if (!association) throw new Error('document import failed');
+
+          scratchIdRef.current = association.scratchId;
+          if (!cancelled) setPhase(DocumentLifecyclePhase.Ready);
+          return;
+        }
+
+        let recovery = bootstrap.recovery;
+        if (!platform.isElectron() && !recovery) {
+          const entry = (await platform.recovery.list()).find((item) => item.originalPath === null);
+          if (entry) {
+            recovery = { docId: entry.docId, contents: await platform.recovery.read(entry.docId) };
+            scratchIdRef.current = entry.docId;
+          }
+        }
+        if (recovery) {
+          resetStore(parseDoc(recovery.contents));
+          A.openFilePath(null);
+        }
+
+        if (!cancelled) setPhase(DocumentLifecyclePhase.Ready);
+      } catch (error) {
+        console.error('[bootstrap] document restore failed', { error });
+        if (!cancelled) setPhase(DocumentLifecyclePhase.Error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Autosave snapshots when its queued task starts, after prior target changes.
+  useEffect(() => {
+    if (!dirty || phase !== DocumentLifecyclePhase.Ready || !scratchIdRef.current) return;
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
-      const contents = serializeDoc(docRef.current);
-      const targetPath = pathRef.current;
-      if (targetPath) {
-        void writeQueue.current
-          .run(() => platform.file.write(targetPath, contents))
-          .then(() => {
-            const currentContents = serializeDoc(docRef.current);
-            if (!isCompletedSaveCurrent(contents, targetPath, currentContents, pathRef.current))
-              return;
+      timer.current = null;
+      void writeQueue.current
+        .run(() => writeCurrentSnapshot(SnapshotWriteReason.Autosave))
+        .catch((error: unknown) => {
+          console.error('[autosave] write failed', { error });
+        });
+    }, AUTOSAVE_DELAY_MS);
 
-            A.markSaved();
-          })
-          .catch((error: unknown) => {
-            console.error('[autosave] write failed', { targetPath, error });
-          });
-      } else {
-        const docId = docIdForSession();
-        void writeQueue.current
-          .run(() => platform.recovery.write(docId, contents, null))
-          .catch((error: unknown) => {
-            console.error('[autosave] recovery write failed', { error });
-          });
-      }
-    }, 800);
     return () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
     };
-  }, [doc, dirty]);
+  }, [dirty, doc, filePath, phase, writeCurrentSnapshot]);
 
-  // --- dirty/title/edited indicators -------------------------------------
+  // Freeze the editor, then flush the latest state after earlier saves settle.
+  useEffect(() => {
+    return platform.appx.onBeforeClose(async () => {
+      if (timer.current !== null) {
+        window.clearTimeout(timer.current);
+        timer.current = null;
+      }
+
+      const releaseInput = freezeDocumentInput();
+      setPhase(DocumentLifecyclePhase.Closing);
+      try {
+        await writeQueue.current.run(() => writeCurrentSnapshot(SnapshotWriteReason.Close));
+      } catch (error) {
+        releaseInput();
+        setPhase(DocumentLifecyclePhase.Ready);
+        throw error;
+      }
+    });
+  }, [writeCurrentSnapshot]);
+
   useEffect(() => {
     void platform.appx.setDocumentEdited(dirty);
     const name = filePath ? filePath.split(/[\\/]/).pop() : 'Untitled';
     void platform.appx.setTitle(`${dirty ? '• ' : ''}${name} — Thalyx`);
   }, [dirty, filePath]);
 
-  // --- clear recovery for saved docs (§12.4) --------------------------------
   useEffect(() => {
-    if (!dirty && filePath) {
-      void platform.recovery.clear(docIdForSession());
-    }
-  }, [dirty, filePath]);
+    if (phase !== DocumentLifecyclePhase.Ready) return;
 
-  // --- menu wiring ----------------------------------------------------------
-  useEffect(() => {
     return platform.appx.onMenu(({ action, arg }) => {
       switch (action) {
         case 'undo':
@@ -121,63 +298,54 @@ export function useDocumentLifecycle(): void {
         case 'selectAll':
           A.selectAll();
           break;
-        case 'cut':
-          void navigator.clipboard?.writeText('');
-          A.deleteSelection();
+        case 'cut': {
+          const selection = useStore.getState().session.selection;
+          void A.cutSelectionInternal(selection.nodeIds, selection.edgeIds);
           break;
-        case 'copy':
-          {
-            const s = useStore.getState().session.selection;
-            void A.copySelectionInternal(s.nodeIds, s.edgeIds);
-          }
+        }
+        case 'copy': {
+          const selection = useStore.getState().session.selection;
+          void A.copySelectionInternal(selection.nodeIds, selection.edgeIds);
           break;
+        }
         case 'paste':
           void A.pasteFromClipboard();
           break;
         case 'new':
           resetStore(newDoc());
+          void platform.appx.setAssociatedPath(null).then((bootstrap) => {
+            scratchIdRef.current = bootstrap.scratchId;
+          });
           A.setFilePath(null);
           A.markSaved();
           break;
         case 'open':
           void (async () => {
             const path = await platform.dialog.openFile();
-            if (path) await openPathIntoStore(path);
+            if (!path) return;
+
+            const bootstrap = await openPathIntoStore(path);
+            if (bootstrap) scratchIdRef.current = bootstrap.scratchId;
           })();
           break;
         case 'openRecent':
-          if (typeof arg === 'string' && arg) void openPathIntoStore(arg);
+          if (typeof arg === 'string' && arg) {
+            void openPathIntoStore(arg).then((bootstrap) => {
+              if (bootstrap) scratchIdRef.current = bootstrap.scratchId;
+            });
+          }
           break;
         case 'save':
-          void (async () => {
-            const path = pathRef.current;
-            const contents = serializeDoc(docRef.current);
-            if (path) {
-              await platform.file.write(path, contents);
-              A.markSaved();
-            } else {
-              const target = await platform.dialog.saveFile('Untitled.thalyx', contents);
-              if (target) {
-                A.setFilePath(target);
-                A.markSaved();
-                await platform.recents.add(target);
-              }
-            }
-          })();
+          void saveDocument(ManualSaveMode.CurrentOrPrompt).catch((error: unknown) => {
+            console.error('[save] failed', { error });
+            showManualSaveFailure(document, error);
+          });
           break;
         case 'saveAs':
-          void (async () => {
-            const contents = serializeDoc(docRef.current);
-            const target = await platform.dialog.saveFile(
-              (pathRef.current ?? 'Untitled.thalyx').split(/[\\/]/).pop() ?? 'Untitled.thalyx',
-              contents,
-            );
-            if (target) {
-              A.setFilePath(target);
-              A.markSaved();
-              await platform.recents.add(target);
-            }
-          })();
+          void saveDocument(ManualSaveMode.SaveAs).catch((error: unknown) => {
+            console.error('[save-as] failed', { error });
+            showManualSaveFailure(document, error);
+          });
           break;
         case 'importMermaid':
           void (async () => {
@@ -185,23 +353,44 @@ export function useDocumentLifecycle(): void {
               { name: 'Mermaid', extensions: ['mmd', 'mermaid', 'txt'] },
             ]);
             if (!path) return;
+
             const text = await platform.file.read(path);
             const ok = await A.importMermaidAsNew(text, parseMermaid);
-            if (ok) {
-              A.setFilePath(null);
-              A.setDirtySinceSave();
-            }
+            if (!ok) return;
+
+            const bootstrap = await platform.appx.setAssociatedPath(null);
+            scratchIdRef.current = bootstrap.scratchId;
+            A.setFilePath(null);
+            A.setDirtySinceSave();
           })();
+          break;
+        case 'export':
+          A.setExportDialogOpen(true);
           break;
         case 'print':
           void platform.exportx.print();
+          break;
+        case 'zoomIn':
+          zoomCanvasIn(reactFlow);
+          break;
+        case 'zoomOut':
+          zoomCanvasOut(reactFlow);
+          break;
+        case 'zoomReset':
+          resetCanvasZoom(reactFlow);
+          break;
+        case 'zoomFit':
+          fitCanvas(reactFlow);
+          break;
+        case 'zoomSelection':
+          fitSelection(reactFlow, useStore.getState().session.selection.nodeIds);
           break;
         case 'toggleGrid':
           A.toggleGrid();
           break;
         case 'toggleMermaidPanel': {
-          const s = useStore.getState().session.mermaidPanelOpen;
-          A.setMermaidPanelOpen(!s);
+          const open = useStore.getState().session.mermaidPanelOpen;
+          A.setMermaidPanelOpen(!open);
           break;
         }
         case 'help':
@@ -216,80 +405,26 @@ export function useDocumentLifecycle(): void {
           break;
       }
     });
-  }, []);
+  }, [phase, reactFlow, saveDocument]);
 
-  // --- open-file events (argv / open-file / second-instance / drag-drop) ----
   useEffect(() => {
-    return platform.appx.onOpenFile((path) => {
-      void openPathIntoStore(path);
-    });
-  }, []);
+    if (phase !== DocumentLifecyclePhase.Ready) return;
 
-  // --- updater toast (§12.6): 'Restart to update' — never force ----------------------
+    return platform.appx.onOpenFile((path) => {
+      void openPathIntoStore(path).then((bootstrap) => {
+        if (bootstrap) scratchIdRef.current = bootstrap.scratchId;
+      });
+    });
+  }, [phase]);
+
   useEffect(() => {
     const api = (
       globalThis as unknown as {
         thalyx?: { updater?: { onUpdateReady(cb: () => void): () => void } };
       }
     ).thalyx;
-    return (
-      api?.updater?.onUpdateReady(() => {
-        if (document.querySelector('.thalyx-toast[data-update-toast]')) return; // dedupe
-        // confirm-style toast; quitAndInstall only on explicit click
-        const el = document.createElement('div');
-        el.className = 'thalyx-toast';
-        el.setAttribute('data-update-toast', '1');
-        el.setAttribute('role', 'status');
-        el.innerHTML = '<span>Update ready — restart to install?</span>';
-        const btn = document.createElement('button');
-        btn.textContent = 'Restart';
-        btn.onclick = () => {
-          void (
-            globalThis as unknown as { thalyx: { updater: { quitAndInstall(): Promise<void> } } }
-          ).thalyx.updater.quitAndInstall();
-        };
-        const no = document.createElement('button');
-        no.textContent = 'Later';
-        no.onclick = () => el.remove();
-        el.append(btn, no);
-        document.body.append(el);
-      }) ?? (() => undefined)
-    );
+    return api?.updater?.onUpdateReady(showUpdateToast) ?? (() => undefined);
   }, []);
 
-  // --- scratch-doc restore on launch (§12.4) --------------------------------
-  useEffect(() => {
-    const off = platform.appx.onRecoveryScratch(async ({ contents }) => {
-      try {
-        const doc = parseDoc(contents);
-        if (doc.nodes.length > 0) {
-          resetStore(doc);
-          A.setFilePath(null);
-          A.markSaved();
-        }
-      } catch {
-        // unreadable scratch — start fresh
-      }
-    });
-    // browser-mode fallback: check localStorage recovery directly
-    if (!platform.isElectron()) {
-      void (async () => {
-        const list = await platform.recovery.list();
-        const scratch = list.find((e) => e.originalPath === null);
-        if (scratch) {
-          const contents = await platform.recovery.read(scratch.docId);
-          try {
-            const doc = parseDoc(contents);
-            if (doc.nodes.length > 0) {
-              resetStore(doc);
-              A.openFilePath(null);
-            }
-          } catch {
-            // ignore
-          }
-        }
-      })();
-    }
-    return off;
-  }, []);
+  return phase;
 }

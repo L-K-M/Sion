@@ -5,20 +5,21 @@
  * override the route entirely (D12: cleared whenever an endpoint moves).
  */
 import type { Point, Rect, Side } from './anchors';
+import { manualElbowWaypoints, routeClearsEndpoints } from './manualWaypoints';
 
 /** Perpendicular stub length out of each side. */
 export const STUB = 16;
 
-function stubPoint(rect: Rect, side: Side): Point {
+function stubPoint(point: Point, side: Side): Point {
   switch (side) {
     case 'n':
-      return { x: rect.x + rect.width / 2, y: rect.y - STUB };
+      return { x: point.x, y: point.y - STUB };
     case 's':
-      return { x: rect.x + rect.width / 2, y: rect.y + rect.height + STUB };
+      return { x: point.x, y: point.y + STUB };
     case 'w':
-      return { x: rect.x - STUB, y: rect.y + rect.height / 2 };
+      return { x: point.x - STUB, y: point.y };
     case 'e':
-      return { x: rect.x + rect.width + STUB, y: rect.y + rect.height / 2 };
+      return { x: point.x + STUB, y: point.y };
   }
 }
 
@@ -53,7 +54,7 @@ export function collapseCollinear(points: Point[]): Point[] {
  *  - same side        → U via a rail 16px beyond the outermost bound
  *  - non-facing variants naturally produce S/C shapes with the same rails
  */
-export function route(
+function preferredRoute(
   source: Point,
   target: Point,
   sourceRect: Rect,
@@ -61,8 +62,8 @@ export function route(
   sourceSide: Side,
   targetSide: Side,
 ): Point[] {
-  const sStub = stubPoint(sourceRect, sourceSide);
-  const tStub = stubPoint(targetRect, targetSide);
+  const sStub = stubPoint(source, sourceSide);
+  const tStub = stubPoint(target, targetSide);
 
   const horizontalFirst = sourceSide === 'e' || sourceSide === 'w'; // stub points along x first
 
@@ -96,7 +97,20 @@ export function route(
   }
 
   if ((sourceSide === 'e' && targetSide === 'w') || (sourceSide === 'w' && targetSide === 'e')) {
-    // Opposite horizontally: Z through the vertical midline.
+    const facing = sourceSide === 'e' ? sStub.x <= tStub.x : sStub.x >= tStub.x;
+    if (!facing) {
+      const railY = Math.min(sourceRect.y, targetRect.y) - STUB;
+      return collapseCollinear([
+        source,
+        sStub,
+        { x: sStub.x, y: railY },
+        { x: tStub.x, y: railY },
+        tStub,
+        target,
+      ]);
+    }
+
+    // Facing sides use the unobstructed rail between both stubs.
     const railX = mid(sStub.x, tStub.x);
     return collapseCollinear([
       source,
@@ -106,7 +120,20 @@ export function route(
     ]);
   }
   if ((sourceSide === 's' && targetSide === 'n') || (sourceSide === 'n' && targetSide === 's')) {
-    // Opposite vertically: Z through the horizontal midline.
+    const facing = sourceSide === 's' ? sStub.y <= tStub.y : sStub.y >= tStub.y;
+    if (!facing) {
+      const railX = Math.min(sourceRect.x, targetRect.x) - STUB;
+      return collapseCollinear([
+        source,
+        sStub,
+        { x: railX, y: sStub.y },
+        { x: railX, y: tStub.y },
+        tStub,
+        target,
+      ]);
+    }
+
+    // Facing sides use the unobstructed rail between both stubs.
     const railY = mid(sStub.y, tStub.y);
     return collapseCollinear([
       source,
@@ -116,12 +143,39 @@ export function route(
     ]);
   }
 
-  // Orthogonal sides: L through the corner where the stubs meet.
+  // Orthogonal sides use both outward stubs so neither endpoint node is crossed.
   if (horizontalFirst) {
-    // first travel along x (out of source), then along y (into target)
-    return collapseCollinear([source, { x: tStub.x, y: source.y }, target]);
+    return collapseCollinear([source, sStub, { x: sStub.x, y: tStub.y }, tStub, target]);
   }
-  return collapseCollinear([source, { x: source.x, y: tStub.y }, target]);
+  return collapseCollinear([source, sStub, { x: tStub.x, y: sStub.y }, tStub, target]);
+}
+
+/** Prefer compact rails, then fall back to a clear outer rail. */
+export function route(
+  source: Point,
+  target: Point,
+  sourceRect: Rect,
+  targetRect: Rect,
+  sourceSide: Side,
+  targetSide: Side,
+): Point[] {
+  const preferred = preferredRoute(source, target, sourceRect, targetRect, sourceSide, targetSide);
+  if (routeClearsEndpoints(preferred, sourceRect, targetRect)) return preferred;
+
+  const dragged = { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 };
+  return [
+    source,
+    ...manualElbowWaypoints(
+      source,
+      target,
+      sourceSide,
+      targetSide,
+      sourceRect,
+      targetRect,
+      dragged,
+    ),
+    target,
+  ];
 }
 
 /** Polyline length. */

@@ -3,7 +3,7 @@
  * Lives in the renderer (React Flow types never enter src/shared — §11.7).
  */
 import type { Edge, Node } from '@xyflow/react';
-import type { ThalyxDoc, ThalyxEdge, ThalyxNode } from '../../shared/model/types';
+import type { ThalyxEdge, ThalyxNode } from '../../shared/model/types';
 import type { SessionState } from '../store/store';
 
 export interface ThalyxNodeData extends Record<string, unknown> {
@@ -39,11 +39,11 @@ function edgeData(e: ThalyxEdge): ThalyxEdgeData {
 }
 
 export function toReactFlowNodes(
-  doc: ThalyxDoc,
+  nodes: readonly ThalyxNode[],
   selection: SessionState['selection'],
 ): Node<ThalyxNodeData>[] {
   const selected = new Set(selection.nodeIds);
-  return doc.nodes.map((n) => ({
+  return nodes.map((n) => ({
     id: n.id,
     type: n.kind === 'mermaid' ? 'mermaid' : n.kind,
     position: { x: n.x, y: n.y },
@@ -51,11 +51,10 @@ export function toReactFlowNodes(
     // cannot size the wrapper itself (RF hides unmeasured nodes).
     style: { width: n.width, height: n.height },
     ...(n.parentId !== undefined ? { parentId: n.parentId } : {}),
-    ...(n.parentId !== undefined ? { extent: 'parent' as const } : {}),
     data: nodeData(n),
     selected: selected.has(n.id),
     hidden: n.hidden === true,
-    draggable: n.locked !== true,
+    ...(n.locked === true ? { draggable: false } : {}),
     selectable: n.locked !== true,
     deletable: true,
     dragHandle: undefined,
@@ -63,16 +62,18 @@ export function toReactFlowNodes(
 }
 
 export function toReactFlowEdges(
-  doc: ThalyxDoc,
+  edges: readonly ThalyxEdge[],
   selection: SessionState['selection'],
 ): Edge<ThalyxEdgeData>[] {
   // M2: minimal straight-line edges so fixture docs read; the custom thalyx
   // edge (elbow/straight/curved, labels, arrowheads) lands in M3.
   const selected = new Set(selection.edgeIds);
-  return doc.edges.map((e) => ({
+  return edges.map((e) => ({
     id: e.id,
     source: e.source,
     target: e.target,
+    sourceHandle: e.sourceAnchor === 'auto' ? null : e.sourceAnchor,
+    targetHandle: e.targetAnchor === 'auto' ? null : e.targetAnchor,
     type: 'thalyx',
     selected: selected.has(e.id),
     hidden: e.hidden === true,

@@ -4,7 +4,6 @@
  * commits and deselects; blur commits. Multi-line labels join with '\n'.
  */
 import { useEffect, useRef } from 'react';
-import * as A from '../../store/actions';
 
 /**
  * The textarea itself — rendered inside the node component.
@@ -52,18 +51,4 @@ export function LabelTextarea({
       onBlur={(e) => onCommit(e.target.value)}
     />
   );
-}
-
-/** Start editing with an initial character (type-to-edit precedence, §10.2). */
-export function beginEditingWithChar(kind: 'node' | 'edge', id: string, ch: string): void {
-  A.setEditingLabel({ kind, id });
-  void kind;
-  // The char lands after the textarea mounts (focus + setRangeText).
-  requestAnimationFrame(() => {
-    const el = document.activeElement as HTMLTextAreaElement | null;
-    if (el && el.classList.contains('thalyx-label-editor')) {
-      el.value = ch;
-      el.setSelectionRange(ch.length, ch.length);
-    }
-  });
 }

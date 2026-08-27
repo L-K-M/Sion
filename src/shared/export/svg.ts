@@ -2,10 +2,15 @@
  * renderDocToSvg (PLAN.md §13.1): pure function from the model — canvas and
  * export share geometry by construction. No CSS classes, no foreignObject.
  */
+import {
+  boundsWithSvgEdges,
+  EDGE_LABEL_CHAR_WIDTH,
+  EDGE_LABEL_HEIGHT,
+  EDGE_LABEL_HORIZONTAL_PADDING,
+  svgEdgeGeometry,
+} from './edgeGeometry';
 import { shapePath } from '../geometry/shapes';
 import { absolutePosition, boundsOfNodes } from '../model/queries';
-import { edgeEndpoints } from '../geometry/anchors';
-import { pointAtT, route } from '../geometry/elbow';
 import type { ThalyxDoc, ThalyxNode } from '../model/types';
 
 export interface RenderSvgOptions {
@@ -61,13 +66,20 @@ export function renderDocToSvg(doc: ThalyxDoc, opts: RenderSvgOptions): string {
   const include = new Set(nodes.map((n) => n.id));
   edges = edges.filter((e) => include.has(e.source) && include.has(e.target) && !e.hidden);
 
-  const bounds = boundsOfNodes(doc, nodes);
-  if (!bounds) {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const edgeGeometries = edges.flatMap((edge) => {
+    const geometry = svgEdgeGeometry(doc, edge, nodesById);
+    return geometry ? [geometry] : [];
+  });
+
+  const nodeBounds = boundsOfNodes(doc, nodes);
+  if (!nodeBounds) {
     const w = 2 * padding;
     const h = 2 * padding;
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"></svg>`;
   }
 
+  const bounds = boundsWithSvgEdges(nodeBounds, edgeGeometries);
   const minX = bounds.x - padding;
   const minY = bounds.y - padding;
   const w = bounds.width + padding * 2;
@@ -172,45 +184,22 @@ export function renderDocToSvg(doc: ThalyxDoc, opts: RenderSvgOptions): string {
   }
 
   // edges above nodes
-  for (const e of edges) {
-    const src = doc.nodes.find((n) => n.id === e.source)!;
-    const tgt = doc.nodes.find((n) => n.id === e.target)!;
-    const srcAbs = absolutePosition(doc, src);
-    const tgtAbs = absolutePosition(doc, tgt);
-    const { source, target, sourceSide, targetSide } = edgeEndpoints(
-      src,
-      srcAbs,
-      tgt,
-      tgtAbs,
-      e.sourceAnchor,
-      e.targetAnchor,
-    );
-    const pts =
-      e.waypoints && e.waypoints.length > 0
-        ? [source, ...e.waypoints, target]
-        : e.kind === 'elbow'
-          ? route(
-              source,
-              target,
-              { x: srcAbs.x, y: srcAbs.y, width: src.width, height: src.height },
-              { x: tgtAbs.x, y: tgtAbs.y, width: tgt.width, height: tgt.height },
-              sourceSide,
-              targetSide,
-            )
-          : [source, target];
-    const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  for (const geometry of edgeGeometries) {
+    const e = geometry.edge;
     const stroke = e.style.stroke.startsWith('#') ? e.style.stroke : '#1f2328';
     const dash = e.style.line === 'dashed' ? ' stroke-dasharray="6 4"' : '';
     const width = e.style.line === 'thick' ? 4 : 2;
     const mk = (head: string, end: 'start' | 'end') =>
       head === 'none' ? '' : ` marker-${end}="url(#mk-${head}-${e.style.stroke}-${end})"`;
     parts.push(
-      `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${width}"${dash}${mk(e.arrowStart, 'start')}${mk(e.arrowEnd, 'end')}/>`,
+      `<path d="${geometry.path}" fill="none" stroke="${stroke}" stroke-width="${width}"${dash}${mk(e.arrowStart, 'start')}${mk(e.arrowEnd, 'end')}/>`,
     );
-    if (e.label) {
-      const p = pointAtT(pts, e.labelT ?? 0.5);
+    if (e.label && geometry.labelPoint) {
+      const p = geometry.labelPoint;
+      const labelWidth = e.label.length * EDGE_LABEL_CHAR_WIDTH + EDGE_LABEL_HORIZONTAL_PADDING * 2;
+
       parts.push(
-        `<rect x="${p.x - e.label.length * 3.4 - 4}" y="${p.y - 9}" width="${e.label.length * 6.8 + 8}" height="18" rx="3" fill="${THEME_BG[opts.background === 'transparent' ? 'light' : opts.background]}"/>`,
+        `<rect x="${p.x - labelWidth / 2}" y="${p.y - EDGE_LABEL_HEIGHT / 2}" width="${labelWidth}" height="${EDGE_LABEL_HEIGHT}" rx="3" fill="${THEME_BG[opts.background === 'transparent' ? 'light' : opts.background]}"/>`,
         `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="12" fill="#1f2328">${esc(e.label)}</text>`,
       );
     }

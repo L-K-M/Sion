@@ -157,7 +157,7 @@ public enum SVGExporter {
     let frame = element.geometry.frame.standardized
     let path = shapePath(shape.kind, frame: frame)
     var content =
-      "<path d=\"\(path)\" \(styleAttributes(element.style, id: element.id, definitions: &definitions))/>"
+      "<path d=\"\(path)\" \(styleAttributes(element, definitions: &definitions))/>"
 
     if let label = shape.label {
       content += renderText(label, in: frame)
@@ -174,7 +174,7 @@ public enum SVGExporter {
     let path = vectorPath(content.path, frame: element.geometry.frame.standardized)
     let fillRule = content.path.fillRule == .evenOdd ? "evenodd" : "nonzero"
     let rendered =
-      "<path d=\"\(path)\" fill-rule=\"\(fillRule)\" \(styleAttributes(element.style, id: element.id, definitions: &definitions))/>"
+      "<path d=\"\(path)\" fill-rule=\"\(fillRule)\" \(styleAttributes(element, definitions: &definitions))/>"
 
     return wrapped(rendered, element: element, definitions: &definitions, style: .omit)
   }
@@ -243,7 +243,7 @@ public enum SVGExporter {
     let markerStart = markerAttribute(connector.sourceDecoration, position: .start)
     let markerEnd = markerAttribute(connector.targetDecoration, position: .end)
     let path =
-      "<path d=\"\(routePath(route))\" fill=\"none\" \(styleAttributes(element.style, id: element.id, definitions: &definitions)) \(markerStart) \(markerEnd)/>"
+      "<path d=\"\(routePath(route))\" fill=\"none\" \(styleAttributes(element, route: route, definitions: &definitions)) \(markerStart) \(markerEnd)/>"
 
     guard let label = connector.label else {
       return path
@@ -278,7 +278,7 @@ public enum SVGExporter {
     switch style {
     case .apply:
       renderedStyle =
-        " \(styleAttributes(element.style, id: element.id, definitions: &definitions))"
+        " \(styleAttributes(element, definitions: &definitions))"
     case .omit:
       renderedStyle = ""
     }
@@ -286,10 +286,11 @@ public enum SVGExporter {
   }
 
   private static func styleAttributes(
-    _ style: ElementStyle,
-    id: ElementID,
+    _ element: SceneElement,
+    route: ConnectorRoute? = nil,
     definitions: inout [String]
   ) -> String {
+    let style = element.style
     let fill: String
     switch style.fill {
     case .none:
@@ -297,7 +298,7 @@ public enum SVGExporter {
     case .solid(let color):
       fill = color.hex
     case .linearGradient(let gradient):
-      let gradientID = "gradient-\(id)"
+      let gradientID = "gradient-\(element.id)"
       let stops = gradient.stops.map { stop in
         "<stop offset=\"\(number(stop.location * 100))%\" stop-color=\"\(stop.color.hex)\"/>"
       }.joined()
@@ -321,9 +322,13 @@ public enum SVGExporter {
 
     var filter = ""
     if let shadow = style.shadows.first {
-      let filterID = "shadow-\(id)"
+      let filterID = "shadow-\(element.id)"
+      let filterBounds = SceneRenderGeometry.unrotatedPaintedBounds(
+        of: element,
+        route: route
+      )
       definitions.append(
-        "<filter id=\"\(filterID)\" x=\"-50%\" y=\"-50%\" width=\"200%\" height=\"200%\"><feDropShadow dx=\"\(number(shadow.offset.dx))\" dy=\"\(number(shadow.offset.dy))\" stdDeviation=\"\(number(shadow.blurRadius / 2))\" flood-color=\"\(shadow.color.hex)\"/></filter>"
+        "<filter id=\"\(filterID)\" filterUnits=\"userSpaceOnUse\" x=\"\(number(filterBounds.minX))\" y=\"\(number(filterBounds.minY))\" width=\"\(number(filterBounds.width))\" height=\"\(number(filterBounds.height))\"><feDropShadow dx=\"\(number(shadow.offset.dx))\" dy=\"\(number(shadow.offset.dy))\" stdDeviation=\"\(number(shadow.blurRadius / 2))\" flood-color=\"\(shadow.color.hex)\"/></filter>"
       )
       filter = " filter=\"url(#\(filterID))\""
     }

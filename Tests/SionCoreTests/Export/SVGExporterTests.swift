@@ -96,6 +96,48 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertEqual(route.start, SionPoint(x: 200, y: 200))
   }
 
+  func testShadowFilterUsesPaintedUserSpaceBounds() throws {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+      kind: .rectangle
+    )
+    let shadow = ShadowStyle(
+      color: .primaryInk,
+      offset: SionVector(dx: 300, dy: 200),
+      blurRadius: 40
+    )
+    shape.style.shadows = [shadow]
+
+    let svg = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [shape])),
+      assets: [:]
+    )
+
+    XCTAssertTrue(svg.contains("filterUnits=\"userSpaceOnUse\""))
+    XCTAssertFalse(svg.contains("x=\"-50%\""))
+    XCTAssertFalse(svg.contains("width=\"200%\""))
+
+    let filterStart = try XCTUnwrap(svg.range(of: "<filter "))
+    let filterSuffix = svg[filterStart.lowerBound...]
+    let filterEnd = try XCTUnwrap(filterSuffix.firstIndex(of: ">"))
+    let filterTag = filterSuffix[...filterEnd]
+    let x = try XCTUnwrap(numberAttribute("x", in: filterTag))
+    let y = try XCTUnwrap(numberAttribute("y", in: filterTag))
+    let width = try XCTUnwrap(numberAttribute("width", in: filterTag))
+    let height = try XCTUnwrap(numberAttribute("height", in: filterTag))
+
+    XCTAssertLessThanOrEqual(x, shape.geometry.frame.minX)
+    XCTAssertLessThanOrEqual(y, shape.geometry.frame.minY)
+    XCTAssertGreaterThanOrEqual(
+      x + width,
+      shape.geometry.frame.maxX + shadow.offset.dx + shadow.blurRadius
+    )
+    XCTAssertGreaterThanOrEqual(
+      y + height,
+      shape.geometry.frame.maxY + shadow.offset.dy + shadow.blurRadius
+    )
+  }
+
   func testConnectorResolutionUsesRotatedMagnets() throws {
     var shape = SceneElement.shape(
       frame: SionRect(x: 100, y: 200, width: 200, height: 100)
@@ -152,5 +194,29 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertFalse(svg.unicodeScalars.contains { $0.value == 0 || $0.value == 12 })
     XCTAssertTrue(svg.contains("before�after�"))
     XCTAssertTrue(svg.contains("title�"))
+  }
+
+  func testNumberAttributeMatchesExactName() {
+    let tag = Substring(#"<filter dx="9" x="-4" dy="8" y="-3">"#)
+
+    XCTAssertEqual(numberAttribute("x", in: tag), -4)
+    XCTAssertEqual(numberAttribute("y", in: tag), -3)
+  }
+
+  private func numberAttribute(_ name: String, in tag: Substring) -> Double? {
+    let prefix = "\(name)=\""
+    guard
+      let attribute =
+        tag
+        .split(whereSeparator: \Character.isWhitespace)
+        .first(where: { $0.hasPrefix(prefix) }),
+      let valueEnd =
+        attribute.dropFirst(prefix.count).firstIndex(of: "\"")
+    else {
+      return nil
+    }
+
+    let valueStart = attribute.index(attribute.startIndex, offsetBy: prefix.count)
+    return Double(attribute[valueStart..<valueEnd])
   }
 }

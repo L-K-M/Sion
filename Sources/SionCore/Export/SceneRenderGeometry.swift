@@ -127,38 +127,222 @@ public enum SceneRenderGeometry {
     var bounds: SionRect?
 
     for element in scene.elements where element.visibility == .visible {
-      let route: ConnectorRoute?
-      if let connectorRoutes, element.content.connector != nil {
-        route = connectorRoutes(element)
-      } else {
-        route = connectorRoute(for: element, in: scene)
-      }
+      let route = connectorRoute(
+        for: element,
+        in: scene,
+        provider: connectorRoutes
+      )
+      guard element.content.connector == nil || route != nil else { continue }
 
-      if let route {
-        for point in route.exportBoundsPoints {
-          let pointRect = SionRect(x: point.x, y: point.y, width: 0, height: 0)
-          bounds = bounds.map { $0.union(pointRect) } ?? pointRect
-        }
-        continue
-      }
-
-      guard element.content.connector == nil else {
-        continue
-      }
-      let elementBounds = rotatedBounds(of: element.geometry)
+      let elementBounds = paintedBounds(of: element, route: route)
       bounds = bounds.map { $0.union(elementBounds) } ?? elementBounds
     }
 
     return bounds
   }
 
-  private static func rotatedBounds(of geometry: ElementGeometry) -> SionRect {
-    let frame = geometry.frame.standardized
-    guard geometry.rotationRadians != 0 else {
-      return frame
+  static func paintedBounds(
+    of element: SceneElement,
+    route: ConnectorRoute? = nil
+  ) -> SionRect {
+    let localBounds = unrotatedPaintedBounds(of: element, route: route)
+    guard element.content.connector == nil else { return localBounds }
+
+    return rotatedBounds(
+      localBounds,
+      around: element.geometry.frame.standardized.center,
+      by: element.geometry.rotationRadians
+    )
+  }
+
+  static func unrotatedPaintedBounds(
+    of element: SceneElement,
+    route: ConnectorRoute? = nil
+  ) -> SionRect {
+    var bounds = baseBounds(of: element, route: route)
+    bounds = bounds.expanded(by: strokeExpansion(for: element.style.stroke))
+
+    if case .connector(let connector) = element.content, let route {
+      let adornmentBounds = connectorAdornmentBounds(
+        connector,
+        route: route,
+        style: element.style
+      )
+      bounds = bounds.union(adornmentBounds)
     }
 
-    let center = frame.center
+    let sourceBounds = bounds
+
+    // Bound every styled shadow so renderers cannot clip collection entries.
+    for shadow in element.style.shadows {
+      let blurExtent = shadow.blurRadius * PaintedBounds.shadowBlurExtentMultiplier
+      let shadowBounds =
+        sourceBounds
+        .translated(by: shadow.offset)
+        .expanded(by: blurExtent)
+      bounds = bounds.union(shadowBounds)
+    }
+
+    return bounds
+  }
+
+  private static func connectorRoute(
+    for element: SceneElement,
+    in scene: SionScene,
+    provider: ConnectorRouteProvider?
+  ) -> ConnectorRoute? {
+    guard element.content.connector != nil else { return nil }
+    if let provider {
+      return provider(element)
+    }
+
+    return connectorRoute(for: element, in: scene)
+  }
+
+  private static func baseBounds(
+    of element: SceneElement,
+    route: ConnectorRoute?
+  ) -> SionRect {
+    if let route {
+      return bounds(containing: route.exportBoundsPoints)
+    }
+
+    let frame = element.geometry.frame.standardized
+    guard case .path(let content) = element.content else { return frame }
+
+    let points = pathPoints(content.path, in: frame)
+    guard !points.isEmpty else { return frame }
+
+    let commandBounds = bounds(containing: points)
+    return frame.union(commandBounds)
+  }
+
+  private static func pathPoints(
+    _ path: VectorPath,
+    in frame: SionRect
+  ) -> [SionPoint] {
+    func resolved(_ point: SionPoint) -> SionPoint {
+      switch path.coordinateSpace {
+      case .normalized:
+        return frame.point(atNormalized: point)
+      case .localPoints:
+        return SionPoint(x: frame.minX + point.x, y: frame.minY + point.y)
+      }
+    }
+
+    return path.commands.flatMap { command in
+      switch command {
+      case .move(let point), .line(let point):
+        return [resolved(point)]
+      case .quadratic(let control, let point):
+        return [resolved(control), resolved(point)]
+      case .cubic(let control1, let control2, let point):
+        return [resolved(control1), resolved(control2), resolved(point)]
+      case .close:
+        return []
+      }
+    }
+  }
+
+  private static func connectorAdornmentBounds(
+    _ connector: ConnectorContent,
+    route: ConnectorRoute,
+    style: ElementStyle
+  ) -> SionRect {
+    var bounds = bounds(containing: route.exportBoundsPoints)
+    let strokeWidth =
+      style.stroke?.width ?? PaintedBounds.nativeDefaultConnectorWidth
+
+    if connector.sourceDecoration != .none {
+      let radius = connectorDecorationRadius(
+        connector.sourceDecoration,
+        strokeWidth: strokeWidth
+      )
+      bounds = bounds.union(pointBounds(route.start, radius: radius))
+    }
+    if connector.targetDecoration != .none {
+      let radius = connectorDecorationRadius(
+        connector.targetDecoration,
+        strokeWidth: strokeWidth
+      )
+      bounds = bounds.union(pointBounds(route.end, radius: radius))
+    }
+
+    if connector.label != nil {
+      let point = route.point(atFraction: connector.labelPosition)
+      let labelBounds = SionRect(
+        x: point.x - (PaintedBounds.connectorLabelWidth / 2),
+        y: point.y - (PaintedBounds.connectorLabelHeight / 2),
+        width: PaintedBounds.connectorLabelWidth,
+        height: PaintedBounds.connectorLabelHeight
+      )
+      bounds = bounds.union(labelBounds)
+    }
+
+    return bounds
+  }
+
+  private static func connectorDecorationRadius(
+    _ decoration: ConnectorDecoration,
+    strokeWidth: Double
+  ) -> Double {
+    let nativeRadius: Double
+    switch decoration {
+    case .none:
+      return 0
+    case .openArrow, .filledArrow:
+      nativeRadius = PaintedBounds.nativeArrowRadius
+    case .circle:
+      nativeRadius = PaintedBounds.nativeCircleRadius
+    case .diamond:
+      nativeRadius = PaintedBounds.nativeDiamondRadius
+    }
+
+    let nativePaintedRadius = nativeRadius + (strokeWidth / 2)
+    let svgRadius = strokeWidth * PaintedBounds.svgMarkerRadiusFactor
+    return max(nativePaintedRadius, svgRadius)
+  }
+
+  private static func strokeExpansion(for stroke: StrokeStyle?) -> Double {
+    guard let stroke else { return 0 }
+
+    let radius = stroke.width / 2
+    guard stroke.lineJoin == .miter else { return radius }
+
+    return radius * PaintedBounds.nativeMiterLimit
+  }
+
+  private static func pointBounds(_ point: SionPoint, radius: Double) -> SionRect {
+    SionRect(x: point.x, y: point.y, width: 0, height: 0).expanded(by: radius)
+  }
+
+  private static func bounds(containing points: [SionPoint]) -> SionRect {
+    guard let first = points.first else { return .zero }
+
+    return points.dropFirst().reduce(
+      SionRect(x: first.x, y: first.y, width: 0, height: 0)
+    ) { bounds, point in
+      bounds.union(SionRect(x: point.x, y: point.y, width: 0, height: 0))
+    }
+  }
+
+  private static func rotatedBounds(of geometry: ElementGeometry) -> SionRect {
+    let frame = geometry.frame.standardized
+    return rotatedBounds(
+      frame,
+      around: frame.center,
+      by: geometry.rotationRadians
+    )
+  }
+
+  private static func rotatedBounds(
+    _ bounds: SionRect,
+    around center: SionPoint,
+    by radians: Double
+  ) -> SionRect {
+    let frame = bounds.standardized
+    guard radians != 0 else { return frame }
+
     let corners = [
       SionPoint(x: frame.minX, y: frame.minY),
       SionPoint(x: frame.maxX, y: frame.minY),
@@ -168,7 +352,7 @@ public enum SceneRenderGeometry {
       InteractionGeometry.rotated(
         point,
         around: center,
-        by: geometry.rotationRadians
+        by: radians
       )
     }
 
@@ -348,6 +532,19 @@ public enum SceneRenderGeometry {
       )
     }
   }
+}
+
+private enum PaintedBounds {
+  // Use the larger Canvas/SVG footprints so neither renderer clips.
+  static let connectorLabelWidth = 160.0
+  static let connectorLabelHeight = 36.0
+  static let nativeArrowRadius = hypot(12.0, 6.0)
+  static let nativeCircleRadius = 5.0
+  static let nativeDiamondRadius = 10.0
+  static let nativeDefaultConnectorWidth = 1.5
+  static let nativeMiterLimit = 10.0
+  static let shadowBlurExtentMultiplier = 3.0
+  static let svgMarkerRadiusFactor = 4.0
 }
 
 extension ConnectorRoute {

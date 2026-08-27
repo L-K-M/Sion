@@ -56,7 +56,8 @@
       )
       let controller = try makeController(elements: scene.elements)
       let middleTwo = Array(scene.elements[1...2].map(\.id))
-      controller.select(Set(middleTwo))
+      controller.select(middleTwo[0])
+      controller.select(middleTwo[1], mode: .extend)
 
       try controller.changeSelectionZOrder(.forward)
       XCTAssertEqual(

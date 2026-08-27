@@ -3,11 +3,36 @@ import Foundation
 public struct MermaidExport: Equatable, Sendable {
   public let source: String
   public let coverage: MermaidCoverage
+  public let omissions: [MermaidOmission]
 
-  public init(source: String, coverage: MermaidCoverage) {
+  public init(
+    source: String,
+    coverage: MermaidCoverage,
+    omissions: [MermaidOmission] = []
+  ) {
     self.source = source
     self.coverage = coverage
+    self.omissions = omissions
   }
+}
+
+public struct MermaidOmission: Equatable, Sendable {
+  public let kind: MermaidOmissionKind
+  public let count: Int
+
+  public init(kind: MermaidOmissionKind, count: Int) {
+    self.kind = kind
+    self.count = count
+  }
+}
+
+public enum MermaidOmissionKind: String, Hashable, Sendable {
+  case connector
+  case group
+  case image
+  case path
+  case shape
+  case text
 }
 
 /// Projects diagram semantics into a recoverable Mermaid flowchart.
@@ -58,7 +83,7 @@ public enum MermaidExporter {
 
     var lines = ["flowchart TB"]
     for element in unsupported {
-      lines.append("  %% Omitted Sion \(element.content.mermaidKind): \(element.id)")
+      lines.append("  %% Omitted Sion \(element.content.mermaidKind.rawValue): \(element.id)")
     }
     lines.append(contentsOf: nodes.map(nodeDeclaration))
     lines.append(contentsOf: edges)
@@ -72,7 +97,14 @@ public enum MermaidExporter {
       coverage = .partial
     }
 
-    return MermaidExport(source: lines.joined(separator: "\n") + "\n", coverage: coverage)
+    let omissions = Dictionary(grouping: unsupported, by: { $0.content.mermaidKind })
+      .map { MermaidOmission(kind: $0.key, count: $0.value.count) }
+      .sorted { $0.kind.rawValue < $1.kind.rawValue }
+    return MermaidExport(
+      source: lines.joined(separator: "\n") + "\n",
+      coverage: coverage,
+      omissions: omissions
+    )
   }
 
   private static func nodeDeclaration(_ element: SceneElement) -> String {
@@ -172,20 +204,20 @@ extension SceneElement {
 }
 
 extension ElementContent {
-  fileprivate var mermaidKind: String {
+  fileprivate var mermaidKind: MermaidOmissionKind {
     switch self {
     case .shape:
-      return "shape"
+      return .shape
     case .path:
-      return "path"
+      return .path
     case .text:
-      return "text"
+      return .text
     case .image:
-      return "image"
+      return .image
     case .group:
-      return "group"
+      return .group
     case .connector:
-      return "connector"
+      return .connector
     }
   }
 }

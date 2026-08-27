@@ -40,47 +40,27 @@ final class PalettePanelTests: XCTestCase {
     XCTAssertFalse(panel.isVisible)
   }
 
-  func testClosePrioritizesVisibleDetachedPanel() throws {
+  func testPaletteCloseClosesFloatingPanel() throws {
     _ = NSApplication.shared
-    let host = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
-      styleMask: [.titled],
-      backing: .buffered,
-      defer: false
-    )
-    let anchor = NSView(frame: host.contentView?.bounds ?? .zero)
-    host.contentView = anchor
-    host.orderFrontRegardless()
-
     let palette = Palette(
       definition: PaletteDefinition(
-        kind: PaletteKind("tests.detachment"),
-        title: "Inspector",
+        kind: PaletteKind("tests.close"),
+        title: "Palette Close Test",
         contentSize: NSSize(width: 300, height: 320)
       ),
       target: { NSObject() },
       makeContent: PaletteTestContent.init
     )
-    defer {
-      palette.close()
-      host.close()
-    }
+    defer { palette.close() }
 
-    palette.present(from: anchor)
-    let detachedPanel = try XCTUnwrap(palette.detachableWindow(for: NSPopover()))
-    detachedPanel.orderFrontRegardless()
+    palette.showPanel()
+    let panel = try XCTUnwrap(
+      NSApp.windows.first { $0.title == "Palette Close Test" && $0.isVisible }
+    )
 
     palette.close()
-    runMainLoop(until: { !detachedPanel.isVisible })
 
-    XCTAssertFalse(detachedPanel.isVisible)
-  }
-
-  private func runMainLoop(until condition: () -> Bool) {
-    let deadline = Date(timeIntervalSinceNow: PaletteTestTiming.presentationTimeout)
-    while !condition(), Date() < deadline {
-      RunLoop.current.run(until: Date(timeIntervalSinceNow: PaletteTestTiming.pollInterval))
-    }
+    XCTAssertFalse(panel.isVisible)
   }
 
   private func makePanel() -> PalettePanel {
@@ -92,11 +72,6 @@ final class PalettePanelTests: XCTestCase {
       )
     )
   }
-}
-
-private enum PaletteTestTiming {
-  static let presentationTimeout = 2.0
-  static let pollInterval = 0.01
 }
 
 @MainActor

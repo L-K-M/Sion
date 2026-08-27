@@ -112,6 +112,10 @@
       observerID = editorController.observeChanges { [weak self] in
         guard let self else { return }
 
+        // An external undo/redo can end the gesture behind a live drag.
+        if self.dragRequiresGesture, !self.editorController.hasActiveGesture {
+          self.drag = nil
+        }
         self.synchronizeCanvasBounds()
         self.needsDisplay = true
         self.updateAccessibilitySummary()
@@ -333,6 +337,17 @@
       NSGraphicsContext.restoreGraphicsState()
     }
 
+    /// Move/resize/rotate/corner-radius drags are backed by an editor
+    /// gesture; create/connector/marquee drags are view-local previews.
+    private var dragRequiresGesture: Bool {
+      switch drag {
+      case .move, .resize, .rotate, .cornerRadius:
+        return true
+      case .create, .connector, .marquee, nil:
+        return false
+      }
+    }
+
     override func mouseDown(with event: NSEvent) {
       commitTextEditing()
       window?.makeFirstResponder(self)
@@ -459,6 +474,13 @@
           return
         }
 
+        // Self-loops resolve to a degenerate route; reject until supported.
+        if let targetID = target.elementID, targetID == sourceID {
+          needsDisplay = true
+          NSSound.beep()
+          return
+        }
+
         _ = try? editorController.insertConnector(
           from: sourceID,
           sourcePoint: start,
@@ -560,25 +582,28 @@
     }
 
     @objc func paste(_ sender: Any?) {
-      let point = visibleCanvasCenter()
       let pasteboard = NSPasteboard.general
+      let point = pasteTargetPoint()
 
-      if pasteSelection(from: pasteboard, at: point) {
-        return
-      }
-
-      if pasteImage(from: pasteboard, at: point) {
+      if pasteSelection(from: pasteboard, at: point)
+        || pasteImage(from: pasteboard, at: point)
+      {
+        noteSuccessfulPaste()
         return
       }
 
       guard let text = pasteboard.string(forType: .string), !text.isEmpty else { return }
 
       if MermaidImporter.looksLikeMermaid(text) {
-        _ = try? editorController.insertMermaid(text, at: point)
+        if (try? editorController.insertMermaid(text, at: point)) != nil {
+          noteSuccessfulPaste()
+        }
         return
       }
 
-      _ = try? editorController.insertText(text, centeredAt: point)
+      if (try? editorController.insertText(text, centeredAt: point)) != nil {
+        noteSuccessfulPaste()
+      }
     }
 
     @objc func copy(_ sender: Any?) {
@@ -707,6 +732,29 @@
       guard view === textEditor?.documentView else { return nil }
 
       return inlineTextUndoManager
+    }
+
+    /// Successive pastes at an unmoved viewport step aside so copies do not
+    /// stack invisibly on top of each other.
+    private var pasteAnchor: SionPoint?
+    private var pasteRepetition = 0
+
+    private func pasteTargetPoint() -> SionPoint {
+      let center = visibleCanvasCenter()
+      if center != pasteAnchor {
+        pasteAnchor = center
+        pasteRepetition = 0
+      }
+
+      let spacing = editorController.document.scene.canvas.grid.spacing
+      let step = max(CanvasMetrics.pasteStepMinimum, spacing)
+      let repetitions = min(pasteRepetition, CanvasMetrics.pasteRepetitionLimit)
+      return center + SionVector(dx: step, dy: step) * Double(repetitions)
+    }
+
+    /// Only successful pastes consume a step-aside slot.
+    private func noteSuccessfulPaste() {
+      pasteRepetition += 1
     }
 
     private func beginSelection(at point: SionPoint, event: NSEvent) {
@@ -1200,14 +1248,17 @@
       case .shape(let shape):
         let path = shapePath(shape.kind, frame: element.geometry.frame)
         drawStyle(element.style, path: path)
-        if let label = shape.label {
+        // The inline editor renders this text; drawing it too doubles glyphs.
+        if let label = shape.label, element.id != editedElementID {
           drawText(label, frame: element.geometry.frame)
         }
       case .path(let content):
         let path = vectorPath(content.path, frame: element.geometry.frame)
         drawStyle(element.style, path: path)
       case .text(let text):
-        drawText(text, frame: element.geometry.frame)
+        if element.id != editedElementID {
+          drawText(text, frame: element.geometry.frame)
+        }
       case .image(let image):
         drawImage(image, frame: element.geometry.frame)
       case .group:
@@ -1458,7 +1509,7 @@
         style: element.style
       )
 
-      if let label = content.label {
+      if let label = content.label, element.id != editedElementID {
         let point = route.point(atFraction: content.labelPosition)
         let frame = SionRect(
           x: point.x - (CanvasMetrics.connectorLabelSize.width / 2),
@@ -2372,6 +2423,8 @@
     static let arrowWidth = 6.0
     static let decorationRadius = 5.0
     static let minimumConnectorLength = 4.0
+    static let pasteStepMinimum = 8.0
+    static let pasteRepetitionLimit = 8
     static let defaultConnectorWidth = 1.5
     static let curveControlFactor: CGFloat = 0.552_284_749_8
     static let textEditClickCount = 2

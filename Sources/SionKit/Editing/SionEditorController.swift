@@ -913,6 +913,11 @@
       notifyModelChange(notification: .skip)
     }
 
+    /// A move, resize, rotate, or corner-radius gesture is in flight.
+    var hasActiveGesture: Bool {
+      editor.hasPendingGesture
+    }
+
     func element(at point: SionPoint) -> SceneElement? {
       for element in editor.document.scene.elements.reversed() {
         guard element.visibility == .visible else { continue }

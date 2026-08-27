@@ -769,3 +769,20 @@ final class SceneEditorTests: XCTestCase {
     ElementID(string)!
   }
 }
+
+extension SceneEditorTests {
+  func testGestureActivityIsObservable() throws {
+    var editor = try SceneEditor()
+    XCTAssertFalse(editor.hasPendingGesture)
+
+    try editor.beginGesture(named: "Move")
+    XCTAssertTrue(editor.hasPendingGesture)
+
+    _ = try editor.endGesture()
+    XCTAssertFalse(editor.hasPendingGesture)
+
+    try editor.beginGesture(named: "Move")
+    _ = try editor.cancelGesture()
+    XCTAssertFalse(editor.hasPendingGesture)
+  }
+}

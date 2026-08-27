@@ -44,6 +44,11 @@ public struct SceneEditor: Sendable {
     pendingGesture == nil && !redoHistory.isEmpty
   }
 
+  /// A drag or text edit is in flight between begin and end/cancel.
+  public var hasPendingGesture: Bool {
+    pendingGesture != nil
+  }
+
   @discardableResult
   public mutating func perform(_ transaction: SceneTransaction) throws -> EditorOperationResult {
     guard pendingGesture == nil else {

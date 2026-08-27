@@ -4,6 +4,9 @@ public enum SceneRenderGeometry {
   public static let exportPadding = 32.0
   public static let minimumCanvasDimension = 256.0
 
+  /// Supplies the visual route of a connector without re-deriving it.
+  public typealias ConnectorRouteProvider = (SceneElement) -> ConnectorRoute?
+
   public static func connectorRoute(
     for element: SceneElement,
     in scene: SionScene
@@ -79,11 +82,13 @@ public enum SceneRenderGeometry {
   /// Keeps off-page fixed content reachable without changing fixed export bounds.
   public static func editingCanvasBounds(
     of scene: SionScene,
-    minimumInfiniteSize: SionSize
+    minimumInfiniteSize: SionSize,
+    connectorRoutes: ConnectorRouteProvider? = nil
   ) -> SionRect {
     if case .fixed(let size) = scene.canvas.extent {
       let page = SionRect(origin: .zero, size: size)
-      guard let content = visibleElementBounds(of: scene) else { return page }
+      guard let content = visibleElementBounds(of: scene, connectorRoutes: connectorRoutes)
+      else { return page }
 
       return page.union(content.expanded(by: exportPadding))
     }
@@ -93,14 +98,43 @@ public enum SceneRenderGeometry {
       return minimumBounds
     }
 
-    return minimumBounds.union(contentBounds(of: scene))
+    return minimumBounds.union(contentBounds(of: scene, connectorRoutes: connectorRoutes))
   }
 
-  private static func visibleElementBounds(of scene: SionScene) -> SionRect? {
+  private static func contentBounds(
+    of scene: SionScene,
+    connectorRoutes: ConnectorRouteProvider?
+  ) -> SionRect {
+    if case .fixed(let size) = scene.canvas.extent {
+      return SionRect(origin: .zero, size: size)
+    }
+
+    let content =
+      visibleElementBounds(of: scene, connectorRoutes: connectorRoutes)
+      ?? SionRect(
+        x: 0,
+        y: 0,
+        width: minimumCanvasDimension,
+        height: minimumCanvasDimension
+      )
+    return content.expanded(by: exportPadding)
+  }
+
+  private static func visibleElementBounds(
+    of scene: SionScene,
+    connectorRoutes: ConnectorRouteProvider? = nil
+  ) -> SionRect? {
     var bounds: SionRect?
 
     for element in scene.elements where element.visibility == .visible {
-      if let route = connectorRoute(for: element, in: scene) {
+      let route: ConnectorRoute?
+      if let connectorRoutes, element.content.connector != nil {
+        route = connectorRoutes(element)
+      } else {
+        route = connectorRoute(for: element, in: scene)
+      }
+
+      if let route {
         for point in route.exportBoundsPoints {
           let pointRect = SionRect(x: point.x, y: point.y, width: 0, height: 0)
           bounds = bounds.map { $0.union(pointRect) } ?? pointRect

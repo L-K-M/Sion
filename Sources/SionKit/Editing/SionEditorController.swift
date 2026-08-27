@@ -112,6 +112,8 @@
     private var history: DocumentHistory
     private var previewPNG: Data?
     private var pendingTextEdit: PendingTextEdit?
+    private var routeCache: [ElementID: ConnectorRoute]
+    private var imageCache: [AssetID: NSImage]
 
     private let undoManagerProvider: () -> UndoManager?
     private let didChange: (DocumentChange) -> Void
@@ -127,6 +129,8 @@
       history = package.history
       previewPNG = package.previewPNG
       pendingTextEdit = nil
+      routeCache = [:]
+      imageCache = [:]
       self.undoManagerProvider = undoManagerProvider
       self.didChange = didChange
 
@@ -222,6 +226,8 @@
       previewPNG = package.previewPNG
       pendingTextEdit = nil
       anchorEditingState = .inactive
+      routeCache.removeAll()
+      imageCache.removeAll()
       selection.removeAll()
       undoManagerProvider()?.removeAllActions(withTarget: self)
       notifyObservers()
@@ -231,8 +237,50 @@
       assets[id]
     }
 
+    /// Decodes display renditions once; entries stay valid across edits
+    /// because asset IDs are content addressed.
+    func image(for content: ImageContent) -> NSImage? {
+      if let cached = imageCache[content.displayAssetID] {
+        return cached
+      }
+
+      guard let asset = asset(for: content.displayAssetID),
+        let image = NSImage(data: asset.data)
+      else {
+        return nil
+      }
+
+      imageCache[content.displayAssetID] = image
+      return image
+    }
+
     func connectorRoute(for element: SceneElement) -> ConnectorRoute? {
-      SceneRenderGeometry.connectorRoute(for: element, in: editor.document.scene)
+      if let cached = routeCache[element.id] {
+        return cached
+      }
+
+      guard
+        let route = SceneRenderGeometry.connectorRoute(
+          for: element,
+          in: editor.document.scene
+        )
+      else {
+        return nil
+      }
+
+      routeCache[element.id] = route
+      return route
+    }
+
+    /// Routes once per scene state; bounds, drawing, and hit testing share it.
+    func editingCanvasBounds(minimumInfiniteSize: SionSize) -> SionRect {
+      SceneRenderGeometry.editingCanvasBounds(
+        of: editor.document.scene,
+        minimumInfiniteSize: minimumInfiniteSize,
+        connectorRoutes: { [weak self] element in
+          self?.connectorRoute(for: element) ?? nil
+        }
+      )
     }
 
     func connectorPreview(
@@ -809,13 +857,12 @@
       for element in editor.document.scene.elements.reversed() {
         guard element.visibility == .visible else { continue }
 
-        if let route = SceneRenderGeometry.connectorRoute(
-          for: element,
-          in: editor.document.scene
-        ) {
-          if route.polylineSegments.contains(where: {
-            distance(from: point, to: $0) <= EditorDefaults.connectorHitTolerance
-          }) {
+        if element.content.connector != nil {
+          if let route = connectorRoute(for: element),
+            route.polylineSegments.contains(where: {
+              distance(from: point, to: $0) <= EditorDefaults.connectorHitTolerance
+            })
+          {
             return element
           }
           continue
@@ -906,8 +953,10 @@
     }
 
     private func notifyModelChange(notification: DocumentChangeNotification) {
-      // Any edit invalidates the archive's optional rendered preview.
+      // Any edit invalidates the archive's optional rendered preview and the
+      // shared route cache; selection-only notifications keep them.
       previewPNG = nil
+      routeCache.removeAll()
 
       switch notification {
       case .done:
@@ -1039,6 +1088,7 @@
     private func removeAssets(_ ids: Set<AssetID>) {
       for id in ids {
         assets[id] = nil
+        imageCache[id] = nil
       }
     }
 

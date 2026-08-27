@@ -147,7 +147,7 @@ final class SionEditorControllerArrangeTests: XCTestCase {
   }
 
   func testDuplicateCopiesWithOffsetAndRepeatsManualOffset() throws {
-    let defaultOffset = 16.0
+    let defaultOffset = CanvasDefaults.gridSpacing
     let manualOffset = SionVector(dx: 100, dy: 0)
     let element = shape(id: "00000000-0000-0000-0000-000000000001", x: 100, y: 100)
     let controller = try makeController(elements: [element])
@@ -351,6 +351,21 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     XCTAssertEqual(controller.document, document)
     XCTAssertEqual(changes, 2)
     XCTAssertFalse(undoManager.canUndo)
+  }
+
+  func testRevealAllEndsAnchorEditing() throws {
+    let editing = shape(id: "00000000-0000-0000-0000-000000000001", x: 0, y: 0)
+    var hidden = shape(id: "00000000-0000-0000-0000-000000000002", x: 100, y: 0)
+    hidden.visibility = .hidden
+    let controller = try makeController(elements: [editing, hidden])
+    controller.select(editing.id)
+    controller.beginAnchorEditing(on: editing.id)
+    XCTAssertEqual(controller.anchorEditingState, .editing(editing.id))
+
+    try controller.revealHiddenElements()
+
+    XCTAssertEqual(controller.anchorEditingState, .inactive)
+    XCTAssertEqual(controller.visibility(of: hidden.id), .visible)
   }
 
   func testArrangeMenuValidationMatchesExecutableSelection() throws {

@@ -345,6 +345,26 @@
       try? editorController.deleteSelection()
     }
 
+    @objc func duplicate(_ sender: Any?) {
+      try? editorController.duplicateSelection()
+    }
+
+    @objc func bringForward(_ sender: Any?) {
+      try? editorController.changeSelectionZOrder(.forward)
+    }
+
+    @objc func sendBackward(_ sender: Any?) {
+      try? editorController.changeSelectionZOrder(.backward)
+    }
+
+    @objc func bringToFront(_ sender: Any?) {
+      try? editorController.changeSelectionZOrder(.front)
+    }
+
+    @objc func sendToBack(_ sender: Any?) {
+      try? editorController.changeSelectionZOrder(.back)
+    }
+
     @objc override func selectAll(_ sender: Any?) {
       editorController.selectAll()
     }

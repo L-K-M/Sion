@@ -55,6 +55,23 @@
       case unavailable
     }
 
+    /// How far a selection travels through the element stack.
+    enum ZOrderChange {
+      case forward
+      case backward
+      case front
+      case back
+
+      var actionName: String {
+        switch self {
+        case .forward: "Bring Forward"
+        case .backward: "Send Backward"
+        case .front: "Bring to Front"
+        case .back: "Send to Back"
+        }
+      }
+    }
+
     enum Tool: Int, CaseIterable {
       case select
       case rectangle
@@ -171,13 +188,17 @@
     }
 
     @discardableResult
-    func insertSelectionPayload(_ data: Data, at point: SionPoint) throws -> [ElementID] {
+    func insertSelectionPayload(
+      _ data: Data,
+      actionName: String = "Paste",
+      at point: SionPoint
+    ) throws -> [ElementID] {
       let payload = try SceneSelectionPayload(data: data)
       let occupiedIDs = Set(editor.document.scene.elements.map(\.id))
       let insertion = try payload.insertion(centeredAt: point, excluding: occupiedIDs)
       let insertedAssetIDs = try mergeAssets(insertion.assets)
       let transaction = SceneTransaction(
-        name: "Paste",
+        name: actionName,
         command: .insert(elements: insertion.elements, at: nil)
       )
 
@@ -714,6 +735,56 @@
       notifySelectionChange(from: removed)
     }
 
+    /// Copies the selection onto itself with fresh IDs, offset diagonally so
+    /// both copies stay visible; the copy becomes the new selection.
+    @discardableResult
+    func duplicateSelection() throws -> [ElementID] {
+      guard !selection.isEmpty else { return [] }
+
+      var bounds = selectedElements[0].geometry.frame.standardized
+      for element in selectedElements.dropFirst() {
+        bounds = bounds.union(element.geometry.frame.standardized)
+      }
+
+      let target = bounds.center + EditorDefaults.duplicateOffset
+      let data = try selectionPayloadData()
+      return try insertSelectionPayload(data, actionName: "Duplicate", at: target)
+    }
+
+    /// Moves the selection as one block through the draw order. Destination
+    /// indices are measured against the array with the block removed, matching
+    /// the reorder command's contract.
+    func changeSelectionZOrder(_ change: ZOrderChange) throws {
+      let elements = editor.document.scene.elements
+      let selectedIndices = elements.indices.filter { selection.contains(elements[$0].id) }
+      guard !selectedIndices.isEmpty else { return }
+
+      let selectedCount = selectedIndices.count
+      let retainedCount = elements.count - selectedCount
+      let destination: Int
+
+      switch change {
+      case .front:
+        destination = retainedCount
+      case .back:
+        destination = 0
+      case .forward:
+        guard let blockTop = selectedIndices.max(), blockTop < elements.count - 1 else { return }
+
+        destination = blockTop - selectedCount + 2
+      case .backward:
+        guard let blockBottom = selectedIndices.min(), blockBottom > 0 else { return }
+
+        destination = blockBottom - 1
+      }
+
+      let orderedIDs = selectedIndices.map { elements[$0].id }
+      try perform(
+        name: change.actionName,
+        command: .reorder(elementIDs: orderedIDs, destinationIndex: destination)
+      )
+    }
+
     func beginMove() throws {
       guard canMoveSelection else { return }
 
@@ -1077,6 +1148,7 @@
     static let connectorMagnetSnapTolerance = 10.0
     static let elementHitSlop = 2.0
     static let customAnchorIDPrefix = "custom-"
+    static let duplicateOffset = SionVector(dx: 16, dy: 16)
   }
 
   private struct AnchorPlacement {

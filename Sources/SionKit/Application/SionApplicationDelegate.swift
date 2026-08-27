@@ -50,6 +50,7 @@ private enum SionMainMenu {
     menu.addItem(applicationMenu())
     menu.addItem(fileMenu())
     menu.addItem(editMenu())
+    menu.addItem(arrangeMenu())
     menu.addItem(viewMenu())
     menu.addItem(windowMenu())
     NSApp.mainMenu = menu
@@ -95,10 +96,23 @@ private enum SionMainMenu {
     submenu.addItem(item("Cut", action: AppAction.cut, key: "x"))
     submenu.addItem(item("Copy", action: AppAction.copy, key: "c"))
     submenu.addItem(item("Paste", action: AppAction.paste, key: "v"))
+    submenu.addItem(item("Duplicate", action: AppAction.duplicate, key: "d"))
     submenu.addItem(item("Delete", action: AppAction.delete, key: "\u{8}", modifiers: []))
     submenu.addItem(.separator())
     submenu.addItem(item("Select All", action: AppAction.selectAll, key: "a"))
     return parentItem(title: "Edit", submenu: submenu)
+  }
+
+  private static func arrangeMenu() -> NSMenuItem {
+    let submenu = NSMenu(title: "Arrange")
+    submenu.addItem(item("Bring Forward", action: AppAction.bringForward, key: "]"))
+    submenu.addItem(item("Send Backward", action: AppAction.sendBackward, key: "["))
+    submenu.addItem(
+      item(
+        "Bring to Front", action: AppAction.bringToFront, key: "]", modifiers: [.command, .shift]))
+    submenu.addItem(
+      item("Send to Back", action: AppAction.sendToBack, key: "[", modifiers: [.command, .shift]))
+    return parentItem(title: "Arrange", submenu: submenu)
   }
 
   private static func viewMenu() -> NSMenuItem {
@@ -152,10 +166,13 @@ private enum SionMainMenu {
 
 private enum AppAction {
   static let actualSize = Selector(("actualSize:"))
+  static let bringForward = Selector(("bringForward:"))
+  static let bringToFront = Selector(("bringToFront:"))
   static let close = Selector(("performClose:"))
   static let copy = Selector(("copy:"))
   static let cut = Selector(("cut:"))
   static let delete = Selector(("delete:"))
+  static let duplicate = Selector(("duplicate:"))
   static let exportMermaid = Selector(("exportMermaid:"))
   static let exportSVG = Selector(("exportSVG:"))
   static let paste = Selector(("paste:"))
@@ -163,6 +180,8 @@ private enum AppAction {
   static let save = Selector(("saveDocument:"))
   static let saveAs = Selector(("saveDocumentAs:"))
   static let selectAll = Selector(("selectAll:"))
+  static let sendBackward = Selector(("sendBackward:"))
+  static let sendToBack = Selector(("sendToBack:"))
   static let showHistory = Selector(("showHistory:"))
   static let showInspector = Selector(("showInspector:"))
   static let showLibrary = Selector(("showLibrary:"))

@@ -626,6 +626,7 @@
 
       textEditor = scrollView
       editedElementID = id
+      needsDisplay = true
       window?.makeFirstResponder(textView)
       textView.selectAll(nil)
     }
@@ -947,6 +948,7 @@
       editedElementID = nil
       inlineTextUndoManager = nil
       scrollView.removeFromSuperview()
+      needsDisplay = true
     }
 
     private func textEditingFrame(for element: SceneElement) -> NSRect {
@@ -1238,14 +1240,16 @@
       case .shape(let shape):
         let path = shapePath(shape.kind, frame: element.geometry.frame)
         drawStyle(element.style, path: path)
-        if let label = shape.label {
+        if let label = shape.label, element.id != editedElementID {
           drawText(label, frame: element.geometry.frame)
         }
       case .path(let content):
         let path = vectorPath(content.path, frame: element.geometry.frame)
         drawStyle(element.style, path: path)
       case .text(let text):
-        drawText(text, frame: element.geometry.frame)
+        if element.id != editedElementID {
+          drawText(text, frame: element.geometry.frame)
+        }
       case .image(let image):
         drawImage(image, frame: element.geometry.frame)
       case .group:
@@ -1496,7 +1500,7 @@
         style: element.style
       )
 
-      if let label = content.label {
+      if let label = content.label, element.id != editedElementID {
         let point = route.point(atFraction: content.labelPosition)
         let frame = SionRect(
           x: point.x - (CanvasMetrics.connectorLabelSize.width / 2),

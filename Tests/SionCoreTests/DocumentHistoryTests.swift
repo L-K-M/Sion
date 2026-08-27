@@ -55,6 +55,26 @@ final class DocumentHistoryTests: XCTestCase {
     XCTAssertEqual(history.revisions.map(\.sceneData), [Data("one".utf8)])
   }
 
+  func testThrottleUsesMostRecentEligibleRevision() {
+    let interval = DocumentHistory.autosaveCheckpointInterval
+    let tooSoon = Data("too-soon".utf8)
+    let history = DocumentHistory()
+      .appending(sceneData: Data("old".utf8), at: referenceDate, intent: .autosave)
+      .appending(
+        sceneData: Data("recent".utf8),
+        at: referenceDate.addingTimeInterval(interval),
+        intent: .autosave
+      )
+      .appending(
+        sceneData: tooSoon,
+        at: referenceDate.addingTimeInterval(interval + 1),
+        intent: .autosave
+      )
+
+    XCTAssertEqual(history.revisions.count, 2)
+    XCTAssertFalse(history.revisions.contains { $0.sceneData == tooSoon })
+  }
+
   func testNewestRevisionsSurviveThinning() {
     let revisions = (0..<200).map { index in
       let data = Data("scene-\(index)".utf8)

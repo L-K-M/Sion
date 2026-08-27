@@ -1519,7 +1519,31 @@
       let height = max(CanvasMetrics.minimumElementSize, abs(localPoint.y - opposite.y))
       let x = localPoint.x < opposite.x ? opposite.x - width : opposite.x
       let y = localPoint.y < opposite.y ? opposite.y - height : opposite.y
-      return SionRect(x: x, y: y, width: width, height: height)
+      let resized = SionRect(x: x, y: y, width: width, height: height)
+
+      // Rotation pivots on the frame center, which this resize just moved.
+      // Translate the result so the opposite corner stays fixed on screen;
+      // cosine/sine collapse to a zero offset when unrotated.
+      let cosine = cos(rotationRadians)
+      let sine = sin(rotationRadians)
+
+      func screenPoint(_ local: SionPoint, center: SionPoint) -> SionPoint {
+        let offset = local - center
+        return SionPoint(
+          x: center.x + (offset.dx * cosine) - (offset.dy * sine),
+          y: center.y + (offset.dx * sine) + (offset.dy * cosine)
+        )
+      }
+
+      let startAnchor = screenPoint(opposite, center: rect.center)
+      let resizedAnchor = screenPoint(opposite, center: resized.center)
+      let anchorOffset = startAnchor - resizedAnchor
+      return SionRect(
+        x: resized.minX + anchorOffset.dx,
+        y: resized.minY + anchorOffset.dy,
+        width: resized.width,
+        height: resized.height
+      )
     }
   }
 

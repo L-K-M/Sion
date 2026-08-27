@@ -185,8 +185,12 @@
         source: endpoint(elementID: sourceID, point: sourcePoint, use: .outgoing),
         target: endpoint(elementID: targetID, point: targetPoint, use: .incoming)
       )
-      var scene = editor.document.scene
-      scene.elements.append(preview)
+      let currentScene = editor.document.scene
+      let scene = SionScene(
+        canvas: currentScene.canvas,
+        elements: currentScene.elements + [preview],
+        extensions: currentScene.extensions
+      )
       return SceneRenderGeometry.connectorRoute(for: preview, in: scene)
     }
 
@@ -587,7 +591,7 @@
       guard let actionName = editor.undo() else { return }
 
       undoManagerProvider()?.registerUndo(withTarget: self) { target in
-        target.redoSceneEdit()
+        Self.performUndo(.redo, on: target)
       }
       undoManagerProvider()?.setActionName(actionName)
       pruneSelection()
@@ -598,7 +602,7 @@
       guard let actionName = editor.redo() else { return }
 
       undoManagerProvider()?.registerUndo(withTarget: self) { target in
-        target.undoSceneEdit()
+        Self.performUndo(.undo, on: target)
       }
       undoManagerProvider()?.setActionName(actionName)
       pruneSelection()
@@ -617,9 +621,24 @@
       guard let undoManager = undoManagerProvider() else { return }
 
       undoManager.registerUndo(withTarget: self) { target in
-        target.undoSceneEdit()
+        Self.performUndo(.undo, on: target)
       }
       undoManager.setActionName(actionName)
+    }
+
+    private nonisolated static func performUndo(
+      _ direction: UndoDirection,
+      on target: SionEditorController
+    ) {
+      // NSUndoManager invokes registrations on the main responder thread.
+      MainActor.assumeIsolated {
+        switch direction {
+        case .undo:
+          target.undoSceneEdit()
+        case .redo:
+          target.redoSceneEdit()
+        }
+      }
     }
 
     private func notifyModelChange(notification: DocumentChangeNotification) {
@@ -768,6 +787,11 @@
     case undone
     case redone
     case skip
+  }
+
+  private enum UndoDirection {
+    case undo
+    case redo
   }
 
   private enum EditorTransferError: Error {

@@ -75,7 +75,7 @@
       center.addObserver(
         self,
         selector: #selector(frontWindowDidChange(_:)),
-        name: NSApplication.didActivateNotification,
+        name: NSApplication.didBecomeActiveNotification,
         object: nil
       )
     }

@@ -191,7 +191,7 @@
       try? editorController.deleteSelection()
     }
 
-    @objc func selectAll(_ sender: Any?) {
+    @objc override func selectAll(_ sender: Any?) {
       editorController.selectAll()
     }
 
@@ -887,8 +887,8 @@
       guard decoration != .none, let previous else { return }
 
       let angle = atan2(point.y - previous.y, point.x - previous.x)
-      let transform = NSAffineTransform()
-      transform.translateX(by: point.x, yBy: point.y)
+      var transform = AffineTransform()
+      transform.translate(x: point.x, y: point.y)
       transform.rotate(byRadians: angle)
 
       let path: NSBezierPath
@@ -922,7 +922,7 @@
         path.close()
       }
 
-      path.transform(using: transform.transformStruct)
+      path.transform(using: transform)
       let opacity = clampedUnit(style.opacity)
       let color = nsColor(style.stroke?.color ?? .primaryInk).withAlphaComponent(opacity)
       color.setStroke()
@@ -1244,10 +1244,10 @@
     private func resizePoint(_ corner: ResizeCorner, frame: SionRect) -> SionPoint {
       let rect = frame.standardized
       switch corner {
-      case .topLeft: SionPoint(x: rect.minX, y: rect.minY)
-      case .topRight: SionPoint(x: rect.maxX, y: rect.minY)
-      case .bottomLeft: SionPoint(x: rect.minX, y: rect.maxY)
-      case .bottomRight: SionPoint(x: rect.maxX, y: rect.maxY)
+      case .topLeft: return SionPoint(x: rect.minX, y: rect.minY)
+      case .topRight: return SionPoint(x: rect.maxX, y: rect.minY)
+      case .bottomLeft: return SionPoint(x: rect.minX, y: rect.maxY)
+      case .bottomRight: return SionPoint(x: rect.maxX, y: rect.maxY)
       }
     }
 

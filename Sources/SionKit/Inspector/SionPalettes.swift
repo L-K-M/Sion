@@ -491,7 +491,7 @@
 
     var preset: MagnetPreset? {
       switch self {
-      case .none: .none
+      case .none: MagnetPreset.none
       case .cardinalFour: .cardinalFour
       case .northSouth: .northSouth
       case .eastWest: .eastWest

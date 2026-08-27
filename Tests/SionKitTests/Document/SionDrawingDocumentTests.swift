@@ -5,6 +5,12 @@ import XCTest
 
 @MainActor
 final class SionDrawingDocumentTests: XCTestCase {
+  func testMermaidExportWarningsMatchCoverage() {
+    XCTAssertNil(MermaidExportWarning(coverage: .complete))
+    XCTAssertEqual(MermaidExportWarning(coverage: .partial), .partial)
+    XCTAssertEqual(MermaidExportWarning(coverage: .none), .none)
+  }
+
   func testUndoGroupClosureDoesNotDirtySavedDocumentAgain() throws {
     let document = SionDrawingDocument()
     let undoManager = try XCTUnwrap(document.undoManager)

@@ -60,7 +60,9 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     let document = controller.document
     controller.select([thin.id, thick.id])
 
+    undoManager.beginUndoGrouping()
     try controller.alignSelection(.leading)
+    undoManager.endUndoGrouping()
 
     let alignedThin = try XCTUnwrap(controller.document.scene.element(withID: thin.id))
     let alignedThick = try XCTUnwrap(controller.document.scene.element(withID: thick.id))
@@ -71,6 +73,7 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     )
     XCTAssertEqual(changes, 1)
     XCTAssertTrue(undoManager.canUndo)
+    XCTAssertEqual(undoManager.undoActionName, "Align")
 
     undoManager.undo()
 
@@ -299,12 +302,15 @@ final class SionEditorControllerArrangeTests: XCTestCase {
     )
     let document = controller.document
 
+    undoManager.beginUndoGrouping()
     try controller.revealHiddenElements()
+    undoManager.endUndoGrouping()
 
     XCTAssertEqual(controller.visibility(of: element.id), .visible)
     XCTAssertEqual(controller.lockState(of: element.id), .locked)
     XCTAssertEqual(changes, 1)
     XCTAssertTrue(undoManager.canUndo)
+    XCTAssertEqual(undoManager.undoActionName, "Reveal All")
 
     undoManager.undo()
 

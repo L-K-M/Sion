@@ -96,6 +96,29 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertEqual(route.start, SionPoint(x: 200, y: 200))
   }
 
+  func testShadowFilterUsesPaintedUserSpaceBounds() throws {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+      kind: .rectangle
+    )
+    shape.style.shadows = [
+      ShadowStyle(
+        color: .primaryInk,
+        offset: SionVector(dx: 300, dy: 200),
+        blurRadius: 40
+      )
+    ]
+
+    let svg = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [shape])),
+      assets: [:]
+    )
+
+    XCTAssertTrue(svg.contains("filterUnits=\"userSpaceOnUse\""))
+    XCTAssertFalse(svg.contains("x=\"-50%\""))
+    XCTAssertFalse(svg.contains("width=\"200%\""))
+  }
+
   func testConnectorResolutionUsesRotatedMagnets() throws {
     var shape = SceneElement.shape(
       frame: SionRect(x: 100, y: 200, width: 200, height: 100)

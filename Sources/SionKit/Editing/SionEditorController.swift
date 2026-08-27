@@ -739,10 +739,13 @@
     /// both copies stay visible; the copy becomes the new selection.
     @discardableResult
     func duplicateSelection() throws -> [ElementID] {
-      guard !selection.isEmpty else { return [] }
+      // selectedElements cannot be empty when selection is not, but guard the
+      // subscript anyway so stale IDs can never crash the duplicate path.
+      let elements = selectedElements
+      guard !elements.isEmpty else { return [] }
 
-      var bounds = selectedElements[0].geometry.frame.standardized
-      for element in selectedElements.dropFirst() {
+      var bounds = elements[0].geometry.frame.standardized
+      for element in elements.dropFirst() {
         bounds = bounds.union(element.geometry.frame.standardized)
       }
 
@@ -765,8 +768,12 @@
 
       switch change {
       case .front:
+        guard let blockTop = selectedIndices.max(), blockTop < elements.count - 1 else { return }
+
         destination = retainedCount
       case .back:
+        guard let blockBottom = selectedIndices.min(), blockBottom > 0 else { return }
+
         destination = 0
       case .forward:
         guard let blockTop = selectedIndices.max(), blockTop < elements.count - 1 else { return }

@@ -98,6 +98,14 @@
       controller.select(top.id)
       try controller.changeSelectionZOrder(.forward)
       XCTAssertEqual(orderedIDs(controller), [bottom.id, top.id])
+
+      controller.select(top.id)
+      try controller.changeSelectionZOrder(.front)
+      XCTAssertEqual(orderedIDs(controller), [bottom.id, top.id])
+
+      controller.select(bottom.id)
+      try controller.changeSelectionZOrder(.back)
+      XCTAssertEqual(orderedIDs(controller), [bottom.id, top.id])
     }
 
     private func orderedIDs(_ controller: SionEditorController) -> [ElementID] {

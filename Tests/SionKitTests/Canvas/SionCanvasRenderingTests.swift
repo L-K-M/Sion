@@ -12,7 +12,7 @@ final class SionCanvasRenderingTests: XCTestCase {
   func testElementOpacityMultipliesIntrinsicFillAlpha() throws {
     var shape = SceneElement.shape(
       frame: SionRect(x: 80, y: 60, width: 160, height: 120),
-      kind: .rectangle
+      kind: .ellipse
     )
     shape.style = ElementStyle(
       fill: .solid(SionColor(red: 1, green: 0, blue: 0, alpha: 0.5)),
@@ -20,14 +20,20 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
 
     var equivalent = shape
-    equivalent.style.fill = .solid(.init(red: 1, green: 0, blue: 0))
-    equivalent.style.opacity = 0.25
+    equivalent.style.fill = .solid(.init(red: 1, green: 0, blue: 0, alpha: 0.25))
+    equivalent.style.opacity = 1
 
-    let point = SionPoint(x: 160, y: 120)
-    let actual = try pixel(in: render(elements: [shape]), at: point)
-    let expected = try pixel(in: render(elements: [equivalent]), at: point)
+    let actual = try render(elements: [shape])
+    let expected = try render(elements: [equivalent])
 
-    assertEqual(actual, expected)
+    assertEqual(
+      try pixel(in: actual, at: SionPoint(x: 160, y: 120)),
+      try pixel(in: expected, at: SionPoint(x: 160, y: 120))
+    )
+    assertEqual(
+      try pixel(in: actual, at: SionPoint(x: 80, y: 120)),
+      try pixel(in: expected, at: SionPoint(x: 80, y: 120))
+    )
   }
 
   func testOpacityCompositesFillAndStrokeOnce() throws {
@@ -94,6 +100,72 @@ final class SionCanvasRenderingTests: XCTestCase {
     }
   }
 
+  func testGroupShadowHasUniformAlphaAcrossFillAndStroke() throws {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 60, y: 70, width: 80, height: 100),
+      kind: .rectangle
+    )
+    shape.style = ElementStyle(
+      fill: .solid(.black),
+      stroke: StrokeStyle(color: .black, width: 20),
+      shadows: [
+        ShadowStyle(
+          color: SionColor(red: 1, green: 0, blue: 0, alpha: 0.5),
+          offset: SionVector(dx: 120, dy: 0),
+          blurRadius: 0
+        )
+      ]
+    )
+
+    let image = try render(elements: [shape])
+    let strokeOnly = try pixel(in: image, at: SionPoint(x: 175, y: 120))
+    let fillAndStroke = try pixel(in: image, at: SionPoint(x: 195, y: 120))
+
+    assertEqual(strokeOnly, fillAndStroke)
+  }
+
+  func testRotatedElementShadowUsesBaseSpaceOffset() throws {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 100, y: 80, width: 40, height: 80),
+      kind: .rectangle
+    )
+    shape.geometry.rotationRadians = .pi / 2
+    shape.style = ElementStyle(
+      fill: .solid(.black),
+      shadows: [
+        ShadowStyle(
+          color: SionColor(red: 1, green: 0, blue: 0),
+          offset: SionVector(dx: 80, dy: 0),
+          blurRadius: 0
+        )
+      ]
+    )
+
+    let shadow = try pixel(
+      in: render(elements: [shape]),
+      at: SionPoint(x: 200, y: 120)
+    )
+
+    XCTAssertGreaterThan(shadow.redComponent, 0.8)
+    XCTAssertGreaterThan(shadow.redComponent - shadow.greenComponent, 0.5)
+    XCTAssertGreaterThan(shadow.redComponent - shadow.blueComponent, 0.5)
+  }
+
+  func testCanvasCoordinatesGrowDownward() throws {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 80, y: 20, width: 160, height: 50),
+      kind: .rectangle
+    )
+    shape.style = ElementStyle(fill: .solid(.black))
+
+    let image = try render(elements: [shape])
+    let upper = try pixel(in: image, at: SionPoint(x: 160, y: 40))
+    let lower = try pixel(in: image, at: SionPoint(x: 160, y: 200))
+
+    XCTAssertLessThan(upper.redComponent, 0.2)
+    XCTAssertGreaterThan(lower.redComponent, 0.8)
+  }
+
   func testSelectionChromeEscapesElementOpacity() throws {
     var connector = SceneElement.connector(
       source: .free(SionPoint(x: 80, y: 120)),
@@ -106,6 +178,14 @@ final class SionCanvasRenderingTests: XCTestCase {
     let selected = try render(elements: [connector], selection: [connector.id])
 
     XCTAssertNotEqual(try renderedPixels(selected), try renderedPixels(blank))
+    XCTAssertNotEqual(
+      try pixel(in: selected, at: SionPoint(x: 82, y: 120)),
+      try pixel(in: blank, at: SionPoint(x: 82, y: 120))
+    )
+    assertEqual(
+      try pixel(in: selected, at: SionPoint(x: 160, y: 100)),
+      try pixel(in: blank, at: SionPoint(x: 160, y: 100))
+    )
   }
 
   private func zeroOpacityElements(displayAssetID: AssetID) throws -> [SceneElement] {
@@ -172,56 +252,69 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
     controller.select(selection)
     let canvas = SionCanvasView(editorController: controller)
-    let representation = try bitmapRepresentation()
-    let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: representation))
+    canvas.frame = NSRect(
+      origin: .zero,
+      size: NSSize(width: canvasSize.width, height: canvasSize.height)
+    )
+    let graphics = try bitmapContext(
+      width: Int(canvasSize.width),
+      height: Int(canvasSize.height)
+    )
+    let context = NSGraphicsContext(cgContext: graphics, flipped: true)
     let previousContext = NSGraphicsContext.current
     NSGraphicsContext.current = context
     defer { NSGraphicsContext.current = previousContext }
 
+    graphics.translateBy(x: 0, y: canvasSize.height)
+    graphics.scaleBy(x: 1, y: -1)
     canvas.draw(canvas.bounds)
     context.flushGraphics()
-    return representation
+    return try bitmapRepresentation(from: graphics)
   }
 
-  private func bitmapRepresentation() throws -> NSBitmapImageRep {
-    try XCTUnwrap(
-      NSBitmapImageRep(
-        bitmapDataPlanes: nil,
-        pixelsWide: Int(canvasSize.width),
-        pixelsHigh: Int(canvasSize.height),
-        bitsPerSample: 8,
-        samplesPerPixel: 4,
-        hasAlpha: true,
-        isPlanar: false,
-        colorSpaceName: .deviceRGB,
+  private func bitmapContext(width: Int, height: Int) throws -> CGContext {
+    let colorSpace = try XCTUnwrap(
+      CGColorSpace(name: CGColorSpace.sRGB)
+    )
+    return try XCTUnwrap(
+      CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: TestBitmap.bitsPerComponent,
         bytesPerRow: 0,
-        bitsPerPixel: 0
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
       )
     )
   }
 
-  private func overlayReferenceColor(at point: SionPoint) throws -> NSColor {
-    let representation = try bitmapRepresentation()
-    let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: representation))
-    let previousContext = NSGraphicsContext.current
-    NSGraphicsContext.current = context
-    defer { NSGraphicsContext.current = previousContext }
+  private func bitmapRepresentation(from context: CGContext) throws -> NSBitmapImageRep {
+    NSBitmapImageRep(cgImage: try XCTUnwrap(context.makeImage()))
+  }
 
+  private func overlayReferenceColor(at point: SionPoint) throws -> NSColor {
+    let graphics = try bitmapContext(
+      width: Int(canvasSize.width),
+      height: Int(canvasSize.height)
+    )
     let bounds = NSRect(
       origin: .zero,
       size: NSSize(width: canvasSize.width, height: canvasSize.height)
     )
-    let graphics = context.cgContext
-    NSColor(calibratedRed: 1, green: 1, blue: 1, alpha: 1).setFill()
+    graphics.setFillColor(NSColor.white.cgColor)
     graphics.fill(bounds)
-    NSColor(calibratedRed: 0.25, green: 0.25, blue: 0.25, alpha: 1).setFill()
+    graphics.setFillColor(
+      NSColor(calibratedRed: 0.25, green: 0.25, blue: 0.25, alpha: 1).cgColor
+    )
     graphics.fill(bounds)
-    NSColor(calibratedRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).setFill()
+    graphics.setFillColor(
+      NSColor(calibratedRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).cgColor
+    )
     graphics.setBlendMode(.overlay)
     graphics.fill(bounds)
-    context.flushGraphics()
 
-    return try pixel(in: representation, at: point)
+    return try pixel(in: bitmapRepresentation(from: graphics), at: point)
   }
 
   private func pixel(in image: NSBitmapImageRep, at point: SionPoint) throws -> NSColor {
@@ -277,23 +370,16 @@ final class SionCanvasRenderingTests: XCTestCase {
   }
 
   private func redDisplayAsset() throws -> SionAsset {
-    let image = try XCTUnwrap(
-      NSBitmapImageRep(
-        bitmapDataPlanes: nil,
-        pixelsWide: 1,
-        pixelsHigh: 1,
-        bitsPerSample: 8,
-        samplesPerPixel: 4,
-        hasAlpha: true,
-        isPlanar: false,
-        colorSpaceName: .deviceRGB,
-        bytesPerRow: 0,
-        bitsPerPixel: 0
-      )
-    )
-    image.setColor(.red, atX: 0, y: 0)
+    let graphics = try bitmapContext(width: 1, height: 1)
+    graphics.setFillColor(NSColor.red.cgColor)
+    graphics.fill(NSRect(x: 0, y: 0, width: 1, height: 1))
+    let image = try bitmapRepresentation(from: graphics)
     let data = try XCTUnwrap(image.representation(using: .png, properties: [:]))
 
     return try SionAsset.safeDisplayPNG(data: data)
   }
+}
+
+private enum TestBitmap {
+  static let bitsPerComponent = 8
 }

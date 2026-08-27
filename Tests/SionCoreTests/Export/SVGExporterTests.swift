@@ -223,17 +223,19 @@ final class SVGExporterTests: XCTestCase {
     let svg = try export([shape])
 
     let group = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
-    let path = try openingTag(startingWith: "<path d=", after: group.endIndex, in: svg)
+    let groupMarkup = try elementGroup(id: id, in: svg)
+    let path = try openingTag(startingWith: "<path d=", in: String(groupMarkup))
 
     XCTAssertTrue(group.text.contains("opacity=\"0.4\""))
     XCTAssertTrue(group.text.contains("mix-blend-mode:overlay"))
     XCTAssertTrue(group.text.contains("filter=\"url(#shadow-\(id))\""))
+    XCTAssertTrue(svg.contains("id=\"shadow-\(id)\""))
     XCTAssertFalse(path.text.contains("opacity="))
     XCTAssertFalse(path.text.contains("mix-blend-mode:"))
     XCTAssertFalse(path.text.contains("filter="))
     XCTAssertTrue(path.text.contains("fill=\"#ff000080\""))
     XCTAssertTrue(path.text.contains("stroke=\"#0000ff40\""))
-    XCTAssertTrue(svg[group.endIndex...].contains("<text "))
+    XCTAssertTrue(groupMarkup.contains("<text "))
   }
 
   func testConnectorEffectsWrapRouteMarkersAndLabel() throws {
@@ -266,7 +268,7 @@ final class SVGExporterTests: XCTestCase {
     let svg = try export([connector])
 
     let group = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
-    let groupMarkup = svg[group.startIndex...]
+    let groupMarkup = try elementGroup(id: id, in: svg)
 
     XCTAssertTrue(group.text.contains("opacity=\"0.25\""))
     XCTAssertTrue(group.text.contains("mix-blend-mode:multiply"))
@@ -274,6 +276,91 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertTrue(groupMarkup.contains("marker-end=\"url(#marker-filledArrow)\""))
     XCTAssertTrue(groupMarkup.contains("<text "))
     XCTAssertEqual(svg.components(separatedBy: "opacity=\"0.25\"").count - 1, 1)
+  }
+
+  func testConnectorRouteIgnoresElementRotation() throws {
+    let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000005"))
+    var connector = SceneElement.connector(
+      id: id,
+      source: .free(SionPoint(x: 20, y: 40)),
+      target: .free(SionPoint(x: 220, y: 40)),
+      routingStyle: .straight
+    )
+    connector.geometry.rotationRadians = .pi / 2
+
+    let svg = try export([connector])
+    let group = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
+    let groupMarkup = try elementGroup(id: id, in: svg)
+
+    XCTAssertFalse(group.text.contains("transform="))
+    XCTAssertTrue(groupMarkup.contains(#"d="M20 40L220 40""#))
+  }
+
+  func testShadowFilterContainsLongShapeLabel() throws {
+    let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000006"))
+    let label = String(repeating: "W", count: 20)
+    var shape = SceneElement.shape(
+      id: id,
+      frame: SionRect(x: 100, y: 100, width: 20, height: 40),
+      kind: .rectangle,
+      text: label
+    )
+    var labelStyle = TextStyle.shapeLabelDefault
+    labelStyle.font.size = 20
+    shape.content = .shape(
+      ShapeContent(
+        kind: .rectangle,
+        label: TextContent(string: label, style: labelStyle)
+      )
+    )
+    shape.style.shadows = [
+      ShadowStyle(color: .black, offset: .zero, blurRadius: 0)
+    ]
+
+    let svg = try export([shape])
+    let filter = try openingTag(startingWith: "<filter id=\"shadow-\(id)\"", in: svg)
+    let minimumTextWidth = Double(label.count) * 20
+    let filterX = try XCTUnwrap(numberAttribute("x", in: filter.text))
+    let filterWidth = try XCTUnwrap(numberAttribute("width", in: filter.text))
+
+    XCTAssertLessThanOrEqual(filterX, shape.geometry.frame.center.x - minimumTextWidth / 2)
+    XCTAssertGreaterThanOrEqual(
+      filterX + filterWidth,
+      shape.geometry.frame.center.x + minimumTextWidth / 2
+    )
+  }
+
+  func testShadowFilterContainsLongConnectorLabel() throws {
+    let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000007"))
+    let label = String(repeating: "W", count: 20)
+    var connector = SceneElement.connector(
+      id: id,
+      source: .free(SionPoint(x: 100, y: 120)),
+      target: .free(SionPoint(x: 120, y: 120)),
+      routingStyle: .straight
+    )
+    var labelStyle = TextStyle.shapeLabelDefault
+    labelStyle.font.size = 20
+    connector.content = .connector(
+      ConnectorContent(
+        source: .free(SionPoint(x: 100, y: 120)),
+        target: .free(SionPoint(x: 120, y: 120)),
+        routingStyle: .straight,
+        label: TextContent(string: label, style: labelStyle)
+      )
+    )
+    connector.style.shadows = [
+      ShadowStyle(color: .black, offset: .zero, blurRadius: 0)
+    ]
+
+    let svg = try export([connector])
+    let filter = try openingTag(startingWith: "<filter id=\"shadow-\(id)\"", in: svg)
+    let minimumTextWidth = Double(label.count) * 20
+    let filterX = try XCTUnwrap(numberAttribute("x", in: filter.text))
+    let filterWidth = try XCTUnwrap(numberAttribute("width", in: filter.text))
+
+    XCTAssertLessThanOrEqual(filterX, 110 - minimumTextWidth / 2)
+    XCTAssertGreaterThanOrEqual(filterX + filterWidth, 110 + minimumTextWidth / 2)
   }
 
   func testTextAndImageGroupsContainOnlyElementEffects() throws {
@@ -340,6 +427,15 @@ final class SVGExporterTests: XCTestCase {
     let end = try XCTUnwrap(source[start...].firstIndex(of: ">"))
 
     return (source[start...end], start, source.index(after: end))
+  }
+
+  private func elementGroup(id: ElementID, in source: String) throws -> Substring {
+    let opening = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: source)
+    let close = try XCTUnwrap(
+      source.range(of: "</g>", range: opening.endIndex..<source.endIndex)?.upperBound
+    )
+
+    return source[opening.startIndex..<close]
   }
 
   private func numberAttribute(_ name: String, in tag: Substring) -> Double? {

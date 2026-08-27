@@ -68,17 +68,9 @@ final class SionCanvasRenderingTests: XCTestCase {
       blendMode: .overlay
     )
 
-    var expectedOverlay = overlay
-    expectedOverlay.style = ElementStyle(
-      fill: .solid(SionColor(red: 0.4, green: 0.4, blue: 0.4))
-    )
-
     let point = SionPoint(x: 90, y: 90)
     let actual = try pixel(in: render(elements: [backdrop, overlay]), at: point)
-    let expected = try pixel(
-      in: render(elements: [backdrop, expectedOverlay]),
-      at: point
-    )
+    let expected = try overlayReferenceColor(at: point)
 
     assertEqual(actual, expected)
   }
@@ -94,7 +86,11 @@ final class SionCanvasRenderingTests: XCTestCase {
         assets: [asset.id: asset]
       )
 
-      XCTAssertEqual(renderedPixels(rendered), renderedPixels(blank), "\(element.content)")
+      XCTAssertEqual(
+        try renderedPixels(rendered),
+        try renderedPixels(blank),
+        "\(element.content)"
+      )
     }
   }
 
@@ -109,7 +105,7 @@ final class SionCanvasRenderingTests: XCTestCase {
     let blank = try render(elements: [])
     let selected = try render(elements: [connector], selection: [connector.id])
 
-    XCTAssertNotEqual(renderedPixels(selected), renderedPixels(blank))
+    XCTAssertNotEqual(try renderedPixels(selected), try renderedPixels(blank))
   }
 
   private func zeroOpacityElements(displayAssetID: AssetID) throws -> [SceneElement] {
@@ -176,7 +172,19 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
     controller.select(selection)
     let canvas = SionCanvasView(editorController: controller)
-    let representation = try XCTUnwrap(
+    let representation = try bitmapRepresentation()
+    let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: representation))
+    let previousContext = NSGraphicsContext.current
+    NSGraphicsContext.current = context
+    defer { NSGraphicsContext.current = previousContext }
+
+    canvas.draw(canvas.bounds)
+    context.flushGraphics()
+    return representation
+  }
+
+  private func bitmapRepresentation() throws -> NSBitmapImageRep {
+    try XCTUnwrap(
       NSBitmapImageRep(
         bitmapDataPlanes: nil,
         pixelsWide: Int(canvasSize.width),
@@ -190,14 +198,29 @@ final class SionCanvasRenderingTests: XCTestCase {
         bitsPerPixel: 0
       )
     )
+  }
+
+  private func overlayReferenceColor(at point: SionPoint) throws -> NSColor {
+    let representation = try bitmapRepresentation()
     let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: representation))
     let previousContext = NSGraphicsContext.current
     NSGraphicsContext.current = context
     defer { NSGraphicsContext.current = previousContext }
 
-    canvas.draw(canvas.bounds)
+    let bounds = NSRect(
+      origin: .zero,
+      size: NSSize(width: canvasSize.width, height: canvasSize.height)
+    )
+    NSColor(calibratedRed: 1, green: 1, blue: 1, alpha: 1).setFill()
+    bounds.fill()
+    NSColor(calibratedRed: 0.25, green: 0.25, blue: 0.25, alpha: 1).setFill()
+    bounds.fill()
+    context.cgContext.setBlendMode(.overlay)
+    NSColor(calibratedRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).setFill()
+    bounds.fill()
     context.flushGraphics()
-    return representation
+
+    return try pixel(in: representation, at: point)
   }
 
   private func pixel(in image: NSBitmapImageRep, at point: SionPoint) throws -> NSColor {
@@ -236,11 +259,20 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
   }
 
-  private func renderedPixels(_ image: NSBitmapImageRep) -> Data {
-    Data(
-      bytes: image.bitmapData!,
-      count: image.bytesPerRow * image.pixelsHigh
-    )
+  private func renderedPixels(_ image: NSBitmapImageRep) throws -> Data {
+    let bytes = try XCTUnwrap(image.bitmapData)
+    let visibleBytesPerRow = image.pixelsWide * image.samplesPerPixel
+    var pixels = Data(capacity: visibleBytesPerRow * image.pixelsHigh)
+
+    // NSBitmapImageRep leaves row-padding bytes uninitialized.
+    for row in 0..<image.pixelsHigh {
+      pixels.append(
+        bytes.advanced(by: row * image.bytesPerRow),
+        count: visibleBytesPerRow
+      )
+    }
+
+    return pixels
   }
 
   private func redDisplayAsset() throws -> SionAsset {

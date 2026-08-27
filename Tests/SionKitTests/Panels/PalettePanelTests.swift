@@ -71,8 +71,16 @@ final class PalettePanelTests: XCTestCase {
     detachedPanel.orderFrontRegardless()
 
     palette.close()
+    runMainLoop(until: { !detachedPanel.isVisible })
 
     XCTAssertFalse(detachedPanel.isVisible)
+  }
+
+  private func runMainLoop(until condition: () -> Bool) {
+    let deadline = Date(timeIntervalSinceNow: PaletteTestTiming.presentationTimeout)
+    while !condition(), Date() < deadline {
+      RunLoop.current.run(until: Date(timeIntervalSinceNow: PaletteTestTiming.pollInterval))
+    }
   }
 
   private func makePanel() -> PalettePanel {
@@ -84,6 +92,11 @@ final class PalettePanelTests: XCTestCase {
       )
     )
   }
+}
+
+private enum PaletteTestTiming {
+  static let presentationTimeout = 2.0
+  static let pollInterval = 0.01
 }
 
 @MainActor

@@ -48,6 +48,15 @@
       case create(creation: Creation, start: SionPoint, current: SionPoint)
       case connector(sourceID: ElementID?, start: SionPoint, current: SionPoint)
       case marquee(origin: SionPoint, current: SionPoint)
+
+      var requiresEditorGesture: Bool {
+        switch self {
+        case .move, .resize, .rotate, .cornerRadius:
+          true
+        case .create, .connector, .marquee:
+          false
+        }
+      }
     }
 
     private let editorController: SionEditorController
@@ -111,6 +120,13 @@
       updateAccessibilityHelp()
       observerID = editorController.observeChanges { [weak self] in
         guard let self else { return }
+
+        // Undo or document replacement can end the model gesture first.
+        if self.drag?.requiresEditorGesture == true,
+          !self.editorController.hasPendingEditorGesture
+        {
+          self.drag = nil
+        }
 
         self.synchronizeCanvasBounds()
         self.needsDisplay = true

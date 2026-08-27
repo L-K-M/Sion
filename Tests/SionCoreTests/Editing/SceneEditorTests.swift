@@ -765,6 +765,24 @@ final class SceneEditorTests: XCTestCase {
     XCTAssertEqual(scene, originalScene)
   }
 
+  func testPendingGestureStateTracksEveryExit() throws {
+    var editor = try SceneEditor()
+    XCTAssertFalse(editor.hasPendingGesture)
+
+    try editor.beginGesture(named: "Move")
+    XCTAssertTrue(editor.hasPendingGesture)
+    _ = try editor.endGesture()
+    XCTAssertFalse(editor.hasPendingGesture)
+
+    try editor.beginGesture(named: "Resize")
+    _ = try editor.cancelGesture()
+    XCTAssertFalse(editor.hasPendingGesture)
+
+    try editor.beginGesture(named: "Rotate")
+    XCTAssertNil(editor.undo())
+    XCTAssertFalse(editor.hasPendingGesture)
+  }
+
   private func elementID(_ string: String) -> ElementID {
     ElementID(string)!
   }

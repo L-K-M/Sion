@@ -297,7 +297,9 @@
     func snappedToGrid(_ point: SionPoint) -> SionPoint {
       guard isSnapToGridEnabled else { return point }
 
-      let spacing = max(1, editor.document.scene.canvas.grid.spacing)
+      let spacing = editor.document.scene.canvas.grid.spacing
+      guard spacing > 0, spacing.isFinite else { return point }
+
       return SionPoint(
         x: (point.x / spacing).rounded() * spacing,
         y: (point.y / spacing).rounded() * spacing
@@ -307,13 +309,14 @@
     @discardableResult
     func insertShape(at point: SionPoint) throws -> ElementID {
       try insertShape(
-        at: snappedToGrid(point),
+        at: point,
         kind: .roundedRectangle(radius: EditorDefaults.cornerRadius)
       )
     }
 
     @discardableResult
     func insertShape(at point: SionPoint, kind: ShapeKind) throws -> ElementID {
+      let point = snappedToGrid(point)
       let size = EditorDefaults.shapeSize
       let frame = SionRect(
         x: point.x - (size.width / 2),

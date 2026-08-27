@@ -251,8 +251,10 @@
       editorController.isSnapToGridEnabled.toggle()
     }
 
-    /// NSMenuItemValidation is informal on NSView; no override/super exists.
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    /// AppKit discovers menu validation through the Objective-C runtime, so
+    /// this needs @objc (NSMenuItemValidation's formal protocol is macOS 14+,
+    /// newer than the deployment target).
+    @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
       switch menuItem.action {
       case #selector(toggleGridVisibility(_:)):
         let grid = editorController.document.scene.canvas.grid

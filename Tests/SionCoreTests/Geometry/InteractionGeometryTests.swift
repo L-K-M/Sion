@@ -274,6 +274,18 @@ final class InteractionGeometryTests: XCTestCase {
     )
   }
 
+  func testRoundedRectangleRadiusDragTracksVerticalMovement() {
+    let frame = SionRect(x: 10, y: 20, width: 100, height: 40)
+
+    XCTAssertEqual(
+      InteractionGeometry.roundedRectangleCornerRadius(
+        in: frame,
+        draggedTo: SionPoint(x: 500, y: 32)
+      ),
+      12
+    )
+  }
+
   func testConnectorAttachmentChoosesExplicitCompatibleMagnet() {
     var element = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 100, height: 40),

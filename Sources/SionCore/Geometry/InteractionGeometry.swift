@@ -212,8 +212,10 @@ public enum InteractionGeometry {
   ) -> Double {
     let rect = frame.standardized
     let localPointer = unrotated(pointer, around: rect.center, by: rotationRadians)
+    let horizontalRadius = localPointer.x - rect.minX
+    let verticalRadius = localPointer.y - rect.minY
 
-    return clampedCornerRadius(localPointer.x - rect.minX, in: rect)
+    return clampedCornerRadius(min(horizontalRadius, verticalRadius), in: rect)
   }
 
   public static func roundedRectangleCornerRadiusHandle(

@@ -3,6 +3,7 @@ import XCTest
 @testable import SionCore
 
 final class SceneRenderGeometryTests: XCTestCase {
+  private let canvasArrowLength = 12.0
   private let contentPadding = 32.0
 
   func testContentBoundsIncludeWideStroke() {
@@ -117,6 +118,32 @@ final class SceneRenderGeometryTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(bounds.maxX, 180 + contentPadding)
     XCTAssertLessThanOrEqual(bounds.minY, -80 - contentPadding)
     XCTAssertGreaterThanOrEqual(bounds.maxY, 80 + contentPadding)
+  }
+
+  func testContentBoundsIncludeDefaultArrowOnShortConnector() {
+    var connector = SceneElement.connector(
+      source: .free(SionPoint(x: 0, y: 0)),
+      target: .free(SionPoint(x: 1, y: 0)),
+      routingStyle: .straight
+    )
+    connector.content = .connector(
+      ConnectorContent(
+        source: .free(SionPoint(x: 0, y: 0)),
+        target: .free(SionPoint(x: 1, y: 0)),
+        routingStyle: .straight,
+        targetDecoration: .filledArrow
+      )
+    )
+
+    let bounds = SceneRenderGeometry.contentBounds(
+      of: SionScene(elements: [connector])
+    )
+    let strokeRadius = (connector.style.stroke?.width ?? 0) / 2
+
+    XCTAssertLessThanOrEqual(
+      bounds.minX,
+      1 - canvasArrowLength - strokeRadius - contentPadding
+    )
   }
 
   func testContentBoundsIncludeConnectorLabel() {

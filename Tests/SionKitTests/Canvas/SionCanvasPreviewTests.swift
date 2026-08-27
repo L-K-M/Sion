@@ -66,11 +66,23 @@ final class SionCanvasPreviewTests: XCTestCase {
       canvas.renderPreviewPNG(maximumDimension: TestPreview.orientationDimension)
     )
     let bitmap = try XCTUnwrap(NSBitmapImageRep(data: data))
-    let redCenter = try XCTUnwrap(pixelCenter(in: bitmap, matching: .red))
-    let blueCenter = try XCTUnwrap(pixelCenter(in: bitmap, matching: .blue))
     let scale = min(
       1,
       Double(TestPreview.orientationDimension) / max(content.width, content.height)
+    )
+    let diagnostic = sampledColors(
+      in: bitmap,
+      centers: [upperLeft.geometry.frame.center, lowerRight.geometry.frame.center],
+      content: content,
+      scale: scale
+    )
+    let redCenter = try XCTUnwrap(
+      pixelCenter(in: bitmap, matching: .red),
+      diagnostic
+    )
+    let blueCenter = try XCTUnwrap(
+      pixelCenter(in: bitmap, matching: .blue),
+      diagnostic
     )
 
     XCTAssertEqual(
@@ -136,6 +148,24 @@ final class SionCanvasPreviewTests: XCTestCase {
     guard count > 0 else { return nil }
 
     return SionPoint(x: xTotal / count, y: yTotal / count)
+  }
+
+  private func sampledColors(
+    in bitmap: NSBitmapImageRep,
+    centers: [SionPoint],
+    content: SionRect,
+    scale: Double
+  ) -> String {
+    centers.enumerated().map { index, center in
+      let x = Int(((center.x - content.minX) * scale).rounded())
+      let topY = Int(((center.y - content.minY) * scale).rounded())
+      let bottomY = bitmap.pixelsHigh - 1 - topY
+      let topColor = bitmap.colorAt(x: x, y: topY)
+      let bottomColor = bitmap.colorAt(x: x, y: bottomY)
+
+      return
+        "center \(index): top=\(String(describing: topColor)), bottom=\(String(describing: bottomColor))"
+    }.joined(separator: "; ")
   }
 }
 

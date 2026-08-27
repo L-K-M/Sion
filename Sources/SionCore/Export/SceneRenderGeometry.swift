@@ -125,7 +125,7 @@ public enum SceneRenderGeometry {
     return bounds
   }
 
-  static func paintedBounds(
+  public static func paintedBounds(
     of element: SceneElement,
     route: ConnectorRoute? = nil
   ) -> SionRect {

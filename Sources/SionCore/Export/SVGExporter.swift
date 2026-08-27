@@ -157,13 +157,13 @@ public enum SVGExporter {
     let frame = element.geometry.frame.standardized
     let path = shapePath(shape.kind, frame: frame)
     var content =
-      "<path d=\"\(path)\" \(styleAttributes(element, definitions: &definitions))/>"
+      "<path d=\"\(path)\" \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
     if let label = shape.label {
       content += renderText(label, in: frame)
     }
 
-    return wrapped(content, element: element, definitions: &definitions, style: .omit)
+    return wrapped(content, element: element, definitions: &definitions)
   }
 
   private static func renderPath(
@@ -174,9 +174,9 @@ public enum SVGExporter {
     let path = vectorPath(content.path, frame: element.geometry.frame.standardized)
     let fillRule = content.path.fillRule == .evenOdd ? "evenodd" : "nonzero"
     let rendered =
-      "<path d=\"\(path)\" fill-rule=\"\(fillRule)\" \(styleAttributes(element, definitions: &definitions))/>"
+      "<path d=\"\(path)\" fill-rule=\"\(fillRule)\" \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
-    return wrapped(rendered, element: element, definitions: &definitions, style: .omit)
+    return wrapped(rendered, element: element, definitions: &definitions)
   }
 
   private static func renderImage(
@@ -242,28 +242,33 @@ public enum SVGExporter {
   ) -> String {
     let markerStart = markerAttribute(connector.sourceDecoration, position: .start)
     let markerEnd = markerAttribute(connector.targetDecoration, position: .end)
-    let path =
-      "<path d=\"\(routePath(route))\" fill=\"none\" \(styleAttributes(element, route: route, definitions: &definitions)) \(markerStart) \(markerEnd)/>"
+    var content =
+      "<path d=\"\(routePath(route))\" fill=\"none\" \(strokeAttributes(element.style)) \(markerStart) \(markerEnd)/>"
 
-    guard let label = connector.label else {
-      return path
+    if let label = connector.label {
+      let point = point(on: route, fraction: connector.labelPosition)
+      let labelFrame = SionRect(
+        x: point.x - SVGDefaults.connectorLabelWidth / 2,
+        y: point.y - SVGDefaults.connectorLabelHeight / 2,
+        width: SVGDefaults.connectorLabelWidth,
+        height: SVGDefaults.connectorLabelHeight
+      )
+      content += renderText(label, in: labelFrame)
     }
 
-    let point = point(on: route, fraction: connector.labelPosition)
-    let labelFrame = SionRect(
-      x: point.x - SVGDefaults.connectorLabelWidth / 2,
-      y: point.y - SVGDefaults.connectorLabelHeight / 2,
-      width: SVGDefaults.connectorLabelWidth,
-      height: SVGDefaults.connectorLabelHeight
+    return wrapped(
+      content,
+      element: element,
+      route: route,
+      definitions: &definitions
     )
-    return path + renderText(label, in: labelFrame)
   }
 
   private static func wrapped(
     _ content: String,
     element: SceneElement,
-    definitions: inout [String],
-    style: WrappedStyle = .apply
+    route: ConnectorRoute? = nil,
+    definitions: inout [String]
   ) -> String {
     let frame = element.geometry.frame.standardized
     let reducedRotation = element.geometry.rotationRadians.truncatingRemainder(
@@ -274,23 +279,19 @@ public enum SVGExporter {
       rotation == 0
       ? ""
       : " transform=\"rotate(\(number(rotation)) \(number(frame.center.x)) \(number(frame.center.y)))\""
-    let renderedStyle: String
-    switch style {
-    case .apply:
-      renderedStyle =
-        " \(styleAttributes(element, definitions: &definitions))"
-    case .omit:
-      renderedStyle = ""
-    }
-    return "<g id=\"element-\(element.id)\"\(transform)\(renderedStyle)>\(content)</g>"
+    let effects = effectAttributes(
+      element,
+      route: route,
+      definitions: &definitions
+    )
+    return "<g id=\"element-\(element.id)\"\(transform) \(effects)>\(content)</g>"
   }
 
-  private static func styleAttributes(
-    _ element: SceneElement,
-    route: ConnectorRoute? = nil,
+  private static func paintAttributes(
+    _ style: ElementStyle,
+    id: ElementID,
     definitions: inout [String]
   ) -> String {
-    let style = element.style
     let fill: String
     switch style.fill {
     case .none:
@@ -298,7 +299,7 @@ public enum SVGExporter {
     case .solid(let color):
       fill = color.hex
     case .linearGradient(let gradient):
-      let gradientID = "gradient-\(element.id)"
+      let gradientID = "gradient-\(id)"
       let stops = gradient.stops.map { stop in
         "<stop offset=\"\(number(stop.location * 100))%\" stop-color=\"\(stop.color.hex)\"/>"
       }.joined()
@@ -308,18 +309,28 @@ public enum SVGExporter {
       fill = "url(#\(gradientID))"
     }
 
-    let stroke: String
+    return "fill=\"\(fill)\" \(strokeAttributes(style))"
+  }
+
+  private static func strokeAttributes(_ style: ElementStyle) -> String {
     if let value = style.stroke {
       let dash =
         value.dashPattern.isEmpty
         ? ""
         : " stroke-dasharray=\"\(value.dashPattern.map(number).joined(separator: " "))\""
-      stroke =
+      return
         "stroke=\"\(value.color.hex)\" stroke-width=\"\(number(value.width))\" stroke-linecap=\"\(value.lineCap.rawValue)\" stroke-linejoin=\"\(value.lineJoin.rawValue)\"\(dash)"
-    } else {
-      stroke = "stroke=\"none\""
     }
 
+    return "stroke=\"none\""
+  }
+
+  private static func effectAttributes(
+    _ element: SceneElement,
+    route: ConnectorRoute?,
+    definitions: inout [String]
+  ) -> String {
+    let style = element.style
     var filter = ""
     if let shadow = style.shadows.first {
       let filterID = "shadow-\(element.id)"
@@ -334,7 +345,7 @@ public enum SVGExporter {
     }
 
     return
-      "fill=\"\(fill)\" \(stroke) opacity=\"\(number(style.opacity))\" style=\"mix-blend-mode:\(style.blendMode.rawValue)\"\(filter)"
+      "opacity=\"\(number(style.opacity))\" style=\"mix-blend-mode:\(style.blendMode.rawValue)\"\(filter)"
   }
 
   private static func renderText(_ text: TextContent, in frame: SionRect) -> String {
@@ -565,11 +576,6 @@ public enum SVGExporter {
     <marker id="marker-circle" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7"><circle cx="5" cy="5" r="3.5" fill="context-stroke"/></marker>
     <marker id="marker-diamond" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M5 0L10 5L5 10L0 5Z" fill="context-stroke"/></marker>
     """
-}
-
-private enum WrappedStyle {
-  case apply
-  case omit
 }
 
 private enum XMLScalar {

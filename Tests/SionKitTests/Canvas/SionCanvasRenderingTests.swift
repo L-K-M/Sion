@@ -19,12 +19,15 @@ final class SionCanvasRenderingTests: XCTestCase {
       opacity: 0.5
     )
 
-    let image = try render(elements: [shape])
-    let color = try pixel(in: image, at: SionPoint(x: 90, y: 90))
+    var equivalent = shape
+    equivalent.style.fill = .solid(.init(red: 1, green: 0, blue: 0))
+    equivalent.style.opacity = 0.25
 
-    XCTAssertEqual(color.redComponent, 1, accuracy: colorAccuracy)
-    XCTAssertEqual(color.greenComponent, 0.75, accuracy: colorAccuracy)
-    XCTAssertEqual(color.blueComponent, 0.75, accuracy: colorAccuracy)
+    let point = SionPoint(x: 90, y: 90)
+    let actual = try pixel(in: render(elements: [shape]), at: point)
+    let expected = try pixel(in: render(elements: [equivalent]), at: point)
+
+    assertEqual(actual, expected)
   }
 
   func testOpacityCompositesFillAndStrokeOnce() throws {
@@ -65,12 +68,19 @@ final class SionCanvasRenderingTests: XCTestCase {
       blendMode: .overlay
     )
 
-    let image = try render(elements: [backdrop, overlay])
-    let color = try pixel(in: image, at: SionPoint(x: 90, y: 90))
+    var expectedOverlay = overlay
+    expectedOverlay.style = ElementStyle(
+      fill: .solid(SionColor(red: 0.4, green: 0.4, blue: 0.4))
+    )
 
-    XCTAssertEqual(color.redComponent, 0.4, accuracy: colorAccuracy)
-    XCTAssertEqual(color.greenComponent, 0.4, accuracy: colorAccuracy)
-    XCTAssertEqual(color.blueComponent, 0.4, accuracy: colorAccuracy)
+    let point = SionPoint(x: 90, y: 90)
+    let actual = try pixel(in: render(elements: [backdrop, overlay]), at: point)
+    let expected = try pixel(
+      in: render(elements: [backdrop, expectedOverlay]),
+      at: point
+    )
+
+    assertEqual(actual, expected)
   }
 
   func testZeroOpacitySuppressesEveryArtworkKind() throws {
@@ -195,6 +205,35 @@ final class SionCanvasRenderingTests: XCTestCase {
       image.colorAt(x: Int(point.x), y: Int(point.y))
     )
     return try XCTUnwrap(color.usingColorSpace(.sRGB))
+  }
+
+  private func assertEqual(
+    _ actual: NSColor,
+    _ expected: NSColor,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    XCTAssertEqual(
+      actual.redComponent,
+      expected.redComponent,
+      accuracy: colorAccuracy,
+      file: file,
+      line: line
+    )
+    XCTAssertEqual(
+      actual.greenComponent,
+      expected.greenComponent,
+      accuracy: colorAccuracy,
+      file: file,
+      line: line
+    )
+    XCTAssertEqual(
+      actual.blueComponent,
+      expected.blueComponent,
+      accuracy: colorAccuracy,
+      file: file,
+      line: line
+    )
   }
 
   private func renderedPixels(_ image: NSBitmapImageRep) -> Data {

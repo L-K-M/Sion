@@ -783,6 +783,16 @@ final class SceneEditorTests: XCTestCase {
     XCTAssertFalse(editor.hasPendingGesture)
   }
 
+  func testRedoDoesNotEndPendingGesture() throws {
+    var editor = try SceneEditor()
+    try editor.beginGesture(named: "Move")
+
+    XCTAssertNil(editor.redo())
+    XCTAssertTrue(editor.hasPendingGesture)
+
+    _ = try editor.cancelGesture()
+  }
+
   private func elementID(_ string: String) -> ElementID {
     ElementID(string)!
   }

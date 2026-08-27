@@ -25,6 +25,7 @@ final class SionEditorControllerTransformTests: XCTestCase {
     XCTAssertNil(controller.document.scene.element(withID: shapeID))
     XCTAssertFalse(undoManager.canUndo)
     XCTAssertTrue(undoManager.canRedo)
+    XCTAssertFalse(controller.hasPendingEditorGesture)
 
     undoManager.undo()
 

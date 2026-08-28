@@ -148,7 +148,9 @@ final class InspectorPaletteTests: XCTestCase {
     routePopup.select(straightItem)
     let action = try XCTUnwrap(routePopup.action)
 
-    XCTAssertTrue(NSApp.sendAction(action, to: routePopup.target, from: routePopup))
+    XCTAssertTrue(
+      NSApp.sendAction(action, to: try XCTUnwrap(routePopup.target), from: routePopup)
+    )
     XCTAssertEqual(editor.document, documentBefore)
     XCTAssertTrue(editor.hasPendingEditorGesture)
     XCTAssertEqual(

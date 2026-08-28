@@ -694,8 +694,8 @@ standalone rewrite PR unless a concrete feature needs the boundary.
 
 **Evidence.** There is no XCUITest target, accessibility action suite, archive
 property/fuzz suite, launch gate, full renderer matrix, or performance gate.
-`SionArchiveGenerator` reads `Bundle.main` at type initialization, making test
-version behavior environment-dependent.
+Archive generator metadata now crosses a tested SionKit bundle boundary, and
+Core archive tests use fixed provenance.
 
 **Scope.** Add launch/document lifecycle UI tests, AX action tests, malformed
 archive and model property/fuzz tests, and the renderer/performance fixtures in

@@ -107,6 +107,7 @@
     private var observerID: UUID?
     private var presentation: PalettePresentation?
     private let selectionLabel = NSTextField(labelWithString: "No selection")
+    private let nameField = NSTextField()
     private let lockButton = NSButton(
       checkboxWithTitle: "Locked",
       target: nil,
@@ -139,7 +140,9 @@
       configureAnchorEditingControls()
       configureAppearanceControls()
       configureLockButton()
+      configureNameField()
       stack.addArrangedSubview(selectionLabel)
+      stack.addArrangedSubview(row(label: "Name", control: nameField))
       stack.addArrangedSubview(lockButton)
       stack.addArrangedSubview(separator())
       stack.addArrangedSubview(row(label: "Fill", control: fillColorWell))
@@ -223,6 +226,13 @@
       lockButton.setAccessibilityLabel("Element lock")
     }
 
+    private func configureNameField() {
+      nameField.target = self
+      nameField.action = #selector(changeName(_:))
+      nameField.sendsActionOnEndEditing = true
+      nameField.setAccessibilityLabel("Element name")
+    }
+
     private func configureMagnetPopup() {
       for option in MagnetOption.allCases {
         magnetPopup.addItem(withTitle: option.title)
@@ -254,6 +264,9 @@
     }
 
     private func refresh() {
+      let selectedElements = target?.selectedElements ?? []
+      refreshNameField(for: selectedElements)
+
       guard let element = target?.selectedElement else {
         let hasMultipleSelection = target?.selection.isEmpty == false
         selectionLabel.stringValue =
@@ -312,6 +325,25 @@
       routePopup.selectItem(withTitle: connector.routingStyle.displayName)
     }
 
+    private func refreshNameField(for elements: [SceneElement]) {
+      nameField.isEnabled = target?.canRenameSelection == true
+      guard !elements.isEmpty else {
+        nameField.stringValue = ""
+        nameField.placeholderString = nil
+        return
+      }
+
+      let names = Set(elements.map(\.name))
+      guard names.count == 1 else {
+        nameField.stringValue = ""
+        nameField.placeholderString = InspectorCopy.mixedValue
+        return
+      }
+
+      nameField.stringValue = names.first.flatMap { $0 } ?? ""
+      nameField.placeholderString = nil
+    }
+
     @objc private func changeLock(_ sender: NSButton) {
       guard let target, let id = target.selectedElement?.id else { return }
 
@@ -321,6 +353,13 @@
       }
 
       attemptEdit { try target.setLockState(lockState, on: id) }
+    }
+
+    @objc private func changeName(_ sender: NSTextField) {
+      guard let target else { return }
+
+      let name = sender.stringValue.isEmpty ? nil : sender.stringValue
+      attemptEdit { try target.renameSelection(name) }
     }
 
     @objc private func changeRoute(_ sender: NSPopUpButton) {
@@ -720,6 +759,10 @@
     static let minimumStrokeWidth = 0.0
     static let maximumStrokeWidth = 12.0
     static let strokeWidthTickCount = 13
+  }
+
+  private enum InspectorCopy {
+    static let mixedValue = "Mixed"
   }
 
   private enum AnchorEditingCopy {

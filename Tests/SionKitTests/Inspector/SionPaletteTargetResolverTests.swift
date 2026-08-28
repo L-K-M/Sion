@@ -41,6 +41,11 @@ final class InspectorPaletteTests: XCTestCase {
     )
     let colorWells = descendants.compactMap { $0 as? NSColorWell }
     let widthSlider = try XCTUnwrap(descendants.compactMap { $0 as? NSSlider }.first)
+    let nameField = try XCTUnwrap(
+      descendants.compactMap { $0 as? NSTextField }.first {
+        $0.accessibilityLabel() == "Element name"
+      }
+    )
     let anchorPopup = try XCTUnwrap(
       descendants.compactMap { $0 as? NSPopUpButton }.first {
         $0.toolTip == "Choose where connectors attach to the selected object."
@@ -50,6 +55,8 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertEqual(lockButton.state, .on)
     XCTAssertTrue(colorWells.allSatisfy { !$0.isEnabled })
     XCTAssertFalse(widthSlider.isEnabled)
+    XCTAssertFalse(nameField.isEnabled)
+    XCTAssertEqual(nameField.stringValue, "Process")
     XCTAssertFalse(anchorPopup.isEnabled)
 
     lockButton.performClick(nil)
@@ -57,6 +64,7 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertEqual(editor.document.scene.element(withID: shape.id)?.lockState, .editable)
     XCTAssertTrue(colorWells.allSatisfy { $0.isEnabled })
     XCTAssertTrue(widthSlider.isEnabled)
+    XCTAssertTrue(nameField.isEnabled)
     XCTAssertTrue(anchorPopup.isEnabled)
   }
 
@@ -155,6 +163,8 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "Shared")
     XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Shared")
     XCTAssertEqual(undoManager.undoActionName, "Rename Elements")
+    XCTAssertEqual(nameField.stringValue, "Shared")
+    XCTAssertNil(nameField.placeholderString)
 
     undoManager.undo()
 

@@ -320,12 +320,7 @@
         target.endAnchorEditing()
       }
 
-      do {
-        try target.setLockState(lockState, on: id)
-      } catch {
-        NSSound.beep()
-        refresh()
-      }
+      attemptEdit { try target.setLockState(lockState, on: id) }
     }
 
     @objc private func changeRoute(_ sender: NSPopUpButton) {
@@ -337,25 +332,25 @@
         return
       }
 
-      try? target.setRoutingStyle(style, on: id)
+      attemptEdit { try target.setRoutingStyle(style, on: id) }
     }
 
     @objc private func changeFill(_ sender: NSColorWell) {
       guard let target, let id = target.selectedElement?.id else { return }
 
-      try? target.setFillColor(sionColor(sender.color), on: id)
+      attemptEdit { try target.setFillColor(sionColor(sender.color), on: id) }
     }
 
     @objc private func changeStrokeColor(_ sender: NSColorWell) {
       guard let target, let id = target.selectedElement?.id else { return }
 
-      try? target.setStrokeColor(sionColor(sender.color), on: id)
+      attemptEdit { try target.setStrokeColor(sionColor(sender.color), on: id) }
     }
 
     @objc private func changeStrokeWidth(_ sender: NSSlider) {
       guard let target, let id = target.selectedElement?.id else { return }
 
-      try? target.setStrokeWidth(sender.doubleValue, on: id)
+      attemptEdit { try target.setStrokeWidth(sender.doubleValue, on: id) }
     }
 
     @objc private func changeMagnets(_ sender: NSPopUpButton) {
@@ -378,7 +373,7 @@
       guard let preset = option.preset else { return }
 
       target.endAnchorEditing()
-      try? target.setMagnetConfiguration(.preset(preset), on: id)
+      attemptEdit { try target.setMagnetConfiguration(.preset(preset), on: id) }
     }
 
     @objc private func endAnchorEditing() {
@@ -399,6 +394,16 @@
       }
 
       magnetPopup.selectItem(withTag: option.rawValue)
+    }
+
+    /// Rejected semantic edits must leave every control showing model state.
+    private func attemptEdit(_ action: () throws -> Void) {
+      do {
+        try action()
+      } catch {
+        NSSound.beep()
+        refresh()
+      }
     }
 
     private func row(label: String, control: NSView) -> NSView {

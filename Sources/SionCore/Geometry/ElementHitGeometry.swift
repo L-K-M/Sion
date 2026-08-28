@@ -1376,20 +1376,73 @@ extension ShapeKind {
     style: ElementStyle,
     tolerance: Double
   ) -> Bool {
-    guard case .ellipse = self else { return true }
+    let expansion = style.hitExpansion(tolerance: tolerance)
 
-    let horizontalRadius = frame.width / 2
-    let verticalRadius = frame.height / 2
+    switch self {
+    case .roundedRectangle(let radius):
+      let finiteRadius = radius.isFinite ? radius : 0
+      let clampedRadius = min(max(0, finiteRadius), min(frame.width, frame.height) / 2)
+      return passesCurvedFrameBroadPhase(
+        point,
+        in: frame,
+        horizontalRadius: clampedRadius,
+        verticalRadius: clampedRadius,
+        expansion: expansion
+      )
+    case .ellipse:
+      return passesCurvedFrameBroadPhase(
+        point,
+        in: frame,
+        horizontalRadius: frame.width / 2,
+        verticalRadius: frame.height / 2,
+        expansion: expansion
+      )
+    case .capsule:
+      let radius = min(frame.width, frame.height) / 2
+      return passesCurvedFrameBroadPhase(
+        point,
+        in: frame,
+        horizontalRadius: radius,
+        verticalRadius: radius,
+        expansion: expansion
+      )
+    case .cylinder:
+      let arcHeight = min(
+        frame.height * ShapeGeometryDefaults.cylinderArcFraction,
+        frame.height / 2
+      )
+      return passesCurvedFrameBroadPhase(
+        point,
+        in: frame,
+        horizontalRadius: frame.width / 2,
+        verticalRadius: arcHeight,
+        expansion: expansion
+      )
+    case .rectangle, .diamond, .triangle, .hexagon, .custom:
+      return true
+    }
+  }
+
+  private func passesCurvedFrameBroadPhase(
+    _ point: SionPoint,
+    in frame: SionRect,
+    horizontalRadius: Double,
+    verticalRadius: Double,
+    expansion: Double
+  ) -> Bool {
     let minimumRadius = min(horizontalRadius, verticalRadius)
     guard minimumRadius > HitGeometryDefaults.epsilon else { return true }
 
-    // Normalize one conservative ellipse envelope before building its curves.
-    let expansion = style.hitExpansion(tolerance: tolerance)
+    // Affine-normalize a conservative envelope before building any curves.
+    let horizontalInset = max(0, (frame.width / 2) - horizontalRadius)
+    let verticalInset = max(0, (frame.height / 2) - verticalRadius)
+    let normalizedX =
+      max(0, abs(point.x - frame.center.x) - horizontalInset) / horizontalRadius
+    let normalizedY =
+      max(0, abs(point.y - frame.center.y) - verticalInset) / verticalRadius
     let envelopeScale =
       HitGeometryDefaults.maximumCubicArcEnvelopeScale
       + (expansion / minimumRadius)
-    let normalizedX = (point.x - frame.center.x) / horizontalRadius
-    let normalizedY = (point.y - frame.center.y) / verticalRadius
 
     return hypot(normalizedX, normalizedY) <= envelopeScale
   }

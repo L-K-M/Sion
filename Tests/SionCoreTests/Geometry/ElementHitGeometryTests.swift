@@ -1164,11 +1164,19 @@ final class ElementHitGeometryTests: XCTestCase {
       width: SceneLimits.maximumCoordinateMagnitude,
       height: SceneLimits.maximumCoordinateMagnitude
     )
-    var ellipse = SceneElement.shape(frame: frame, kind: .ellipse)
-    ellipse.style = ElementStyle(fill: .solid(.black))
+    let kinds: [ShapeKind] = [
+      .roundedRectangle(radius: frame.width / 2),
+      .ellipse,
+      .capsule,
+      .cylinder,
+    ]
     let started = ContinuousClock.now
-    for _ in 0..<Self.largeSceneElementCount {
-      XCTAssertFalse(ElementHitGeometry.contains(frame.origin, in: ellipse, tolerance: 2))
+    for kind in kinds {
+      var element = SceneElement.shape(frame: frame, kind: kind)
+      element.style = ElementStyle(fill: .solid(.black))
+      for _ in 0..<Self.largeSceneElementCount {
+        XCTAssertFalse(ElementHitGeometry.contains(frame.origin, in: element, tolerance: 2))
+      }
     }
     let elapsed = started.duration(to: .now)
 

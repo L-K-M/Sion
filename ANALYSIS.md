@@ -130,10 +130,12 @@ receives hit/accessibility focus outside an active ancestor clip.
 hashes assets, writes a stored ZIP, and decodes it again. File-image paste reads
 up to 256 MiB on the main thread. Selection copy rejects guaranteed asset
 overflow cheaply, but exact sizing still base64-encodes assets before the final
-output limit. Rendition jobs lack ordering, progress, and cancellation.
-Validation rehashes and reparses identical assets; SHA conversion copies `Data`
-into bytes and PNG validation concatenates buffers. New archive previews are
-supplied by a live canvas, so a windowless save cannot create one.
+output limit. Canvas invalidation now cancels in-flight image rendition and
+discards late results; jobs still lack stable ordering, replacement
+cancellation, and progress. Validation rehashes and reparses identical assets;
+SHA conversion copies `Data` into bytes and PNG validation concatenates buffers.
+New archive previews are supplied by a live canvas, so a windowless save cannot
+create one.
 
 **Scope.** Snapshot small immutable state on the main actor, then move
 encoding/import to cancellable services. Stream SHA and ZIP I/O. Keep STORED as

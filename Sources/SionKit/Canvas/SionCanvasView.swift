@@ -64,8 +64,10 @@
     private let creationFailureFeedback: @MainActor () -> Void
     private let editorFeedback: @MainActor (SionEditorFeedbackRequest) -> Void
     private let pasteboard: NSPasteboard
+    private let imageRenditionService: SafeImageRenditionService
     private var observerID: UUID?
     private var magnificationObservation: NSKeyValueObservation?
+    private var imagePasteTasks: [UUID: Task<Void, Never>] = [:]
     private var drag: Drag?
     private var textEditor: NSScrollView?
     private var editedElementID: ElementID?
@@ -103,7 +105,8 @@
       creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() },
       editorFeedback: @escaping @MainActor (SionEditorFeedbackRequest) -> Void = { _ in },
       pasteboard: NSPasteboard = .general,
-      connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
+      connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil,
+      imageRenditionService: SafeImageRenditionService = SafeImageRenditionService()
     ) {
       self.editorController = editorController
       self.connectorRouteProvider =
@@ -112,6 +115,7 @@
       self.creationFailureFeedback = creationFailureFeedback
       self.editorFeedback = editorFeedback
       self.pasteboard = pasteboard
+      self.imageRenditionService = imageRenditionService
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
         of: scene,
@@ -327,6 +331,12 @@
     }
 
     func invalidate() {
+      // Canvas teardown must prevent late rendition results from editing the document.
+      for task in imagePasteTasks.values {
+        task.cancel()
+      }
+      imagePasteTasks.removeAll()
+
       cancelActiveDrag()
       guard let observerID else { return }
 
@@ -1437,11 +1447,15 @@
         return false
       }
 
-      Task { @MainActor [weak self] in
-        let display = await Task.detached(priority: .userInitiated) {
-          SafeImageRenditionBuilder.make(from: data)
-        }.value
-        guard let self, let display else {
+      let taskID = UUID()
+      let service = imageRenditionService
+      let task = Task { @MainActor [weak self] in
+        let display = await service.make(from: data)
+        guard let self else { return }
+
+        self.imagePasteTasks.removeValue(forKey: taskID)
+        guard !Task.isCancelled else { return }
+        guard let display else {
           NSSound.beep()
           return
         }
@@ -1461,6 +1475,7 @@
           NSSound.beep()
         }
       }
+      imagePasteTasks[taskID] = task
 
       return true
     }

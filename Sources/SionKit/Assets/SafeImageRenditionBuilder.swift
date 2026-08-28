@@ -11,17 +11,60 @@
     let pixelSize: SionSize
   }
 
+  /// Runs decoding off the main actor and cooperatively cancels between stages.
+  /// An active ImageIO or Core Graphics call cannot be interrupted.
+  struct SafeImageRenditionService: Sendable {
+    typealias Build = @Sendable (Data) async -> SafeImageRendition?
+
+    private let build: Build
+
+    init() {
+      build = { data in
+        SafeImageRenditionBuilder.make(from: data)
+      }
+    }
+
+    init(build: @escaping Build) {
+      self.build = build
+    }
+
+    func make(from data: Data) async -> SafeImageRendition? {
+      guard !Task.isCancelled else { return nil }
+
+      let task = Task.detached(priority: .userInitiated) {
+        await build(data)
+      }
+      let rendition = await withTaskCancellationHandler {
+        await task.value
+      } onCancel: {
+        task.cancel()
+      }
+      guard !Task.isCancelled else { return nil }
+
+      return rendition
+    }
+  }
+
   /// Downsamples imports through ImageIO before AppKit sees their pixels.
+  /// Returns nil if the current task is cancelled between decoding stages.
   enum SafeImageRenditionBuilder {
     static func make(from data: Data) -> SafeImageRendition? {
-      guard data.count <= SionArchiveConstants.maximumEntryByteCount else { return nil }
+      guard !Task.isCancelled,
+        data.count <= SionArchiveConstants.maximumEntryByteCount
+      else {
+        return nil
+      }
 
       if let source = CGImageSourceCreateWithData(
         data as CFData,
         [kCGImageSourceShouldCache: false] as CFDictionary
       ) {
+        guard !Task.isCancelled else { return nil }
+
         return make(from: source)
       }
+
+      guard !Task.isCancelled else { return nil }
 
       return makeFromPDF(data)
     }
@@ -60,6 +103,8 @@
         return nil
       }
 
+      guard !Task.isCancelled else { return nil }
+
       return rendition(from: image, sourceSize: sourceSize)
     }
 
@@ -94,7 +139,7 @@
       )
       context.concatenate(transform)
       context.drawPDFPage(page)
-      guard let image = context.makeImage() else { return nil }
+      guard !Task.isCancelled, let image = context.makeImage() else { return nil }
 
       return rendition(from: image, sourceSize: sourceSize)
     }
@@ -116,7 +161,7 @@
       }
 
       CGImageDestinationAddImage(destination, image, nil)
-      guard CGImageDestinationFinalize(destination) else { return nil }
+      guard !Task.isCancelled, CGImageDestinationFinalize(destination) else { return nil }
 
       let data = output as Data
       guard data.count <= SionArchiveConstants.maximumEntryByteCount else { return nil }

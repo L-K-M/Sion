@@ -580,6 +580,121 @@
       editorController.selectAll()
     }
 
+    /// Arrange actions throw on validation failures; surface them audibly
+    /// instead of silently doing nothing.
+    private func attemptEdit(_ action: () throws -> Void) {
+      do {
+        try action()
+      } catch {
+        NSLog("Arrange action failed: %@", String(describing: error))
+        NSSound.beep()
+      }
+    }
+
+    @objc func duplicate(_ sender: Any?) {
+      attemptEdit { try editorController.duplicateSelection() }
+    }
+
+    @objc func bringToFront(_ sender: Any?) {
+      attemptEdit { try editorController.moveSelectionInZOrder(.front) }
+    }
+
+    @objc func bringForward(_ sender: Any?) {
+      attemptEdit { try editorController.moveSelectionInZOrder(.forward) }
+    }
+
+    @objc func sendBackward(_ sender: Any?) {
+      attemptEdit { try editorController.moveSelectionInZOrder(.backward) }
+    }
+
+    @objc func sendToBack(_ sender: Any?) {
+      attemptEdit { try editorController.moveSelectionInZOrder(.back) }
+    }
+
+    @objc func alignLeading(_ sender: Any?) {
+      attemptEdit { try editorController.alignSelection(.leading) }
+    }
+
+    @objc func alignCenterHorizontally(_ sender: Any?) {
+      attemptEdit { try editorController.alignSelection(.centerX) }
+    }
+
+    @objc func alignTrailing(_ sender: Any?) {
+      attemptEdit { try editorController.alignSelection(.trailing) }
+    }
+
+    @objc func alignTop(_ sender: Any?) {
+      attemptEdit { try editorController.alignSelection(.top) }
+    }
+
+    @objc func alignCenterVertically(_ sender: Any?) {
+      attemptEdit { try editorController.alignSelection(.centerY) }
+    }
+
+    @objc func alignBottom(_ sender: Any?) {
+      attemptEdit { try editorController.alignSelection(.bottom) }
+    }
+
+    @objc func distributeHorizontally(_ sender: Any?) {
+      attemptEdit { try editorController.distributeSelection(.horizontal) }
+    }
+
+    @objc func distributeVertically(_ sender: Any?) {
+      attemptEdit { try editorController.distributeSelection(.vertical) }
+    }
+
+    @objc func lockSelection(_ sender: Any?) {
+      attemptEdit { try editorController.setSelectionLockState(.locked) }
+    }
+
+    @objc func unlockSelection(_ sender: Any?) {
+      attemptEdit { try editorController.setSelectionLockState(.editable) }
+    }
+
+    @objc func hideSelection(_ sender: Any?) {
+      attemptEdit { try editorController.hideSelection() }
+    }
+
+    @objc func revealHiddenElements(_ sender: Any?) {
+      attemptEdit { try editorController.revealHiddenElements() }
+    }
+
+    /// AppKit discovers menu validation through Objective-C responder dispatch.
+    @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+      switch menuItem.action {
+      case #selector(duplicate(_:)):
+        return editorController.canDuplicateSelection
+      case #selector(bringToFront(_:)):
+        return editorController.canMoveSelectionInZOrder(.front)
+      case #selector(bringForward(_:)):
+        return editorController.canMoveSelectionInZOrder(.forward)
+      case #selector(sendBackward(_:)):
+        return editorController.canMoveSelectionInZOrder(.backward)
+      case #selector(sendToBack(_:)):
+        return editorController.canMoveSelectionInZOrder(.back)
+      case #selector(alignLeading(_:)),
+        #selector(alignCenterHorizontally(_:)),
+        #selector(alignTrailing(_:)),
+        #selector(alignTop(_:)),
+        #selector(alignCenterVertically(_:)),
+        #selector(alignBottom(_:)):
+        return editorController.arrangeableSelectionCount > 1
+      case #selector(distributeHorizontally(_:)),
+        #selector(distributeVertically(_:)):
+        return editorController.arrangeableSelectionCount > 2
+      case #selector(lockSelection(_:)):
+        return editorController.canSetSelectionLockState(.locked)
+      case #selector(unlockSelection(_:)):
+        return editorController.canSetSelectionLockState(.editable)
+      case #selector(hideSelection(_:)):
+        return editorController.canHideSelection
+      case #selector(revealHiddenElements(_:)):
+        return editorController.canRevealHiddenElements
+      default:
+        return true
+      }
+    }
+
     @objc func paste(_ sender: Any?) {
       let point = visibleCanvasCenter()
       let pasteboard = NSPasteboard.general

@@ -123,6 +123,8 @@
     private var history: DocumentHistory
     private var previewPNG: Data?
     private var pendingTextEdit: PendingTextEdit?
+    private var lastDuplicate: DuplicateState?
+    private var pendingDuplicateMove: SionVector?
     private var routeCache: [ElementID: ConnectorRoute]
     private let imageCache: NSCache<NSString, NSImage>
 
@@ -140,6 +142,7 @@
       history = package.history
       previewPNG = package.previewPNG
       pendingTextEdit = nil
+      pendingDuplicateMove = nil
       routeCache = [:]
       imageCache = NSCache()
       imageCache.countLimit = EditorDefaults.imageCacheLimit
@@ -190,11 +193,257 @@
     @discardableResult
     func insertSelectionPayload(_ data: Data, at point: SionPoint) throws -> [ElementID] {
       let payload = try SceneSelectionPayload(data: data)
+      return try insertPayload(payload, centeredAt: point, undoName: "Paste")
+    }
+
+    /// Copies the selection one grid pitch aside; a repeat after moving the
+    /// copy re-applies that manual offset (power duplicate).
+    @discardableResult
+    func duplicateSelection() throws -> [ElementID] {
+      guard !selection.isEmpty else { return [] }
+
+      endAnchorEditing()
+      let payload = try SceneSelectionPayload(
+        package: packageForArchiving(),
+        selectedElementIDs: selection
+      )
+      let center = payload.contentBounds.center
+      let delta = duplicateDelta()
+      let insertedIDs = try insertPayload(
+        payload,
+        centeredAt: center + delta,
+        undoName: "Duplicate"
+      )
+
+      guard !insertedIDs.isEmpty else {
+        lastDuplicate = nil
+        return []
+      }
+
+      lastDuplicate = DuplicateState(
+        ids: Set(insertedIDs),
+        delta: delta
+      )
+      return insertedIDs
+    }
+
+    func alignSelection(_ edge: SceneAlignmentEdge) throws {
+      let targets = arrangeableSelection()
+      guard targets.count > 1 else { return }
+
+      endAnchorEditing()
+      // Match the visible rotation, stroke, and shadows instead of raw frames.
+      let offsets = SceneArrangement.alignedOffsets(
+        targets.map { SceneRenderGeometry.paintedBounds(of: $0) },
+        edge: edge
+      )
+      let commands = zip(targets, offsets).map { element, offset in
+        SceneCommand.translate(elementIDs: [element.id], by: offset)
+      }
+      try perform(name: "Align", commands: commands)
+    }
+
+    func distributeSelection(_ axis: SceneDistributionAxis) throws {
+      let targets = arrangeableSelection()
+      guard targets.count > 2 else { return }
+
+      endAnchorEditing()
+      let offsets = SceneArrangement.distributedOffsets(
+        targets.map { SceneRenderGeometry.paintedBounds(of: $0) },
+        axis: axis
+      )
+      let commands = zip(targets, offsets).map { element, offset in
+        SceneCommand.translate(elementIDs: [element.id], by: offset)
+      }
+      try perform(name: "Distribute", commands: commands)
+    }
+
+    /// Reorders eligible elements as one block in retained scene order.
+    func moveSelectionInZOrder(_ movement: ZOrderMovement) throws {
+      guard let plan = zOrderPlan(for: movement) else { return }
+
+      endAnchorEditing()
+      try perform(
+        name: movement.actionName,
+        command: .reorder(
+          elementIDs: plan.orderedIDs,
+          destinationIndex: plan.destinationIndex
+        )
+      )
+    }
+
+    func setSelectionLockState(_ lockState: ElementLockState) throws {
+      let targets = lockStateTargets(for: lockState)
+      guard !targets.isEmpty else { return }
+
+      endAnchorEditing()
+      let commands = targets.map { element in
+        SceneCommand.setLockState(elementID: element.id, lockState: lockState)
+      }
+      try perform(name: lockState.undoActionName, commands: commands)
+    }
+
+    func hideSelection() throws {
+      let hiddenIDs = hideTargets.map(\.id)
+      guard !hiddenIDs.isEmpty else { return }
+
+      endAnchorEditing()
+      try perform(
+        name: "Hide",
+        commands: hiddenIDs.map {
+          SceneCommand.setVisibility(elementID: $0, visibility: .hidden)
+        }
+      )
+      selection.subtract(hiddenIDs)
+      notifyObservers()
+    }
+
+    func revealHiddenElements() throws {
+      let hidden = editor.document.scene.elements.filter { $0.visibility == .hidden }
+      guard !hidden.isEmpty else { return }
+
+      endAnchorEditing()
+      try perform(
+        name: "Reveal All",
+        commands: hidden.flatMap(revealCommands)
+      )
+    }
+
+    var canDuplicateSelection: Bool {
+      !selection.isEmpty
+    }
+
+    func canMoveSelectionInZOrder(_ movement: ZOrderMovement) -> Bool {
+      zOrderPlan(for: movement) != nil
+    }
+
+    func canSetSelectionLockState(_ lockState: ElementLockState) -> Bool {
+      !lockStateTargets(for: lockState).isEmpty
+    }
+
+    var canHideSelection: Bool {
+      !hideTargets.isEmpty
+    }
+
+    var canRevealHiddenElements: Bool {
+      editor.document.scene.elements.contains { $0.visibility == .hidden }
+    }
+
+    /// Group records and their selected subtrees stay untouched until
+    /// hierarchy-wide Arrange semantics are defined.
+    private var selectedIndependentElements: [SceneElement] {
+      let parentByChildID: [ElementID: ElementID] = Dictionary(
+        uniqueKeysWithValues: editor.document.scene.elements.compactMap { element in
+          guard let parentID = element.parentID else { return nil }
+
+          return (element.id, parentID)
+        }
+      )
+
+      return selectedElements.filter { element in
+        guard !element.content.isGroup else { return false }
+
+        var ancestorID = element.parentID
+        while let currentID = ancestorID {
+          if selection.contains(currentID) { return false }
+          ancestorID = parentByChildID[currentID]
+        }
+
+        return true
+      }
+    }
+
+    private func arrangeableSelection() -> [SceneElement] {
+      selectedIndependentElements.filter {
+        $0.visibility == .visible && $0.lockState == .editable && $0.content.connector == nil
+      }
+    }
+
+    var arrangeableSelectionCount: Int {
+      arrangeableSelection().count
+    }
+
+    private var zOrderTargets: [SceneElement] {
+      selectedIndependentElements.filter {
+        $0.visibility == .visible && $0.lockState == .editable
+      }
+    }
+
+    private func lockStateTargets(for lockState: ElementLockState) -> [SceneElement] {
+      selectedIndependentElements.filter { $0.lockState != lockState }
+    }
+
+    private var hideTargets: [SceneElement] {
+      selectedIndependentElements.filter {
+        $0.visibility == .visible && $0.lockState == .editable
+      }
+    }
+
+    /// Locked elements briefly become editable inside one atomic transaction,
+    /// then return to their original lock state after becoming visible.
+    private func revealCommands(for element: SceneElement) -> [SceneCommand] {
+      let reveal = SceneCommand.setVisibility(elementID: element.id, visibility: .visible)
+      guard element.lockState == .locked else { return [reveal] }
+
+      return [
+        .setLockState(elementID: element.id, lockState: .editable),
+        reveal,
+        .setLockState(elementID: element.id, lockState: .locked),
+      ]
+    }
+
+    private func zOrderPlan(for movement: ZOrderMovement) -> ZOrderPlan? {
+      let elements = editor.document.scene.elements
+      let elementIDs = elements.map(\.id)
+      let movedIDSet = Set(zOrderTargets.map(\.id))
+      let orderedIDs = elementIDs.filter(movedIDSet.contains)
+      guard !orderedIDs.isEmpty else { return nil }
+
+      let retainedIDs = elementIDs.filter { !movedIDSet.contains($0) }
+      let destination: Int
+      switch movement {
+      case .front:
+        destination = retainedIDs.endIndex
+      case .back:
+        destination = retainedIDs.startIndex
+      case .forward:
+        guard let topmost = elements.lastIndex(where: { movedIDSet.contains($0.id) }) else {
+          return nil
+        }
+
+        let retainedBelow = elements[..<topmost].count {
+          !movedIDSet.contains($0.id)
+        }
+        destination = min(retainedBelow + 1, retainedIDs.endIndex)
+      case .backward:
+        guard let bottommost = elements.firstIndex(where: { movedIDSet.contains($0.id) }) else {
+          return nil
+        }
+
+        let retainedBelow = elements[..<bottommost].count {
+          !movedIDSet.contains($0.id)
+        }
+        destination = max(retainedBelow - 1, retainedIDs.startIndex)
+      }
+
+      var reorderedIDs = retainedIDs
+      reorderedIDs.insert(contentsOf: orderedIDs, at: destination)
+      guard reorderedIDs != elementIDs else { return nil }
+
+      return ZOrderPlan(orderedIDs: orderedIDs, destinationIndex: destination)
+    }
+
+    @discardableResult
+    private func insertPayload(
+      _ payload: SceneSelectionPayload,
+      centeredAt point: SionPoint,
+      undoName: String
+    ) throws -> [ElementID] {
       let occupiedIDs = Set(editor.document.scene.elements.map(\.id))
       let insertion = try payload.insertion(centeredAt: point, excluding: occupiedIDs)
       let insertedAssetIDs = try mergeAssets(insertion.assets)
       let transaction = SceneTransaction(
-        name: "Paste",
+        name: undoName,
         command: .insert(elements: insertion.elements, at: nil)
       )
 
@@ -216,6 +465,46 @@
       registerUndo(actionName: transaction.name)
       notifyModelChange(notification: .done)
       return insertedIDs
+    }
+
+    private func duplicateDelta() -> SionVector {
+      if let lastDuplicate, selection == lastDuplicate.ids {
+        let movement = lastDuplicate.manualTranslation
+        // Ignore sub-pixel drift and preserve the established repeat spacing.
+        let stayedPut =
+          abs(movement.dx) < EditorDefaults.duplicateMoveTolerance
+          && abs(movement.dy) < EditorDefaults.duplicateMoveTolerance
+
+        if !stayedPut {
+          return movement
+        }
+
+        return lastDuplicate.delta
+      }
+
+      // Imported files can carry huge grid pitches; keep copies nearby.
+      let step = min(
+        EditorDefaults.duplicateStepMaximum,
+        max(
+          EditorDefaults.duplicateStepMinimum,
+          editor.document.scene.canvas.grid.spacing
+        )
+      )
+      return SionVector(dx: step, dy: step)
+    }
+
+    /// Only explicit translations influence power duplicate; resizes and
+    /// rotations may shift bounds without representing user movement.
+    private func recordDuplicateMovement(_ offset: SionVector) {
+      guard offset != .zero,
+        var lastDuplicate,
+        selection == lastDuplicate.ids
+      else {
+        return
+      }
+
+      lastDuplicate.manualTranslation = lastDuplicate.manualTranslation + offset
+      self.lastDuplicate = lastDuplicate
     }
 
     func packageForArchiving() -> SionPackage {
@@ -247,6 +536,8 @@
       history = package.history
       previewPNG = package.previewPNG
       pendingTextEdit = nil
+      lastDuplicate = nil
+      pendingDuplicateMove = nil
       anchorEditingState = .inactive
       routeCache.removeAll()
       imageCache.removeAllObjects()
@@ -520,9 +811,10 @@
     }
 
     func nudgeSelection(by offset: SionVector) throws {
-      guard canMoveSelection else { return }
+      guard canMoveSelection, offset != .zero else { return }
 
       try perform(name: "Move", command: .translate(elementIDs: selection, by: offset))
+      recordDuplicateMovement(offset)
     }
 
     @discardableResult
@@ -910,22 +1202,36 @@
     }
 
     func beginMove() throws {
+      pendingDuplicateMove = nil
       guard canMoveSelection else { return }
 
       try editor.beginGesture(named: "Move")
+      if let lastDuplicate, selection == lastDuplicate.ids {
+        pendingDuplicateMove = .zero
+      }
     }
 
     func moveSelection(by offset: SionVector) throws {
       guard !selection.isEmpty, offset != .zero else { return }
 
-      _ = try editor.updateGesture(with: .translate(elementIDs: selection, by: offset))
+      let result = try editor.updateGesture(with: .translate(elementIDs: selection, by: offset))
+      guard result == .applied else { return }
+
+      if let movement = pendingDuplicateMove {
+        pendingDuplicateMove = movement + offset
+      }
       notifyModelChange(notification: .skip)
     }
 
     func endMove() throws {
+      let movement = pendingDuplicateMove
+      pendingDuplicateMove = nil
       let result = try editor.endGesture()
       guard result == .applied else { return }
 
+      if let movement {
+        recordDuplicateMovement(movement)
+      }
       registerUndo(actionName: "Move")
       notifyModelChange(notification: .done)
     }
@@ -996,6 +1302,7 @@
 
     /// Restores the pre-gesture scene; used when a drag is cancelled.
     func cancelActiveGesture() {
+      pendingDuplicateMove = nil
       guard (try? editor.cancelGesture()) == .applied else { return }
 
       notifyModelChange(notification: .skip)
@@ -1057,11 +1364,14 @@
         // An untouched gesture changes no document bytes, but its view still
         // needs to discard the corresponding drag.
         if hadPendingGesture {
+          pendingDuplicateMove = nil
           notifyObservers()
         }
         return
       }
 
+      lastDuplicate = nil
+      pendingDuplicateMove = nil
       undoManagerProvider()?.registerUndo(withTarget: self) { target in
         Self.performUndo(.redo, on: target)
       }
@@ -1073,6 +1383,8 @@
     @objc func redoSceneEdit() {
       guard let actionName = editor.redo() else { return }
 
+      lastDuplicate = nil
+      pendingDuplicateMove = nil
       undoManagerProvider()?.registerUndo(withTarget: self) { target in
         Self.performUndo(.undo, on: target)
       }
@@ -1082,7 +1394,11 @@
     }
 
     private func perform(name: String, command: SceneCommand) throws {
-      let result = try editor.perform(SceneTransaction(name: name, command: command))
+      try perform(name: name, commands: [command])
+    }
+
+    private func perform(name: String, commands: [SceneCommand]) throws {
+      let result = try editor.perform(SceneTransaction(name: name, commands: commands))
       guard result == .applied else { return }
 
       registerUndo(actionName: name)
@@ -1291,6 +1607,9 @@
     static let customAnchorIDPrefix = "custom-"
     static let imageCacheLimit = 256
     static let imageCacheTotalCostLimit = 128 * 1024 * 1024
+    static let duplicateStepMinimum = 8.0
+    static let duplicateStepMaximum = 64.0
+    static let duplicateMoveTolerance = 0.5
   }
 
   private struct AnchorPlacement {
@@ -1350,6 +1669,42 @@
     let elementID: ElementID
     let baselineText: String
     var didMarkDocumentChanged = false
+  }
+
+  private struct DuplicateState {
+    let ids: Set<ElementID>
+    let delta: SionVector
+    var manualTranslation = SionVector.zero
+  }
+
+  private struct ZOrderPlan {
+    let orderedIDs: [ElementID]
+    let destinationIndex: Int
+  }
+
+  enum ZOrderMovement {
+    case front
+    case forward
+    case backward
+    case back
+
+    var actionName: String {
+      switch self {
+      case .front: "Bring to Front"
+      case .forward: "Bring Forward"
+      case .backward: "Send Backward"
+      case .back: "Send to Back"
+      }
+    }
+  }
+
+  extension ElementLockState {
+    fileprivate var undoActionName: String {
+      switch self {
+      case .editable: "Unlock"
+      case .locked: "Lock"
+      }
+    }
   }
 
   private enum DocumentChangeNotification {

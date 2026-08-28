@@ -227,9 +227,9 @@
     }
 
     private func configureNameField() {
+      // Focus loss may follow an undo refresh, so only explicit actions commit.
       nameField.target = self
       nameField.action = #selector(changeName(_:))
-      (nameField.cell as? NSTextFieldCell)?.sendsActionOnEndEditing = true
       nameField.setAccessibilityLabel("Element name")
     }
 

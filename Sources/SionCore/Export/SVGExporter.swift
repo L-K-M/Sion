@@ -157,13 +157,13 @@ public enum SVGExporter {
     let frame = element.geometry.frame.standardized
     let path = shapePath(shape.kind, frame: frame)
     var content =
-      "<path d=\"\(path)\" \(styleAttributes(element, definitions: &definitions))/>"
+      "<path d=\"\(path)\" \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
     if let label = shape.label {
       content += renderText(label, in: frame)
     }
 
-    return wrapped(content, element: element, definitions: &definitions, style: .omit)
+    return wrapped(content, element: element, definitions: &definitions)
   }
 
   private static func renderPath(
@@ -174,9 +174,9 @@ public enum SVGExporter {
     let path = vectorPath(content.path, frame: element.geometry.frame.standardized)
     let fillRule = content.path.fillRule == .evenOdd ? "evenodd" : "nonzero"
     let rendered =
-      "<path d=\"\(path)\" fill-rule=\"\(fillRule)\" \(styleAttributes(element, definitions: &definitions))/>"
+      "<path d=\"\(path)\" fill-rule=\"\(fillRule)\" \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
-    return wrapped(rendered, element: element, definitions: &definitions, style: .omit)
+    return wrapped(rendered, element: element, definitions: &definitions)
   }
 
   private static func renderImage(
@@ -242,55 +242,55 @@ public enum SVGExporter {
   ) -> String {
     let markerStart = markerAttribute(connector.sourceDecoration, position: .start)
     let markerEnd = markerAttribute(connector.targetDecoration, position: .end)
-    let path =
-      "<path d=\"\(routePath(route))\" fill=\"none\" \(styleAttributes(element, route: route, definitions: &definitions)) \(markerStart) \(markerEnd)/>"
+    var content =
+      "<path d=\"\(routePath(route))\" fill=\"none\" \(strokeAttributes(element.style)) \(markerStart) \(markerEnd)/>"
 
-    guard let label = connector.label else {
-      return path
+    if let label = connector.label {
+      let labelFrame = connectorLabelFrame(
+        on: route,
+        fraction: connector.labelPosition
+      )
+      content += renderText(label, in: labelFrame)
     }
 
-    let point = point(on: route, fraction: connector.labelPosition)
-    let labelFrame = SionRect(
-      x: point.x - SVGDefaults.connectorLabelWidth / 2,
-      y: point.y - SVGDefaults.connectorLabelHeight / 2,
-      width: SVGDefaults.connectorLabelWidth,
-      height: SVGDefaults.connectorLabelHeight
+    return wrapped(
+      content,
+      element: element,
+      route: route,
+      definitions: &definitions
     )
-    return path + renderText(label, in: labelFrame)
   }
 
   private static func wrapped(
     _ content: String,
     element: SceneElement,
-    definitions: inout [String],
-    style: WrappedStyle = .apply
+    route: ConnectorRoute? = nil,
+    definitions: inout [String]
   ) -> String {
     let frame = element.geometry.frame.standardized
-    let reducedRotation = element.geometry.rotationRadians.truncatingRemainder(
-      dividingBy: 2 * .pi
-    )
+    // Routes are already resolved in world space, unlike local element art.
+    let reducedRotation =
+      route == nil
+      ? element.geometry.rotationRadians.truncatingRemainder(dividingBy: 2 * .pi)
+      : 0
     let rotation = reducedRotation * 180 / .pi
     let transform =
       rotation == 0
       ? ""
       : " transform=\"rotate(\(number(rotation)) \(number(frame.center.x)) \(number(frame.center.y)))\""
-    let renderedStyle: String
-    switch style {
-    case .apply:
-      renderedStyle =
-        " \(styleAttributes(element, definitions: &definitions))"
-    case .omit:
-      renderedStyle = ""
-    }
-    return "<g id=\"element-\(element.id)\"\(transform)\(renderedStyle)>\(content)</g>"
+    let effects = effectAttributes(
+      element,
+      route: route,
+      definitions: &definitions
+    )
+    return "<g id=\"element-\(element.id)\"\(transform) \(effects)>\(content)</g>"
   }
 
-  private static func styleAttributes(
-    _ element: SceneElement,
-    route: ConnectorRoute? = nil,
+  private static func paintAttributes(
+    _ style: ElementStyle,
+    id: ElementID,
     definitions: inout [String]
   ) -> String {
-    let style = element.style
     let fill: String
     switch style.fill {
     case .none:
@@ -298,7 +298,7 @@ public enum SVGExporter {
     case .solid(let color):
       fill = color.hex
     case .linearGradient(let gradient):
-      let gradientID = "gradient-\(element.id)"
+      let gradientID = "gradient-\(id)"
       let stops = gradient.stops.map { stop in
         "<stop offset=\"\(number(stop.location * 100))%\" stop-color=\"\(stop.color.hex)\"/>"
       }.joined()
@@ -308,24 +308,35 @@ public enum SVGExporter {
       fill = "url(#\(gradientID))"
     }
 
-    let stroke: String
+    return "fill=\"\(fill)\" \(strokeAttributes(style))"
+  }
+
+  private static func strokeAttributes(_ style: ElementStyle) -> String {
     if let value = style.stroke {
       let dash =
         value.dashPattern.isEmpty
         ? ""
         : " stroke-dasharray=\"\(value.dashPattern.map(number).joined(separator: " "))\""
-      stroke =
+      return
         "stroke=\"\(value.color.hex)\" stroke-width=\"\(number(value.width))\" stroke-linecap=\"\(value.lineCap.rawValue)\" stroke-linejoin=\"\(value.lineJoin.rawValue)\"\(dash)"
-    } else {
-      stroke = "stroke=\"none\""
     }
 
+    return "stroke=\"none\""
+  }
+
+  private static func effectAttributes(
+    _ element: SceneElement,
+    route: ConnectorRoute?,
+    definitions: inout [String]
+  ) -> String {
+    let style = element.style
     var filter = ""
     if let shadow = style.shadows.first {
       let filterID = "shadow-\(element.id)"
-      let filterBounds = SceneRenderGeometry.unrotatedPaintedBounds(
+      let filterBounds = svgFilterBounds(
         of: element,
-        route: route
+        route: route,
+        shadow: shadow
       )
       definitions.append(
         "<filter id=\"\(filterID)\" filterUnits=\"userSpaceOnUse\" x=\"\(number(filterBounds.minX))\" y=\"\(number(filterBounds.minY))\" width=\"\(number(filterBounds.width))\" height=\"\(number(filterBounds.height))\"><feDropShadow dx=\"\(number(shadow.offset.dx))\" dy=\"\(number(shadow.offset.dy))\" stdDeviation=\"\(number(shadow.blurRadius / 2))\" flood-color=\"\(shadow.color.hex)\"/></filter>"
@@ -334,10 +345,132 @@ public enum SVGExporter {
     }
 
     return
-      "fill=\"\(fill)\" \(stroke) opacity=\"\(number(style.opacity))\" style=\"mix-blend-mode:\(style.blendMode.rawValue)\"\(filter)"
+      "opacity=\"\(number(style.opacity))\" style=\"mix-blend-mode:\(style.blendMode.rawValue)\"\(filter)"
+  }
+
+  private static func svgFilterBounds(
+    of element: SceneElement,
+    route: ConnectorRoute?,
+    shadow: ShadowStyle
+  ) -> SionRect {
+    var artworkBounds = SceneRenderGeometry.unrotatedArtworkBounds(
+      of: element,
+      route: route
+    )
+
+    if let textBounds = svgTextBounds(of: element, route: route) {
+      artworkBounds = artworkBounds.union(textBounds)
+    }
+
+    return SceneRenderGeometry.boundsIncludingShadows(
+      [shadow],
+      around: artworkBounds
+    )
+  }
+
+  private static func svgTextBounds(
+    of element: SceneElement,
+    route: ConnectorRoute?
+  ) -> SionRect? {
+    switch element.content {
+    case .shape(let shape):
+      guard let label = shape.label else { return nil }
+
+      return conservativeTextBounds(label, in: element.geometry.frame.standardized)
+    case .text(let text):
+      return conservativeTextBounds(text, in: element.geometry.frame.standardized)
+    case .connector(let connector):
+      guard let label = connector.label, let route else { return nil }
+
+      let frame = connectorLabelFrame(
+        on: route,
+        fraction: connector.labelPosition
+      )
+      return conservativeTextBounds(label, in: frame)
+    case .path, .image, .group:
+      return nil
+    }
+  }
+
+  private static func connectorLabelFrame(
+    on route: ConnectorRoute,
+    fraction: Double
+  ) -> SionRect {
+    let point = point(on: route, fraction: fraction)
+
+    return SionRect(
+      x: point.x - SVGDefaults.connectorLabelWidth / 2,
+      y: point.y - SVGDefaults.connectorLabelHeight / 2,
+      width: SVGDefaults.connectorLabelWidth,
+      height: SVGDefaults.connectorLabelHeight
+    )
   }
 
   private static func renderText(_ text: TextContent, in frame: SionRect) -> String {
+    let style = text.style
+    let layout = svgTextLayout(text, in: frame)
+
+    let family: String
+    switch style.font.family {
+    case .system:
+      family = "-apple-system, BlinkMacSystemFont, sans-serif"
+    case .named(let name):
+      family = "\(escapeAttribute(name)), sans-serif"
+    }
+
+    let spans = layout.lines.enumerated().map { index, line in
+      let y = layout.firstBaseline + (Double(index) * layout.lineHeight)
+      return "<tspan x=\"\(number(layout.x))\" y=\"\(number(y))\">\(escape(line))</tspan>"
+    }.joined()
+
+    return
+      "<text text-anchor=\"\(layout.anchor)\" font-family=\"\(family)\" font-size=\"\(number(style.font.size))\" font-weight=\"\(fontWeight(style.font.weight))\" fill=\"\(style.color.hex)\">\(spans)</text>"
+  }
+
+  private static func conservativeTextBounds(
+    _ text: TextContent,
+    in frame: SionRect
+  ) -> SionRect {
+    let layout = svgTextLayout(text, in: frame)
+    let fontSize = text.style.font.size
+
+    // SVG text is unwrapped, so filters must allow for wide rendered glyphs.
+    let width = layout.lines.reduce(0.0) { widest, line in
+      let lineWidth =
+        Double(line.unicodeScalars.count)
+        * fontSize
+        * SVGDefaults.conservativeGlyphAdvanceEm
+      return max(widest, lineWidth)
+    }
+
+    let minX: Double
+    switch text.style.horizontalAlignment {
+    case .leading, .justified:
+      minX = layout.x
+    case .center:
+      minX = layout.x - width / 2
+    case .trailing:
+      minX = layout.x - width
+    }
+
+    let lastBaseline =
+      layout.firstBaseline
+      + Double(max(0, layout.lines.count - 1)) * layout.lineHeight
+    let minY = layout.firstBaseline - fontSize
+    let maxY = lastBaseline + fontSize * SVGDefaults.conservativeDescenderEm
+
+    return SionRect(
+      x: minX,
+      y: minY,
+      width: width,
+      height: max(fontSize, maxY - minY)
+    )
+  }
+
+  private static func svgTextLayout(
+    _ text: TextContent,
+    in frame: SionRect
+  ) -> SVGTextLayout {
     let style = text.style
     let lines = text.string.split(separator: "\n", omittingEmptySubsequences: false).map(
       String.init)
@@ -368,21 +501,13 @@ public enum SVGExporter {
       firstBaseline = frame.maxY - style.insets.bottom - textHeight + style.font.size
     }
 
-    let family: String
-    switch style.font.family {
-    case .system:
-      family = "-apple-system, BlinkMacSystemFont, sans-serif"
-    case .named(let name):
-      family = "\(escapeAttribute(name)), sans-serif"
-    }
-
-    let spans = lines.enumerated().map { index, line in
-      let y = firstBaseline + (Double(index) * lineHeight)
-      return "<tspan x=\"\(number(x))\" y=\"\(number(y))\">\(escape(line))</tspan>"
-    }.joined()
-
-    return
-      "<text text-anchor=\"\(anchor)\" font-family=\"\(family)\" font-size=\"\(number(style.font.size))\" font-weight=\"\(fontWeight(style.font.weight))\" fill=\"\(style.color.hex)\">\(spans)</text>"
+    return SVGTextLayout(
+      lines: lines,
+      lineHeight: lineHeight,
+      x: x,
+      anchor: anchor,
+      firstBaseline: firstBaseline
+    )
   }
 
   private static func shapePath(_ kind: ShapeKind, frame: SionRect) -> String {
@@ -567,9 +692,12 @@ public enum SVGExporter {
     """
 }
 
-private enum WrappedStyle {
-  case apply
-  case omit
+private struct SVGTextLayout {
+  let lines: [String]
+  let lineHeight: Double
+  let x: Double
+  let anchor: String
+  let firstBaseline: Double
 }
 
 private enum XMLScalar {
@@ -590,6 +718,8 @@ private enum XMLScalar {
 
 private enum SVGDefaults {
   static let lineHeightMultiplier = 1.2
+  static let conservativeGlyphAdvanceEm = 2.0
+  static let conservativeDescenderEm = 0.5
   static let connectorLabelWidth = 160.0
   static let connectorLabelHeight = 32.0
   static let numberPrecision = 1_000.0

@@ -130,17 +130,33 @@ public enum SceneRenderGeometry {
     of element: SceneElement,
     route: ConnectorRoute? = nil
   ) -> SionRect {
-    let localBounds = unrotatedPaintedBounds(of: element, route: route)
-    guard element.content.connector == nil else { return localBounds }
+    let artworkBounds = unrotatedArtworkBounds(of: element, route: route)
+    let localPaintedBounds = boundsIncludingShadows(
+      element.style.shadows,
+      around: artworkBounds
+    )
+    guard element.content.connector == nil else { return localPaintedBounds }
 
-    return rotatedBounds(
-      localBounds,
+    let rotatedArtworkBounds = rotatedBounds(
+      artworkBounds,
       around: element.geometry.frame.standardized.center,
       by: element.geometry.rotationRadians
     )
+    let rotatedEffectBounds = rotatedBounds(
+      localPaintedBounds,
+      around: element.geometry.frame.standardized.center,
+      by: element.geometry.rotationRadians
+    )
+    let baseSpaceEffectBounds = boundsIncludingShadows(
+      element.style.shadows,
+      around: rotatedArtworkBounds
+    )
+
+    // SVG rotates shadow offsets; Canvas keeps them in base space.
+    return rotatedEffectBounds.union(baseSpaceEffectBounds)
   }
 
-  static func unrotatedPaintedBounds(
+  static func unrotatedArtworkBounds(
     of element: SceneElement,
     route: ConnectorRoute? = nil
   ) -> SionRect {
@@ -156,10 +172,17 @@ public enum SceneRenderGeometry {
       bounds = bounds.union(adornmentBounds)
     }
 
-    let sourceBounds = bounds
+    return bounds
+  }
 
-    // Bound every styled shadow so renderers cannot clip collection entries.
-    for shadow in element.style.shadows {
+  static func boundsIncludingShadows(
+    _ shadows: [ShadowStyle],
+    around sourceBounds: SionRect
+  ) -> SionRect {
+    var bounds = sourceBounds
+
+    // Each shadow is cast from the source artwork, not preceding shadows.
+    for shadow in shadows {
       let blurExtent = shadow.blurRadius * PaintedBounds.shadowBlurExtentMultiplier
       let shadowBounds =
         sourceBounds

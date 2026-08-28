@@ -60,6 +60,7 @@
     }
 
     private let editorController: SionEditorController
+    private let connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider
     private let creationFailureFeedback: @MainActor () -> Void
     private var observerID: UUID?
     private var magnificationObservation: NSKeyValueObservation?
@@ -91,9 +92,13 @@
 
     init(
       editorController: SionEditorController,
-      creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() }
+      creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() },
+      connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
     ) {
       self.editorController = editorController
+      self.connectorRouteProvider =
+        connectorRouteProvider
+        ?? { editorController.connectorRoute(for: $0) }
       self.creationFailureFeedback = creationFailureFeedback
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
@@ -1433,15 +1438,71 @@
     }
 
     private func draw(_ element: SceneElement) {
-      if let route = editorController.connectorRoute(for: element) {
-        drawConnector(element, route: route)
+      let drawsArtwork = clampedUnit(element.style.opacity) > 0
+      let isSelected = editorController.selection.contains(element.id)
+      guard drawsArtwork || isSelected else { return }
+
+      let route = connectorRouteProvider(element)
+      guard element.content.connector == nil || route != nil else {
+        if !rendersOffscreenPreview, isSelected {
+          drawSelection(for: element)
+        }
+
         return
       }
 
-      NSGraphicsContext.saveGraphicsState()
-      applyRotation(of: element)
-      applyShadow(element.style.shadows.first)
+      if drawsArtwork {
+        drawArtwork(of: element, route: route)
+      }
 
+      // Selection chrome is interaction state, not document content.
+      guard !rendersOffscreenPreview, isSelected else {
+        return
+      }
+      if let route {
+        drawConnectorSelection(route)
+        return
+      }
+
+      drawSelection(for: element)
+    }
+
+    private func drawArtwork(
+      of element: SceneElement,
+      route: ConnectorRoute?
+    ) {
+      let opacity = clampedUnit(element.style.opacity)
+      guard opacity > 0 else { return }
+
+      NSGraphicsContext.saveGraphicsState()
+      defer { NSGraphicsContext.restoreGraphicsState() }
+
+      guard let context = NSGraphicsContext.current?.cgContext else { return }
+
+      let usesTransparencyLayer = requiresTransparencyLayer(element.style)
+      if usesTransparencyLayer {
+        context.setAlpha(opacity)
+        context.setBlendMode(blendMode(element.style.blendMode))
+        applyShadow(element.style.shadows.first)
+
+        let bounds = SceneRenderGeometry.paintedBounds(of: element, route: route)
+        // Bound the layer to this artwork; a canvas-sized layer would stutter.
+        context.beginTransparencyLayer(in: nsRect(bounds), auxiliaryInfo: nil)
+      }
+
+      if let route {
+        drawConnectorArtwork(element, route: route)
+      } else {
+        applyRotation(of: element)
+        drawNonConnectorArtwork(element)
+      }
+
+      if usesTransparencyLayer {
+        context.endTransparencyLayer()
+      }
+    }
+
+    private func drawNonConnectorArtwork(_ element: SceneElement) {
       switch element.content {
       case .shape(let shape):
         let path = shapePath(shape.kind, frame: element.geometry.frame)
@@ -1463,33 +1524,20 @@
       case .connector:
         break
       }
-
-      NSGraphicsContext.restoreGraphicsState()
-
-      // Selection chrome is interaction state, not document content.
-      guard !rendersOffscreenPreview, editorController.selection.contains(element.id) else {
-        return
-      }
-
-      drawSelection(for: element)
     }
 
     private func drawStyle(_ style: ElementStyle, path: NSBezierPath) {
       NSGraphicsContext.saveGraphicsState()
-      NSGraphicsContext.current?.compositingOperation = compositingOperation(style.blendMode)
-      let opacity = clampedUnit(style.opacity)
 
       switch style.fill {
       case .none:
         break
       case .solid(let color):
-        nsColor(color).withAlphaComponent(opacity).setFill()
+        nsColor(color).setFill()
         path.fill()
       case .linearGradient(let gradient):
         let stops = gradient.stops.sorted { $0.location < $1.location }
-        let colors = stops.map {
-          nsColor($0.color).withAlphaComponent(opacity)
-        }
+        let colors = stops.map { nsColor($0.color) }
         let locations = stops.map { CGFloat($0.location) }
         if colors.count > 1 {
           let renderedGradient = locations.withUnsafeBufferPointer { buffer in
@@ -1507,7 +1555,7 @@
       }
 
       if let stroke = style.stroke, stroke.width.isFinite, stroke.width > 0 {
-        nsColor(stroke.color).withAlphaComponent(opacity).setStroke()
+        nsColor(stroke.color).setStroke()
         path.lineWidth = CGFloat(stroke.width)
         let dashPattern = stroke.dashPattern.compactMap { value -> CGFloat? in
           guard value.isFinite, value > 0 else { return nil }
@@ -1694,7 +1742,7 @@
       NSBezierPath(rect: rect).stroke()
     }
 
-    private func drawConnector(_ element: SceneElement, route: ConnectorRoute) {
+    private func drawConnectorArtwork(_ element: SceneElement, route: ConnectorRoute) {
       guard case .connector(let content) = element.content else { return }
 
       let path = connectorPath(route)
@@ -1723,11 +1771,10 @@
         )
         drawText(label, frame: frame)
       }
+    }
 
-      guard !rendersOffscreenPreview, editorController.selection.contains(element.id) else {
-        return
-      }
-
+    private func drawConnectorSelection(_ route: ConnectorRoute) {
+      let path = connectorPath(route)
       NSColor.controlAccentColor.setStroke()
       guard let selected = path.copy() as? NSBezierPath else { return }
       selected.lineWidth = CanvasMetrics.selectionLineWidth
@@ -1781,8 +1828,7 @@
       }
 
       path.transform(using: transform)
-      let opacity = clampedUnit(style.opacity)
-      let color = nsColor(style.stroke?.color ?? .primaryInk).withAlphaComponent(opacity)
+      let color = nsColor(style.stroke?.color ?? .primaryInk)
       color.setStroke()
       path.lineWidth = CGFloat(max(style.stroke?.width ?? CanvasMetrics.defaultConnectorWidth, 1))
       path.stroke()
@@ -2779,12 +2825,18 @@
     }
   }
 
-  private func compositingOperation(_ mode: BlendMode) -> NSCompositingOperation {
+  private func requiresTransparencyLayer(_ style: ElementStyle) -> Bool {
+    clampedUnit(style.opacity) < 1
+      || style.blendMode != .normal
+      || !style.shadows.isEmpty
+  }
+
+  private func blendMode(_ mode: BlendMode) -> CGBlendMode {
     switch mode {
-    case .normal: .sourceOver
+    case .normal: .normal
     case .multiply: .multiply
     case .screen: .screen
-    case .overlay: .sourceOver
+    case .overlay: .overlay
     }
   }
 

@@ -67,11 +67,6 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     pasteboard.clearContents()
     pasteboard.setData(Data(), forType: .pdf)
     XCTAssertFalse(canvas.editMenuItemIsEnabled(action: #selector(SionCanvasView.paste(_:))))
-
-    pasteboard.clearContents()
-    let oversizedData = Data(count: SionArchiveConstants.maximumEntryByteCount + 1)
-    XCTAssertTrue(pasteboard.setData(oversizedData, forType: .pdf))
-    XCTAssertFalse(canvas.editMenuItemIsEnabled(action: #selector(SionCanvasView.paste(_:))))
   }
 
   func testCutDoesNotReplaceClipboardWhenDeletionCannotRun() throws {

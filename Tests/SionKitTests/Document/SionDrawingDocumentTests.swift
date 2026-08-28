@@ -100,6 +100,69 @@ final class SionDrawingDocumentTests: XCTestCase {
       DocumentPreview.pngSignature
     )
   }
+
+  func testSaveAsUpdatesWindowAndArchiveTitles() async throws {
+    let document = SionDrawingDocument()
+    document.makeWindowControllers()
+    let windowController = try XCTUnwrap(
+      document.windowControllers.first as? SionDocumentWindowController
+    )
+    defer { windowController.close() }
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString,
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let savedTitle = "Renamed Diagram"
+    let savedFilename = "\(savedTitle).sion"
+    let url = directory.appendingPathComponent(savedFilename)
+    let saveError: Error? = await withCheckedContinuation { continuation in
+      document.save(
+        to: url,
+        ofType: SionDrawingDocument.typeIdentifier,
+        for: .saveAsOperation
+      ) { error in
+        continuation.resume(returning: error)
+      }
+    }
+
+    XCTAssertNil(saveError)
+    XCTAssertEqual(document.fileURL, url)
+    XCTAssertEqual(document.displayName, savedTitle)
+    XCTAssertEqual(windowController.window?.title, savedTitle)
+
+    let package = try SionArchive.decode(Data(contentsOf: url))
+    XCTAssertEqual(package.document.title, savedTitle)
+  }
+
+  func testAutosaveElsewhereKeepsAuthoredTitle() throws {
+    let document = SionDrawingDocument()
+    let authoredTitle = "Recovery Source"
+    try document.editingController.load(
+      SionPackage(document: SionDocument(title: authoredTitle))
+    )
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString,
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let recoveryURL = directory.appendingPathComponent("Autosave Recovery.sion")
+    try document.write(
+      to: recoveryURL,
+      ofType: SionDrawingDocument.typeIdentifier,
+      for: .autosaveElsewhereOperation,
+      originalContentsURL: nil
+    )
+
+    let package = try SionArchive.decode(Data(contentsOf: recoveryURL))
+    XCTAssertEqual(package.document.title, authoredTitle)
+  }
 }
 
 private enum DocumentPreview {

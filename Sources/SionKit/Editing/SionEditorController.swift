@@ -76,7 +76,7 @@
       var title: String {
         switch self {
         case .select: "Select"
-        case .rectangle: "Rectangle"
+        case .rectangle: "Rounded Rectangle"
         case .circle: "Circle"
         case .text: "Text"
         case .connector: "Connector"
@@ -86,7 +86,7 @@
       var symbolName: String {
         switch self {
         case .select: "arrow.up.left"
-        case .rectangle: "rectangle"
+        case .rectangle: "rectangle.rounded"
         case .circle: "circle"
         case .text: "textformat"
         case .connector: "point.topleft.down.to.point.bottomright.curvepath"
@@ -96,7 +96,7 @@
       var help: String {
         switch self {
         case .select: "Select and transform objects"
-        case .rectangle: "Click or drag to create a rectangle"
+        case .rectangle: "Click or drag to create a rounded rectangle"
         case .circle: "Click or drag to create a circle"
         case .text: "Click or drag to create a text box"
         case .connector: "Drag between objects or connection points"

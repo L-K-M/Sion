@@ -459,10 +459,10 @@ sound-only.
 ### P2.8 Replace the fixed Library with shapes, styles, and stencils
 
 **Evidence.** `ShapeKind` renders eight built-in primitives plus custom paths.
-The toolbar exposes rounded rectangle and ellipse; Library adds diamond. Plain
-rectangle, triangle, hexagon, capsule, cylinder, and custom paths have no
-creation surface. There are no reusable stencils, recent colors, favorites, or
-style tokens.
+The toolbar exposes rounded rectangle and ellipse; Library exposes all eight
+built-in primitives at the viewport center. Custom paths have no creation
+surface. There are no reusable stencils, recent colors, favorites, or style
+tokens.
 
 **Scope.** Build a searchable keyboard-accessible icon grid for every built-in
 shape, then add drag-to-place, recent/favorite styles, reusable user stencils,

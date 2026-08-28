@@ -175,10 +175,10 @@ fixture.
 
 ### P1.3 Complete shadow semantics
 
-**Evidence.** Canvas and SVG render only the first `ShadowStyle`; `spread` and
-later shadows are ignored. Rotated Canvas shadows use base-space offsets while
-SVG rotates offsets with the element. Shared bounds conservatively cover both
-offset interpretations but still ignore spread; the pictures disagree.
+**Evidence.** Canvas and SVG render only the first `ShadowStyle`; later shadows
+and spread are ignored during painting. Rotated Canvas shadows use base-space
+offsets while SVG rotates offsets with the element. Shared bounds conservatively
+cover both offset interpretations and positive spread, but the pictures disagree.
 
 **Scope.** Define one shadow coordinate rule, then implement all shadows in
 array order and spread in Canvas, SVG, and

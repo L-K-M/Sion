@@ -131,8 +131,8 @@ final class SionDrawingDocumentTests: XCTestCase {
 
     XCTAssertNil(saveError)
     XCTAssertEqual(document.fileURL, url)
-    XCTAssertEqual(document.displayName, savedFilename)
-    XCTAssertEqual(windowController.window?.title, savedFilename)
+    XCTAssertEqual(document.displayName, savedTitle)
+    XCTAssertEqual(windowController.window?.title, savedTitle)
 
     let package = try SionArchive.decode(Data(contentsOf: url))
     XCTAssertEqual(package.document.title, savedTitle)

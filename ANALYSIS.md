@@ -295,8 +295,12 @@ rotation and thick strokes.
 
 ### P1.11 Define connector decoration appearance once
 
-**Evidence.** Circle and diamond decorations are stroked on Canvas but filled
-in SVG. Arrow bounds are now conservative, but appearance still diverges.
+**Evidence.** Canvas and SVG now share the same paint rule: open arrows are
+stroked, closed decorations are filled with the connector stroke color, and a
+nil or zero-width stroke paints no decoration. Scale and anchoring still
+diverge: Canvas uses fixed point geometry while SVG markers scale with stroke
+width, and the two renderers place diamonds differently. Connector hit testing
+also excludes decoration lobes.
 
 **Scope.** Specify fill/stroke behavior and scaling with connector stroke for
 every `ConnectorDecoration`; implement one geometry description consumed by

@@ -2010,7 +2010,14 @@
       toward previous: SionPoint?,
       style: ElementStyle
     ) {
-      guard decoration != .none, let previous else { return }
+      guard decoration != .none,
+        let previous,
+        let stroke = style.stroke,
+        stroke.width.isFinite,
+        stroke.width > 0
+      else {
+        return
+      }
 
       let angle = atan2(point.y - previous.y, point.x - previous.x)
       var transform = AffineTransform()
@@ -2049,11 +2056,17 @@
       }
 
       path.transform(using: transform)
-      let color = nsColor(style.stroke?.color ?? .primaryInk)
-      color.setStroke()
-      path.lineWidth = CGFloat(max(style.stroke?.width ?? CanvasMetrics.defaultConnectorWidth, 1))
-      path.stroke()
-      if decoration == .filledArrow {
+      let color = nsColor(stroke.color)
+
+      // Closed SVG markers use the connector stroke as their fill.
+      switch decoration {
+      case .none:
+        return
+      case .openArrow:
+        color.setStroke()
+        path.lineWidth = CGFloat(max(stroke.width, 1))
+        path.stroke()
+      case .filledArrow, .circle, .diamond:
         color.setFill()
         path.fill()
       }
@@ -2903,7 +2916,6 @@
     static let arrowWidth = 6.0
     static let decorationRadius = 5.0
     static let minimumConnectorLength = 4.0
-    static let defaultConnectorWidth = 1.5
     static let curveControlFactor: CGFloat = 0.552_284_749_8
     static let textEditClickCount = 2
     static let connectorLabelSize = SionSize(width: 120, height: 36)

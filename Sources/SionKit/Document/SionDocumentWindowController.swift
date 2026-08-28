@@ -156,7 +156,6 @@
     }
 
     @objc func actualSize(_ sender: Any?) {
-      resolveInitialZoom()
       setMagnification(1)
     }
 

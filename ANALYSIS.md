@@ -703,10 +703,12 @@ standalone rewrite PR unless a concrete feature needs the boundary.
 
 ### Q2 Broaden automated robustness coverage
 
-**Evidence.** There is no XCUITest target, accessibility action suite, archive
+**Evidence.** There is no XCUITest target, accessibility action suite, model
 property/fuzz suite, launch gate, full renderer matrix, or performance gate.
-Archive generator metadata now crosses a tested SionKit bundle boundary, and
-Core archive tests use fixed provenance.
+Archive tests now reject every truncated prefix and use fixed-seed minimal byte
+mutations to prove deterministic rejection or valid recovery. Archive generator
+metadata crosses a tested SionKit bundle boundary, and Core tests use fixed
+provenance.
 
 **Scope.** Add launch/document lifecycle UI tests, AX action tests, malformed
 archive and model property/fuzz tests, and the renderer/performance fixtures in

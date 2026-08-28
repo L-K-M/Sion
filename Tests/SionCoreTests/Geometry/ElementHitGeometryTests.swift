@@ -94,6 +94,62 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testTinyDashPatternCompletesWithinInteractiveDeadline() {
+    let frame = SionRect(x: 100, y: 200, width: 100, height: 100)
+    let path = VectorPath(commands: [
+      .move(to: SionPoint(x: 0, y: 0.5)),
+      .line(to: SionPoint(x: 1, y: 0.5)),
+    ])
+    var element = SceneElement.path(frame: frame, path: path)
+    let validSubpixelDashLength = 0.000_01
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 4,
+        dashPattern: [validSubpixelDashLength, validSubpixelDashLength],
+        lineCap: .butt
+      )
+    )
+
+    let started = ContinuousClock.now
+    let containsPoint = ElementHitGeometry.contains(
+      SionPoint(x: 150, y: 250),
+      in: element,
+      tolerance: 2
+    )
+    let elapsed = started.duration(to: .now)
+
+    XCTAssertTrue(containsPoint)
+    XCTAssertLessThan(elapsed, .seconds(1))
+  }
+
+  func testClosedDashSpanningPerimeterKeepsMiterAtSeam() {
+    let frame = SionRect(x: 0, y: 0, width: 100, height: 100)
+    let path = VectorPath(commands: [
+      .move(to: SionPoint(x: 0.2, y: 0.2)),
+      .line(to: SionPoint(x: 0.8, y: 0.2)),
+      .line(to: SionPoint(x: 0.8, y: 0.8)),
+      .line(to: SionPoint(x: 0.2, y: 0.8)),
+      .close,
+    ])
+    var element = SceneElement.path(frame: frame, path: path)
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 20,
+        dashPattern: [1_000, 1],
+        lineCap: .butt,
+        lineJoin: .miter
+      )
+    )
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 13, y: 13), in: element, tolerance: 0)
+    )
+  }
+
   func testButtCapDoesNotExtendByStrokeRadius() {
     let frame = SionRect(x: 100, y: 200, width: 100, height: 100)
     let path = VectorPath(commands: [

@@ -69,6 +69,23 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     XCTAssertFalse(canvas.editMenuItemIsEnabled(action: #selector(SionCanvasView.paste(_:))))
   }
 
+  func testPasteValidationRejectsEmptySupportedFile() throws {
+    _ = NSApplication.shared
+    let controller = try makeController(elements: [])
+    let canvas = SionCanvasView(editorController: controller)
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension(TestPasteboard.imageFileExtension)
+    try Data().write(to: fileURL)
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    defer { pasteboard.clearContents() }
+    XCTAssertTrue(pasteboard.writeObjects([fileURL as NSURL]))
+
+    XCTAssertFalse(canvas.editMenuItemIsEnabled(action: #selector(SionCanvasView.paste(_:))))
+  }
+
   func testCutDoesNotReplaceClipboardWhenDeletionCannotRun() throws {
     _ = NSApplication.shared
     let group = SceneElement.group(
@@ -189,6 +206,7 @@ private enum TestApplicationDelegate {
 
 private enum TestPasteboard {
   static let existingText = "Existing clipboard"
+  static let imageFileExtension = "png"
   static let selection = NSPasteboard.PasteboardType("ch.lkmc.sion.selection")
   static let unsupported = NSPasteboard.PasteboardType("example.unsupported")
 }

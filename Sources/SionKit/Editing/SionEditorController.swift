@@ -313,6 +313,25 @@
       !selection.isEmpty
     }
 
+    var canCopySelection: Bool {
+      SceneSelectionPayload.assetsCouldFitEncodedByteBudget(
+        package: packageForArchiving(),
+        selectedElementIDs: selection,
+        maximumByteCount: SionArchiveConstants.maximumEntryByteCount
+      )
+    }
+
+    var canDeleteSelection: Bool {
+      guard !editor.hasPendingGesture, !selection.isEmpty else { return false }
+
+      var removedIDs = selection
+      removedIDs.formUnion(editor.document.scene.descendantIDs(of: selection))
+
+      return editor.document.scene.elements.allSatisfy { element in
+        !removedIDs.contains(element.id) || element.lockState == .editable
+      }
+    }
+
     func canMoveSelectionInZOrder(_ movement: ZOrderMovement) -> Bool {
       zOrderPlan(for: movement) != nil
     }

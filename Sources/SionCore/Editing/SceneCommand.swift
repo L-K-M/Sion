@@ -176,7 +176,7 @@ extension SceneCommand {
     }
 
     var removedIDs = requestedIDs
-    removedIDs.formUnion(descendants(of: requestedIDs, in: scene))
+    removedIDs.formUnion(scene.descendantIDs(of: requestedIDs))
 
     for element in scene.elements where removedIDs.contains(element.id) {
       guard element.lockState == .editable else {
@@ -243,7 +243,7 @@ extension SceneCommand {
     // In a validated scene only groups own children, so one descendant walk
     // over every requested ID replaces a per-group traversal.
     var translatedIDs = requestedIDs
-    translatedIDs.formUnion(descendants(of: requestedIDs, in: scene))
+    translatedIDs.formUnion(scene.descendantIDs(of: requestedIDs))
 
     // Validate the full move before mutating any element.
     for element in scene.elements where translatedIDs.contains(element.id) {
@@ -456,30 +456,6 @@ extension SceneCommand {
     }
 
     return indices
-  }
-
-  /// One adjacency pass collects descendants of every requested root.
-  private func descendants(of requestedIDs: Set<ElementID>, in scene: SionScene) -> Set<ElementID> {
-    var childrenByParent: [ElementID: [ElementID]] = [:]
-    for element in scene.elements {
-      guard let parentID = element.parentID else { continue }
-
-      childrenByParent[parentID, default: []].append(element.id)
-    }
-
-    var descendants = Set<ElementID>()
-    var pending = Array(requestedIDs)
-
-    // The insert guard also terminates walks through mid-transaction cycles.
-    while let candidate = pending.popLast() {
-      for child in childrenByParent[candidate] ?? [] {
-        guard descendants.insert(child).inserted else { continue }
-
-        pending.append(child)
-      }
-    }
-
-    return descendants
   }
 
   private func translated(_ point: SionPoint, by offset: SionVector) -> SionPoint {

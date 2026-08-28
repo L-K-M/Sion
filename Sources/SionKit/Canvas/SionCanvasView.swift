@@ -62,6 +62,7 @@
     private let editorController: SionEditorController
     private let connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider
     private let creationFailureFeedback: @MainActor () -> Void
+    private let pasteboard: NSPasteboard
     private var observerID: UUID?
     private var magnificationObservation: NSKeyValueObservation?
     private var drag: Drag?
@@ -71,6 +72,7 @@
     private var editingCanvasBounds: SionRect
     private var canvasExtent: CanvasExtent
     private var textRenderCache: [TextRenderKey: TextRender] = [:]
+    private var pasteboardValidation: PasteboardValidation?
 
     /// Everything that determines one measured text layout. Widths quantize
     /// to half points so a resize drag does not thrash the cache per pixel.
@@ -90,9 +92,15 @@
       let measuredHeight: CGFloat
     }
 
+    private struct PasteboardValidation {
+      let changeCount: Int
+      let isPasteable: Bool
+    }
+
     init(
       editorController: SionEditorController,
       creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() },
+      pasteboard: NSPasteboard = .general,
       connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
     ) {
       self.editorController = editorController
@@ -100,6 +108,7 @@
         connectorRouteProvider
         ?? { editorController.connectorRoute(for: $0) }
       self.creationFailureFeedback = creationFailureFeedback
+      self.pasteboard = pasteboard
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
         of: scene,
@@ -667,6 +676,14 @@
     /// AppKit discovers menu validation through Objective-C responder dispatch.
     @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
       switch menuItem.action {
+      case #selector(copy(_:)):
+        return editorController.canCopySelection
+      case #selector(cut(_:)):
+        return editorController.canCopySelection && editorController.canDeleteSelection
+      case #selector(delete(_:)):
+        return editorController.canDeleteSelection
+      case #selector(paste(_:)):
+        return hasPasteableContent(in: pasteboard)
       case #selector(duplicate(_:)):
         return editorController.canDuplicateSelection
       case #selector(bringToFront(_:)):
@@ -702,7 +719,6 @@
 
     @objc func paste(_ sender: Any?) {
       let point = visibleCanvasCenter()
-      let pasteboard = NSPasteboard.general
 
       if pasteSelection(from: pasteboard, at: point) {
         return
@@ -723,11 +739,19 @@
     }
 
     @objc func copy(_ sender: Any?) {
-      _ = copySelection(to: .general)
+      guard editorController.canCopySelection else { return }
+
+      _ = copySelection(to: pasteboard)
     }
 
     @objc func cut(_ sender: Any?) {
-      guard copySelection(to: .general) else { return }
+      guard editorController.canCopySelection,
+        editorController.canDeleteSelection
+      else {
+        return
+      }
+
+      guard copySelection(to: pasteboard) else { return }
 
       try? editorController.deleteSelection()
     }
@@ -1210,8 +1234,71 @@
       return pasteboard.writeObjects([item])
     }
 
+    private func hasPasteableContent(in pasteboard: NSPasteboard) -> Bool {
+      let changeCount = pasteboard.changeCount
+      if let pasteboardValidation,
+        pasteboardValidation.changeCount == changeCount
+      {
+        return pasteboardValidation.isPasteable
+      }
+
+      let isPasteable = pasteboardContainsAcceptedContent(pasteboard)
+      pasteboardValidation = PasteboardValidation(
+        changeCount: changeCount,
+        isPasteable: isPasteable
+      )
+      return isPasteable
+    }
+
+    /// Provider-backed data is read once per pasteboard revision.
+    private func pasteboardContainsAcceptedContent(_ pasteboard: NSPasteboard) -> Bool {
+      if hasPasteableBinaryContent(in: pasteboard) {
+        return true
+      }
+
+      if pastedImageFile(from: pasteboard) != nil {
+        return true
+      }
+
+      guard let text = pasteboard.string(forType: .string) else { return false }
+
+      return !text.isEmpty
+    }
+
+    private func hasPasteableBinaryContent(in pasteboard: NSPasteboard) -> Bool {
+      for type in PasteboardType.binaryPasteTypes {
+        guard let data = pasteboard.data(forType: type), !data.isEmpty,
+          data.count <= SionArchiveConstants.maximumEntryByteCount
+        else {
+          continue
+        }
+
+        return true
+      }
+
+      return false
+    }
+
+    private func pastedImageFile(
+      from pasteboard: NSPasteboard
+    ) -> (url: URL, type: ImagePasteType)? {
+      guard
+        let fileURL = pasteboard.readObjects(
+          forClasses: [NSURL.self],
+          options: [.urlReadingFileURLsOnly: true]
+        )?.first as? URL,
+        let type = ImagePasteType(fileExtension: fileURL.pathExtension),
+        isSupportedAssetSize(fileURL)
+      else {
+        return nil
+      }
+
+      return (fileURL, type)
+    }
+
     private func pasteSelection(from pasteboard: NSPasteboard, at point: SionPoint) -> Bool {
       guard let data = pasteboard.data(forType: PasteboardType.selection),
+        !data.isEmpty,
         data.count <= SionArchiveConstants.maximumEntryByteCount
       else {
         return false
@@ -1222,29 +1309,20 @@
     }
 
     private func pasteImage(from pasteboard: NSPasteboard, at point: SionPoint) -> Bool {
-      if let fileURL = pasteboard.readObjects(
-        forClasses: [NSURL.self],
-        options: [.urlReadingFileURLsOnly: true]
-      )?.first as? URL,
-        let type = ImagePasteType(fileExtension: fileURL.pathExtension),
-        isSupportedAssetSize(fileURL),
-        let data = try? Data(contentsOf: fileURL)
+      if let file = pastedImageFile(from: pasteboard),
+        let data = try? Data(contentsOf: file.url)
       {
         return insertPastedImage(
           data: data,
-          type: type,
-          filename: fileURL.lastPathComponent,
+          type: file.type,
+          filename: file.url.lastPathComponent,
           at: point
         )
       }
 
-      let preservedTypes: [(NSPasteboard.PasteboardType, ImagePasteType)] = [
-        (.pdf, .pdf),
-        (ImagePasteType.svgPasteboardType, .svg),
-        (.tiff, .tiff),
-      ]
-      for (pasteboardType, imageType) in preservedTypes {
+      for (pasteboardType, imageType) in ImagePasteType.preservedPasteboardTypes {
         guard let data = pasteboard.data(forType: pasteboardType),
+          !data.isEmpty,
           data.count <= SionArchiveConstants.maximumEntryByteCount
         else {
           continue
@@ -1272,6 +1350,7 @@
       }
 
       if let data = pasteboard.data(forType: .png),
+        !data.isEmpty,
         data.count <= SionArchiveConstants.maximumEntryByteCount
       {
         return insertPastedImage(data: data, type: .png, filename: nil, at: point)
@@ -1286,7 +1365,11 @@
       filename: String?,
       at point: SionPoint
     ) -> Bool {
-      guard data.count <= SionArchiveConstants.maximumEntryByteCount else { return false }
+      guard !data.isEmpty,
+        data.count <= SionArchiveConstants.maximumEntryByteCount
+      else {
+        return false
+      }
 
       Task { @MainActor [weak self] in
         let display = await Task.detached(priority: .userInitiated) {
@@ -1323,7 +1406,7 @@
         return false
       }
 
-      return fileSize <= SionArchiveConstants.maximumEntryByteCount
+      return fileSize > 0 && fileSize <= SionArchiveConstants.maximumEntryByteCount
     }
 
     private func drawCanvas() {
@@ -2604,6 +2687,11 @@
     case tiff
 
     static let svgPasteboardType = NSPasteboard.PasteboardType("public.svg-image")
+    static let preservedPasteboardTypes: [(NSPasteboard.PasteboardType, ImagePasteType)] = [
+      (.pdf, .pdf),
+      (svgPasteboardType, .svg),
+      (.tiff, .tiff),
+    ]
 
     init?(fileExtension: String) {
       switch fileExtension.lowercased() {
@@ -2694,6 +2782,13 @@
 
   private enum PasteboardType {
     static let selection = NSPasteboard.PasteboardType("ch.lkmc.sion.selection")
+    static let binaryPasteTypes: [NSPasteboard.PasteboardType] = [
+      selection,
+      .pdf,
+      ImagePasteType.svgPasteboardType,
+      .tiff,
+      .png,
+    ]
   }
 
   private enum CanvasKeyCode {

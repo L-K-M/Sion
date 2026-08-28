@@ -355,6 +355,53 @@ final class SceneModelTests: XCTestCase {
     XCTAssertEqual(scene.element(withID: grandchildID)?.geometry.frame.origin.x, 160)
   }
 
+  func testDescendantsCollectMultipleRootsAcrossOneForest() {
+    let firstRootID = elementID("00000000-0000-0000-0000-000000000001")
+    let firstChildID = elementID("00000000-0000-0000-0000-000000000002")
+    let grandchildID = elementID("00000000-0000-0000-0000-000000000003")
+    let secondRootID = elementID("00000000-0000-0000-0000-000000000004")
+    let secondChildID = elementID("00000000-0000-0000-0000-000000000005")
+    let unrelatedID = elementID("00000000-0000-0000-0000-000000000006")
+    let elements = [
+      SceneElement.group(
+        id: firstRootID,
+        frame: SionRect(x: 0, y: 0, width: 100, height: 100)
+      ),
+      SceneElement.group(
+        id: firstChildID,
+        frame: SionRect(x: 10, y: 10, width: 80, height: 80),
+        parentID: firstRootID
+      ),
+      SceneElement.text(
+        id: grandchildID,
+        frame: SionRect(x: 20, y: 20, width: 40, height: 20),
+        text: "Nested",
+        parentID: firstChildID
+      ),
+      SceneElement.group(
+        id: secondRootID,
+        frame: SionRect(x: 200, y: 0, width: 100, height: 100)
+      ),
+      SceneElement.text(
+        id: secondChildID,
+        frame: SionRect(x: 210, y: 10, width: 40, height: 20),
+        text: "Sibling branch",
+        parentID: secondRootID
+      ),
+      SceneElement.text(
+        id: unrelatedID,
+        frame: SionRect(x: 400, y: 0, width: 40, height: 20),
+        text: "Unrelated"
+      ),
+    ]
+    let scene = SionScene(elements: elements)
+
+    XCTAssertEqual(
+      scene.descendantIDs(of: Set([firstRootID, secondRootID])),
+      Set([firstChildID, grandchildID, secondChildID])
+    )
+  }
+
   private func documentID(_ string: String) -> DocumentID {
     DocumentID(string)!
   }

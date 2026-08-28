@@ -131,29 +131,18 @@ public enum SceneRenderGeometry {
     route: ConnectorRoute? = nil
   ) -> SionRect {
     let artworkBounds = unrotatedArtworkBounds(of: element, route: route)
-    let localPaintedBounds = boundsIncludingShadows(
-      element.style.shadows,
-      around: artworkBounds
-    )
-    guard element.content.connector == nil else { return localPaintedBounds }
+    guard element.content.connector == nil else {
+      return boundsIncludingShadows(
+        element.style.shadows,
+        around: artworkBounds
+      )
+    }
 
-    let rotatedArtworkBounds = rotatedBounds(
-      artworkBounds,
-      around: element.geometry.frame.standardized.center,
-      by: element.geometry.rotationRadians
-    )
-    let rotatedEffectBounds = rotatedBounds(
-      localPaintedBounds,
-      around: element.geometry.frame.standardized.center,
-      by: element.geometry.rotationRadians
-    )
-    let baseSpaceEffectBounds = boundsIncludingShadows(
+    return boundsIncludingCanvasSpaceShadows(
       element.style.shadows,
-      around: rotatedArtworkBounds
+      around: artworkBounds,
+      geometry: element.geometry
     )
-
-    // SVG rotates shadow offsets; Canvas keeps them in base space.
-    return rotatedEffectBounds.union(baseSpaceEffectBounds)
   }
 
   static func unrotatedArtworkBounds(
@@ -194,6 +183,21 @@ public enum SceneRenderGeometry {
     }
 
     return bounds
+  }
+
+  /// Rotates artwork first so its shadow offsets remain in canvas space.
+  static func boundsIncludingCanvasSpaceShadows(
+    _ shadows: [ShadowStyle],
+    around sourceBounds: SionRect,
+    geometry: ElementGeometry
+  ) -> SionRect {
+    let rotatedSourceBounds = rotatedBounds(
+      sourceBounds,
+      around: geometry.frame.standardized.center,
+      by: geometry.rotationRadians
+    )
+
+    return boundsIncludingShadows(shadows, around: rotatedSourceBounds)
   }
 
   private static func connectorRoute(

@@ -38,6 +38,45 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     XCTAssertTrue(identifiers.contains(NSToolbarItem.Identifier("Sion.Zoom")))
   }
 
+  func testZoomToolbarShowsCurrentPercentage() throws {
+    _ = NSApplication.shared
+    let windowController = try makeZoomWindowController()
+    defer { windowController.close() }
+
+    let item = try zoomToolbarItem(
+      from: windowController,
+      placement: .installed
+    )
+    let label = try zoomPercentageLabel(in: item)
+
+    XCTAssertEqual(label.stringValue, "100%")
+    XCTAssertEqual(label.accessibilityLabel(), "Zoom level")
+  }
+
+  func testZoomPercentageTracksInstalledToolbarItem() throws {
+    _ = NSApplication.shared
+    let windowController = try makeZoomWindowController()
+    defer { windowController.close() }
+    let scrollView = try XCTUnwrap(windowController.window?.contentView as? NSScrollView)
+    let installedItem = try zoomToolbarItem(
+      from: windowController,
+      placement: .installed
+    )
+    let installedLabel = try zoomPercentageLabel(in: installedItem)
+
+    windowController.zoomIn(nil)
+    XCTAssertEqual(installedLabel.stringValue, "120%")
+
+    // A customization preview must not replace the installed item's live state.
+    _ = try zoomToolbarItem(
+      from: windowController,
+      placement: .customizationPalette
+    )
+    scrollView.magnification = ZoomPercentageTestValue.directMagnification
+
+    XCTAssertEqual(installedLabel.stringValue, "125%")
+  }
+
   func testZoomToolbarActionReturnsFocusToCanvas() throws {
     _ = NSApplication.shared
     let editorController = try SionEditorController(
@@ -252,6 +291,39 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     return SionDocumentWindowController(editorController: editorController)
   }
 
+  private func makeZoomWindowController() throws -> SionDocumentWindowController {
+    let editorController = try SionEditorController(
+      package: SionPackage(document: SionDocument()),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+
+    return SionDocumentWindowController(editorController: editorController)
+  }
+
+  private func zoomToolbarItem(
+    from windowController: SionDocumentWindowController,
+    placement: ZoomToolbarTestPlacement
+  ) throws -> NSToolbarItem {
+    let toolbar = NSToolbar(identifier: "Sion.Tests.ZoomPercentage")
+
+    return try XCTUnwrap(
+      windowController.toolbar(
+        toolbar,
+        itemForItemIdentifier: NSToolbarItem.Identifier("Sion.Zoom"),
+        willBeInsertedIntoToolbar: placement.willBeInserted
+      )
+    )
+  }
+
+  private func zoomPercentageLabel(in item: NSToolbarItem) throws -> NSTextField {
+    let stack = try XCTUnwrap(item.view as? NSStackView)
+
+    return try XCTUnwrap(
+      stack.arrangedSubviews.compactMap { $0 as? NSTextField }.first
+    )
+  }
+
   private func isolateFrameAutosave(for window: NSWindow) -> NSWindow.FrameAutosaveName {
     let name = NSWindow.FrameAutosaveName(
       "Sion.Tests.InitialFit.\(UUID().uuidString)"
@@ -271,6 +343,22 @@ private enum ZoomTestCommand {
   static let zoomInSegment = 2
   static let action = NSSelectorFromString("performZoomCommand:")
   static let actualSizeMagnification: CGFloat = 1
+}
+
+private enum ZoomToolbarTestPlacement {
+  case installed
+  case customizationPalette
+
+  var willBeInserted: Bool {
+    switch self {
+    case .installed: true
+    case .customizationPalette: false
+    }
+  }
+}
+
+private enum ZoomPercentageTestValue {
+  static let directMagnification: CGFloat = 1.25
 }
 
 private enum InitialFitTestGeometry {

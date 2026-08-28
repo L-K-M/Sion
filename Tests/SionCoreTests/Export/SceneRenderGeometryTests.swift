@@ -149,6 +149,30 @@ final class SceneRenderGeometryTests: XCTestCase {
     )
   }
 
+  func testPaintedBoundsKeepConservativeExtentForNegativeShadowSpread() {
+    var baseline = SceneElement.shape(
+      frame: SionRect(x: 40, y: 60, width: 100, height: 80),
+      kind: .rectangle
+    )
+    baseline.style = ElementStyle(
+      fill: .solid(.black),
+      shadows: [
+        ShadowStyle(
+          color: .black,
+          offset: SionVector(dx: 200, dy: 0),
+          blurRadius: 20
+        )
+      ]
+    )
+    var negativeSpread = baseline
+    negativeSpread.style.shadows[0].spread = -25
+
+    XCTAssertEqual(
+      SceneRenderGeometry.paintedBounds(of: negativeSpread),
+      SceneRenderGeometry.paintedBounds(of: baseline)
+    )
+  }
+
   func testRotatedShadowBoundsCoverCanvasAndSVGOffsets() {
     var shape = SceneElement.shape(
       frame: SionRect(x: 100, y: 80, width: 40, height: 80),

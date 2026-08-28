@@ -103,6 +103,65 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertTrue(descendants.compactMap { $0 as? NSPopUpButton }.allSatisfy { !$0.isEnabled })
   }
 
+  func testMixedNamesEditAsOneUndoStep() throws {
+    _ = NSApplication.shared
+    var first = SceneElement.shape(
+      frame: SionRect(x: 40, y: 40, width: 160, height: 90)
+    )
+    first.name = "First"
+    var second = SceneElement.shape(
+      frame: SionRect(x: 240, y: 40, width: 160, height: 90)
+    )
+    second.name = "Second"
+    let undoManager = UndoManager()
+    undoManager.groupsByEvent = false
+    let editor = try SionEditorController(
+      package: SionPackage(
+        document: SionDocument(scene: SionScene(elements: [first, second]))
+      ),
+      undoManagerProvider: { undoManager },
+      didChange: { _ in }
+    )
+    editor.select([first.id, second.id])
+    let documentController = SionDocumentWindowController(editorController: editor)
+    defer { documentController.close() }
+
+    let documentWindow = try XCTUnwrap(documentController.window)
+    documentWindow.orderFrontRegardless()
+    let inspector = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.inspector.paletteKind)
+    )
+    defer { inspector.close() }
+    inspector.showPanel()
+
+    let panel = try XCTUnwrap(
+      NSApp.windows.first { $0.title == "Inspector" && $0.isVisible }
+    )
+    let nameField = try XCTUnwrap(
+      try XCTUnwrap(panel.contentView).inspectorTestDescendants
+        .compactMap { $0 as? NSTextField }
+        .first { $0.accessibilityLabel() == "Element name" }
+    )
+
+    XCTAssertTrue(nameField.isEnabled)
+    XCTAssertEqual(nameField.stringValue, "")
+    XCTAssertEqual(nameField.placeholderString, "Mixed")
+
+    nameField.stringValue = "Shared"
+    XCTAssertTrue(
+      NSApp.sendAction(try XCTUnwrap(nameField.action), to: nameField.target, from: nameField)
+    )
+
+    XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "Shared")
+    XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Shared")
+    XCTAssertEqual(undoManager.undoActionName, "Rename Elements")
+
+    undoManager.undo()
+
+    XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")
+    XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Second")
+  }
+
   func testRejectedInspectorEditRestoresDisplayedValue() throws {
     _ = NSApplication.shared
     let connector = SceneElement.connector(

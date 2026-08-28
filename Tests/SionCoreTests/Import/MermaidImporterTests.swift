@@ -57,6 +57,7 @@ final class MermaidImporterTests: XCTestCase {
         centeredAt: center
       )
 
+      XCTAssertEqual(nodes.count, 4, direction.rawValue)
       let first = try XCTUnwrap(nodes.first)
       let second = try XCTUnwrap(nodes.dropFirst().first)
       let wrapped = try XCTUnwrap(nodes.dropFirst(3).first)
@@ -100,6 +101,26 @@ final class MermaidImporterTests: XCTestCase {
       )
 
       XCTAssertEqual(step, direction.expectedStep, direction.rawValue)
+    }
+  }
+
+  func testHonorsDirectionWithEachHeaderKeyword() throws {
+    for header in ImportedHeader.allCases {
+      for direction in ImportedDirection.allCases {
+        let step = try primaryStep(
+          in: """
+            \(header.rawValue) \(direction.rawValue)
+              A
+              B
+            """
+        )
+
+        XCTAssertEqual(
+          step,
+          direction.expectedStep,
+          "\(header.rawValue) \(direction.rawValue)"
+        )
+      }
     }
   }
 

@@ -19,10 +19,15 @@ package enum ElementHitGeometry {
 
     switch element.content {
     case .shape(let content):
+      let hitExpansion = element.style.hitExpansion(tolerance: hitTolerance)
       let broadPhaseHit =
-        content.kind.hitBounds(in: frame)?.expanded(
-          by: element.style.hitExpansion(tolerance: hitTolerance)
-        ).contains(localPoint) == true
+        content.kind.passesNormalizedFrameBroadPhase(
+          localPoint,
+          in: frame,
+          expansion: hitExpansion
+        )
+        && content.kind.hitBounds(in: frame)?.expanded(by: hitExpansion).contains(localPoint)
+          == true
       if broadPhaseHit,
         content.kind.contains(
           localPoint,
@@ -44,10 +49,14 @@ package enum ElementHitGeometry {
 
       return labelBounds.expanded(by: hitTolerance).contains(localPoint)
     case .path(let content):
+      let hitExpansion = element.style.hitExpansion(tolerance: hitTolerance)
       guard
-        content.path.hitBounds(in: frame)?.expanded(
-          by: element.style.hitExpansion(tolerance: hitTolerance)
-        ).contains(localPoint) == true
+        content.path.passesNormalizedFrameBroadPhase(
+          localPoint,
+          in: frame,
+          expansion: hitExpansion
+        ),
+        content.path.hitBounds(in: frame)?.expanded(by: hitExpansion).contains(localPoint) == true
       else {
         return false
       }
@@ -1322,6 +1331,16 @@ private struct DashPattern {
 }
 
 extension ShapeKind {
+  fileprivate func passesNormalizedFrameBroadPhase(
+    _ point: SionPoint,
+    in frame: SionRect,
+    expansion: Double
+  ) -> Bool {
+    guard case .custom(let path) = self else { return true }
+
+    return path.passesNormalizedFrameBroadPhase(point, in: frame, expansion: expansion)
+  }
+
   fileprivate func contains(
     _ point: SionPoint,
     in frame: SionRect,
@@ -1594,6 +1613,17 @@ extension ShapeKind {
 }
 
 extension VectorPath {
+  fileprivate func passesNormalizedFrameBroadPhase(
+    _ point: SionPoint,
+    in frame: SionRect,
+    expansion: Double
+  ) -> Bool {
+    guard coordinateSpace == .normalized else { return true }
+
+    // Valid normalized control hulls cannot paint beyond the expanded frame.
+    return frame.expanded(by: expansion).contains(point)
+  }
+
   fileprivate func hitBounds(in frame: SionRect) -> SionRect? {
     var result: SionRect?
 

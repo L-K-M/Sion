@@ -138,6 +138,36 @@ final class SVGExporterTests: XCTestCase {
     )
   }
 
+  func testRotatedShadowFilterUsesCanvasCoordinateSpace() throws {
+    let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000010"))
+    var shape = SceneElement.shape(
+      id: id,
+      frame: SionRect(x: 100, y: 80, width: 40, height: 80),
+      kind: .rectangle
+    )
+    shape.geometry.rotationRadians = .pi / 2
+    shape.style = ElementStyle(
+      fill: .solid(.black),
+      shadows: [
+        ShadowStyle(
+          color: .black,
+          offset: SionVector(dx: 80, dy: 0),
+          blurRadius: 0
+        )
+      ]
+    )
+
+    let svg = try export([shape])
+    let element = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
+    let elementMarkup = try elementGroup(id: id, in: svg)
+    let filter = try openingTag(startingWith: "<filter id=\"shadow-\(id)\"", in: svg)
+
+    XCTAssertFalse(element.text.contains("transform="))
+    XCTAssertTrue(element.text.contains("filter=\"url(#shadow-\(id))\""))
+    XCTAssertTrue(elementMarkup.contains("<g transform=\"rotate(90 120 120)\">"))
+    XCTAssertTrue(filter.text.contains("primitiveUnits=\"userSpaceOnUse\""))
+  }
+
   func testConnectorResolutionUsesRotatedMagnets() throws {
     var shape = SceneElement.shape(
       frame: SionRect(x: 100, y: 200, width: 200, height: 100)

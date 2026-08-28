@@ -207,7 +207,7 @@ final class SceneRenderGeometryTests: XCTestCase {
     XCTAssertEqual(combinedBounds.minY, blurOnlyBounds.minY - spread, accuracy: accuracy)
   }
 
-  func testRotatedShadowBoundsCoverCanvasAndSVGOffsets() {
+  func testRotatedShadowBoundsUseBaseSpaceOffset() {
     var shape = SceneElement.shape(
       frame: SionRect(x: 100, y: 80, width: 40, height: 80),
       kind: .rectangle
@@ -224,23 +224,12 @@ final class SceneRenderGeometryTests: XCTestCase {
       ]
     )
 
-    let bounds = SceneRenderGeometry.contentBounds(
-      of: SionScene(elements: [shape])
-    )
-    let canvasShadowMaximumX = 240.0
-    let svgShadowMaximumY = 220.0
+    let bounds = SceneRenderGeometry.paintedBounds(of: shape)
 
-    // Canvas keeps the offset in base space; SVG rotates it with the group.
-    XCTAssertGreaterThanOrEqual(bounds.maxX, canvasShadowMaximumX + contentPadding)
-    XCTAssertGreaterThanOrEqual(bounds.maxY, svgShadowMaximumY + contentPadding)
-    XCTAssertLessThanOrEqual(
-      bounds.maxX,
-      canvasShadowMaximumX + contentPadding + contentBoundsTolerance
-    )
-    XCTAssertLessThanOrEqual(
-      bounds.maxY,
-      svgShadowMaximumY + contentPadding + contentBoundsTolerance
-    )
+    XCTAssertEqual(bounds.minX, 80, accuracy: contentBoundsTolerance)
+    XCTAssertEqual(bounds.minY, 100, accuracy: contentBoundsTolerance)
+    XCTAssertEqual(bounds.maxX, 240, accuracy: contentBoundsTolerance)
+    XCTAssertEqual(bounds.maxY, 140, accuracy: contentBoundsTolerance)
   }
 
   func testContentBoundsIncludeLocalPathCommandsOutsideFrame() {

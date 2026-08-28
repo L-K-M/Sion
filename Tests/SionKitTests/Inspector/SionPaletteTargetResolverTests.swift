@@ -117,38 +117,34 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertTrue(descendants.compactMap { $0 as? NSPopUpButton }.allSatisfy { !$0.isEnabled })
   }
 
-  func testMixedNamesEditAsOneUndoStep() throws {
+  /// Shared name-field harness: a document window, the Inspector panel, and
+  /// the name field with every provided element selected.
+  private func makeNameFieldFixture(
+    elements: [SceneElement]
+  ) throws -> (
+    editor: SionEditorController, undoManager: UndoManager, panel: NSWindow,
+    nameField: NSTextField, teardown: () -> Void
+  ) {
     _ = NSApplication.shared
     let previousServicesMenu = NSApp.servicesMenu
-    defer { NSApp.servicesMenu = previousServicesMenu }
 
-    var first = SceneElement.shape(
-      frame: SionRect(x: 40, y: 40, width: 160, height: 90)
-    )
-    first.name = "First"
-    var second = SceneElement.shape(
-      frame: SionRect(x: 240, y: 40, width: 160, height: 90)
-    )
-    second.name = "Second"
     let undoManager = UndoManager()
     undoManager.groupsByEvent = false
     let editor = try SionEditorController(
       package: SionPackage(
-        document: SionDocument(scene: SionScene(elements: [first, second]))
+        document: SionDocument(scene: SionScene(elements: elements))
       ),
       undoManagerProvider: { undoManager },
       didChange: { _ in }
     )
-    editor.select([first.id, second.id])
+    editor.select(elements.map(\.id))
     let documentController = SionDocumentWindowController(editorController: editor)
-    defer { documentController.close() }
 
     let documentWindow = try XCTUnwrap(documentController.window)
     documentWindow.orderFrontRegardless()
     let inspector = try XCTUnwrap(
       PaletteCenter.shared.registeredPalette(for: SionPaletteKind.inspector.paletteKind)
     )
-    defer { inspector.close() }
     inspector.showPanel()
 
     let panel = try XCTUnwrap(
@@ -159,6 +155,33 @@ final class InspectorPaletteTests: XCTestCase {
         .compactMap { $0 as? NSTextField }
         .first { $0.accessibilityLabel() == "Element name" }
     )
+
+    return (
+      editor, undoManager, panel, nameField,
+      teardown: {
+        // LIFO: the panel releases the editor before the document closes,
+        // and the shared Services role is restored last.
+        inspector.close()
+        documentController.close()
+        NSApp.servicesMenu = previousServicesMenu
+      }
+    )
+  }
+
+  func testMixedNamesEditAsOneUndoStep() throws {
+    var first = SceneElement.shape(
+      frame: SionRect(x: 40, y: 40, width: 160, height: 90)
+    )
+    first.name = "First"
+    var second = SceneElement.shape(
+      frame: SionRect(x: 240, y: 40, width: 160, height: 90)
+    )
+    second.name = "Second"
+    let fixture = try makeNameFieldFixture(elements: [first, second])
+    defer { fixture.teardown() }
+    let editor = fixture.editor
+    let undoManager = fixture.undoManager
+    let nameField = fixture.nameField
 
     XCTAssertTrue(nameField.isEnabled)
     XCTAssertEqual(nameField.stringValue, "")
@@ -199,43 +222,16 @@ final class InspectorPaletteTests: XCTestCase {
   }
 
   func testEscapeCancelsMixedNameEdit() throws {
-    _ = NSApplication.shared
-    let previousServicesMenu = NSApp.servicesMenu
-    defer { NSApp.servicesMenu = previousServicesMenu }
-
     var first = SceneElement.shape(frame: SionRect(x: 40, y: 40, width: 160, height: 90))
     first.name = "First"
     var second = SceneElement.shape(frame: SionRect(x: 60, y: 60, width: 160, height: 90))
     second.name = "Second"
-    let undoManager = UndoManager()
-    undoManager.groupsByEvent = false
-    let editor = try SionEditorController(
-      package: SionPackage(
-        document: SionDocument(scene: SionScene(elements: [first, second]))
-      ),
-      undoManagerProvider: { undoManager },
-      didChange: { _ in }
-    )
-    editor.select([first.id, second.id])
-    let documentController = SionDocumentWindowController(editorController: editor)
-    defer { documentController.close() }
-
-    let documentWindow = try XCTUnwrap(documentController.window)
-    documentWindow.orderFrontRegardless()
-    let inspector = try XCTUnwrap(
-      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.inspector.paletteKind)
-    )
-    defer { inspector.close() }
-    inspector.showPanel()
-
-    let panel = try XCTUnwrap(
-      NSApp.windows.first { $0.title == "Inspector" && $0.isVisible }
-    )
-    let nameField = try XCTUnwrap(
-      try XCTUnwrap(panel.contentView).inspectorTestDescendants
-        .compactMap { $0 as? NSTextField }
-        .first { $0.accessibilityLabel() == "Element name" }
-    )
+    let fixture = try makeNameFieldFixture(elements: [first, second])
+    defer { fixture.teardown() }
+    let editor = fixture.editor
+    let undoManager = fixture.undoManager
+    let panel = fixture.panel
+    let nameField = fixture.nameField
 
     let delegate = try XCTUnwrap(nameField.delegate as? NSTextFieldDelegate)
 
@@ -278,46 +274,19 @@ final class InspectorPaletteTests: XCTestCase {
   }
 
   func testSingleNameClearsAndCommitsOnFocusLoss() throws {
-    _ = NSApplication.shared
-    let previousServicesMenu = NSApp.servicesMenu
-    defer { NSApp.servicesMenu = previousServicesMenu }
-
     var shape = SceneElement.shape(
       frame: SionRect(x: 40, y: 40, width: 160, height: 90)
     )
     shape.name = "First"
-    let undoManager = UndoManager()
-    undoManager.groupsByEvent = false
-    let editor = try SionEditorController(
-      package: SionPackage(
-        document: SionDocument(scene: SionScene(elements: [shape]))
-      ),
-      undoManagerProvider: { undoManager },
-      didChange: { _ in }
-    )
-    editor.select(shape.id)
-    let documentController = SionDocumentWindowController(editorController: editor)
-    defer { documentController.close() }
-
-    let documentWindow = try XCTUnwrap(documentController.window)
-    documentWindow.orderFrontRegardless()
-    let inspector = try XCTUnwrap(
-      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.inspector.paletteKind)
-    )
-    defer { inspector.close() }
-    inspector.showPanel()
-
-    let panel = try XCTUnwrap(
-      NSApp.windows.first { $0.title == "Inspector" && $0.isVisible }
-    )
-    let descendants = try XCTUnwrap(panel.contentView).inspectorTestDescendants
-    let nameField = try XCTUnwrap(
-      descendants.compactMap { $0 as? NSTextField }.first {
-        $0.accessibilityLabel() == "Element name"
-      }
-    )
+    let fixture = try makeNameFieldFixture(elements: [shape])
+    defer { fixture.teardown() }
+    let editor = fixture.editor
+    let undoManager = fixture.undoManager
+    let panel = fixture.panel
+    let nameField = fixture.nameField
     let lockButton = try XCTUnwrap(
-      descendants.compactMap { $0 as? NSButton }.first { $0.title == "Locked" }
+      try XCTUnwrap(panel.contentView).inspectorTestDescendants
+        .compactMap { $0 as? NSButton }.first { $0.title == "Locked" }
     )
 
     nameField.stringValue = ""

@@ -1669,15 +1669,25 @@
         return
       }
 
-      let colors = gradient.stops.map { nsColor($0.color).cgColor }
+      let components = gradient.stops.flatMap { stop in
+        [
+          clampedUnit(stop.color.red),
+          clampedUnit(stop.color.green),
+          clampedUnit(stop.color.blue),
+          clampedUnit(stop.color.alpha),
+        ]
+      }
       let locations = gradient.stops.map { CGFloat($0.location) }
       guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return }
-      let renderedGradient = locations.withUnsafeBufferPointer { buffer in
-        CGGradient(
-          colorsSpace: colorSpace,
-          colors: colors as CFArray,
-          locations: buffer.baseAddress
-        )
+      let renderedGradient = components.withUnsafeBufferPointer { componentBuffer in
+        locations.withUnsafeBufferPointer { locationBuffer in
+          CGGradient(
+            colorSpace: colorSpace,
+            colorComponents: componentBuffer.baseAddress,
+            locations: locationBuffer.baseAddress,
+            count: gradient.stops.count
+          )
+        }
       }
       guard let renderedGradient,
         let context = NSGraphicsContext.current?.cgContext

@@ -54,10 +54,14 @@ not mix this contract change with visual feature work.
 
 ### P0.2 Cull and invalidate painting by painted bounds
 
-**Evidence.** `SionCanvasView.draw(_:)` walks the full scene and largely ignores
-`dirtyRect`; paths and gradients are rebuilt even offscreen. Whole-view
-`needsDisplay` calls remain common. The adaptive grid bounds its line count but
-still reconstructs paths on each draw.
+**Partial.** A package-private `SceneRenderContext` now indexes visible
+non-connectors by `SceneRenderGeometry.paintedBounds`; Canvas queries the
+visible model rect intersected with `dirtyRect` through the editor controller
+and preserves scene order. A 25,000-element portable fixture pins bounded query
+work, and live gesture samples update touched entries without rebuilding the
+index. Unresolved connectors remain conservative candidates. Path, gradient,
+grid, and image artifacts, typed dirty invalidation, visual-equivalence gates,
+and pan/zoom frame thresholds remain open.
 
 **Scope.** Add a revision-scoped spatial index keyed by conservative painted
 bounds. Query the visible model rect intersected with the dirty rect, preserve
@@ -75,12 +79,13 @@ spatial index; P0.3 consumes it. Use `SceneRenderGeometry.paintedBounds`.
 
 ### P0.3 Create one routing/render context per geometry revision
 
-**Evidence.** A scene-state route cache exists, but any geometry mutation can
-still rebuild every route. Bounds and drawing can request all connectors, each
-route scans all obstacles, and orthogonal routing can construct 16,384 nodes
-before falling back. Obstacle and fallback boundary geometry remains
-rectangle-based for rotated shapes. Expanded magnets are recomputed at several
-call sites; `perSegment(5)` on a 64-vertex outline allocates about 320 magnets.
+**Partial.** The shared `SceneRenderContext` now owns lazy connector-route reuse
+beside the artwork spatial index, and the controller keeps it across live
+gesture samples. Any geometry change still invalidates every cached route;
+unresolved connectors are not corridor-indexed, each route scans all obstacles,
+and bounds can still request every connector. Obstacle and fallback geometry
+remains rectangle-based, while expanded magnets are still recomputed at several
+call sites.
 
 **Scope.** Create an immutable render context owning a spatial obstacle index,
 expanded-magnet cache, and connector routes. Resolve routes lazily: painting

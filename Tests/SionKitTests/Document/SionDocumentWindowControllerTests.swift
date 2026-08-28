@@ -95,6 +95,74 @@ final class SionDocumentWindowControllerTests: XCTestCase {
 
     XCTAssertEqual(scrollView.magnification, firstFit, accuracy: 0.000_001)
   }
+
+  func testShowWindowFitsPopulatedDocumentBeforeReturning() throws {
+    _ = NSApplication.shared
+    let windowController = try makeInitialFitWindowController()
+    let window = try XCTUnwrap(windowController.window)
+    let autosaveName = isolateFrameAutosave(for: window)
+    defer {
+      windowController.close()
+      NSWindow.removeFrame(usingName: autosaveName)
+    }
+    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+
+    windowController.showWindow(nil)
+
+    XCTAssertLessThan(scrollView.magnification, ZoomTestCommand.actualSizeMagnification)
+  }
+
+  func testInitialFitDoesNotOverrideSubsequentZoomCommand() throws {
+    _ = NSApplication.shared
+    let windowController = try makeInitialFitWindowController()
+    let window = try XCTUnwrap(windowController.window)
+    let autosaveName = isolateFrameAutosave(for: window)
+    defer {
+      windowController.close()
+      NSWindow.removeFrame(usingName: autosaveName)
+    }
+    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+
+    windowController.showWindow(nil)
+    windowController.actualSize(nil)
+
+    let queueDrained = expectation(description: "Main queue drained")
+    DispatchQueue.main.async {
+      queueDrained.fulfill()
+    }
+    wait(for: [queueDrained], timeout: InitialFitTestGeometry.queueDrainTimeout)
+
+    XCTAssertEqual(
+      scrollView.magnification,
+      ZoomTestCommand.actualSizeMagnification,
+      accuracy: InitialFitTestGeometry.magnificationAccuracy
+    )
+  }
+
+  private func makeInitialFitWindowController() throws -> SionDocumentWindowController {
+    let element = SceneElement.shape(frame: InitialFitTestGeometry.elementFrame)
+    let scene = SionScene(
+      canvas: SionCanvas(extent: .fixed(InitialFitTestGeometry.canvasSize)),
+      elements: [element]
+    )
+    let editorController = try SionEditorController(
+      package: SionPackage(document: SionDocument(scene: scene)),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+
+    return SionDocumentWindowController(editorController: editorController)
+  }
+
+  private func isolateFrameAutosave(for window: NSWindow) -> NSWindow.FrameAutosaveName {
+    let name = NSWindow.FrameAutosaveName(
+      "Sion.Tests.InitialFit.\(UUID().uuidString)"
+    )
+    XCTAssertTrue(window.setFrameAutosaveName(name))
+    window.setContentSize(InitialFitTestGeometry.windowContentSize)
+
+    return name
+  }
 }
 
 private final class TestResponderView: NSView {
@@ -104,4 +172,13 @@ private final class TestResponderView: NSView {
 private enum ZoomTestCommand {
   static let zoomInSegment = 2
   static let action = NSSelectorFromString("performZoomCommand:")
+  static let actualSizeMagnification: CGFloat = 1
+}
+
+private enum InitialFitTestGeometry {
+  static let canvasSize = SionSize(width: 2_400, height: 1_600)
+  static let elementFrame = SionRect(x: 80, y: 80, width: 160, height: 90)
+  static let windowContentSize = NSSize(width: 800, height: 600)
+  static let magnificationAccuracy = 0.000_001
+  static let queueDrainTimeout = 1.0
 }

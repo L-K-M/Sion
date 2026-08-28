@@ -93,6 +93,22 @@ package enum ElementHitGeometry {
 private struct FlattenedPath {
   let subpaths: [FlattenedSubpath]
   let fillRule: PathFillRule
+  // Painted bounds are fixed once built; hit tests run per pointer move.
+  let bounds: SionRect?
+
+  init(subpaths: [FlattenedSubpath], fillRule: PathFillRule) {
+    self.subpaths = subpaths
+    self.fillRule = fillRule
+
+    var computedBounds: SionRect?
+    for subpath in subpaths {
+      for point in subpath.points {
+        let pointBounds = SionRect(x: point.x, y: point.y, width: 0, height: 0)
+        computedBounds = computedBounds?.union(pointBounds) ?? pointBounds
+      }
+    }
+    self.bounds = computedBounds
+  }
 
   var hasTruncatedSubpath: Bool {
     subpaths.contains { $0.truncationTolerance > 0 }
@@ -110,7 +126,6 @@ private struct FlattenedPath {
     tolerance: Double
   ) -> Bool {
     guard let bounds else { return false }
-
     let fillTolerance = tolerance + maximumApproximationTolerance
     let strokeTolerance = tolerance + maximumApproximationTolerance
     let strokeRadius = style.visibleStroke?.hitExpansion(tolerance: strokeTolerance) ?? 0
@@ -142,18 +157,6 @@ private struct FlattenedPath {
       stroke: stroke,
       tolerance: tolerance
     ).contains(point, in: subpaths)
-  }
-
-  private var bounds: SionRect? {
-    var result: SionRect?
-    for subpath in subpaths {
-      for point in subpath.points {
-        let pointBounds = SionRect(x: point.x, y: point.y, width: 0, height: 0)
-        result = result?.union(pointBounds) ?? pointBounds
-      }
-    }
-
-    return result
   }
 
   private func containsFill(_ point: SionPoint) -> Bool {
@@ -225,21 +228,37 @@ private struct FlattenedPath {
 
 private struct FlattenedSubpath {
   let points: [SionPoint]
-  let explicitStrokeSegments: [FlattenedStrokeSegment]
   let closure: SubpathClosure
   let approximationTolerance: Double
   let truncationTolerance: Double
   let dashPhaseUncertainty: Double
+  // Segment lists are fixed once built; hit tests run per pointer move.
+  let strokeSegments: [FlattenedStrokeSegment]
+  // Filling implicitly closes open subpaths, matching Canvas and SVG paint.
+  let fillSegments: [SionLineSegment]
 
-  var strokeSegments: [FlattenedStrokeSegment] {
-    var result = explicitStrokeSegments
+  init(
+    points: [SionPoint],
+    explicitStrokeSegments: [FlattenedStrokeSegment],
+    closure: SubpathClosure,
+    approximationTolerance: Double,
+    truncationTolerance: Double,
+    dashPhaseUncertainty: Double
+  ) {
+    self.points = points
+    self.closure = closure
+    self.approximationTolerance = approximationTolerance
+    self.truncationTolerance = truncationTolerance
+    self.dashPhaseUncertainty = dashPhaseUncertainty
+
+    var stroke = explicitStrokeSegments
     if closure == .closed,
       points.first != points.last,
       let first = points.first,
       let last = points.last
     {
       let direction = (first - last).normalized
-      result.append(
+      stroke.append(
         FlattenedStrokeSegment(
           segment: SionLineSegment(start: last, end: first),
           tangentDirectionDelta: 0,
@@ -248,18 +267,14 @@ private struct FlattenedSubpath {
         )
       )
     }
-
-    return result
+    self.strokeSegments = stroke
+    self.fillSegments = points.count >= 3 ? Self.segments(points, closure: .closed) : []
   }
 
-  // Filling implicitly closes open subpaths, matching Canvas and SVG paint.
-  var fillSegments: [SionLineSegment] {
-    guard points.count >= 3 else { return [] }
-
-    return segments(closure: .closed)
-  }
-
-  private func segments(closure: SubpathClosure) -> [SionLineSegment] {
+  private static func segments(
+    _ points: [SionPoint],
+    closure: SubpathClosure
+  ) -> [SionLineSegment] {
     guard points.count >= 2 else { return [] }
 
     var result = zip(points, points.dropFirst()).map(SionLineSegment.init)
@@ -350,7 +365,7 @@ private struct FlattenedPathBuilder {
     currentPoint = start
   }
 
-  mutating func build(fillRule: PathFillRule = .nonZero) -> FlattenedPath {
+  mutating func build(fillRule: PathFillRule) -> FlattenedPath {
     finishActivePath(closure: .open)
 
     return FlattenedPath(
@@ -730,10 +745,23 @@ private struct StrokeHitGeometry {
 
     for index in segments.indices.dropFirst() {
       let outgoing = segments[index]
+      var joinUncertainty = subpath.dashPhaseUncertainty
+      if subpath.truncationTolerance > 0 {
+        // Truncated tangents shift a query's projected dash position at the
+        // join, exactly as they do along the body.
+        let referenceRadius =
+          stroke.lineCap == .square
+          ? hypot(radius, radius) : radius
+        joinUncertainty += max(0, tolerance - subpath.approximationTolerance)
+        joinUncertainty += curveTolerance(
+          tangentDirectionDelta: outgoing.tangentDirectionDelta,
+          referenceRadius: referenceRadius
+        )
+      }
       guard
         dashPattern.mayPaintContinuously(
           across: outgoing.startDistance,
-          forwardUncertainty: subpath.dashPhaseUncertainty
+          forwardUncertainty: joinUncertainty
         )
       else {
         continue
@@ -770,11 +798,10 @@ private struct StrokeHitGeometry {
     pathLength: Double,
     dashPattern: DashPattern
   ) -> DashSeamState {
-    guard subpath.closure == .closed else { return .disconnected }
-
-    return dashPattern.seamState(
+    dashPattern.seamState(
       pathLength: pathLength,
-      forwardUncertainty: subpath.dashPhaseUncertainty
+      forwardUncertainty: subpath.dashPhaseUncertainty,
+      isClosed: subpath.closure == .closed
     )
   }
 
@@ -1270,10 +1297,13 @@ private struct DashPattern {
 
   func seamState(
     pathLength: Double,
-    forwardUncertainty: Double
+    forwardUncertainty: Double,
+    isClosed: Bool
   ) -> DashSeamState {
-    // Only the initial dash can remain one run across a closed seam.
-    guard let initialDash = positivePaintRanges.first,
+    // Only a closed subpath has a seam; an open path always paints endpoint
+    // caps, whatever its pattern geometry looks like.
+    guard isClosed,
+      let initialDash = positivePaintRanges.first,
       initialDash.lowerBound == 0,
       initialDash.upperBound >= pathLength
     else {
@@ -1653,7 +1683,7 @@ extension ShapeKind {
 
   private func polygon(_ points: [SionPoint]) -> FlattenedPath {
     var builder = FlattenedPathBuilder()
-    guard let first = points.first else { return builder.build() }
+    guard let first = points.first else { return builder.build(fillRule: .nonZero) }
 
     builder.move(to: first)
     for point in points.dropFirst() {
@@ -1661,7 +1691,7 @@ extension ShapeKind {
     }
     builder.close()
 
-    return builder.build()
+    return builder.build(fillRule: .nonZero)
   }
 
   private func roundedRectangle(
@@ -1706,7 +1736,7 @@ extension ShapeKind {
     )
     builder.close()
 
-    return builder.build()
+    return builder.build(fillRule: .nonZero)
   }
 
   private func ellipse(
@@ -1743,7 +1773,7 @@ extension ShapeKind {
     )
     builder.close()
 
-    return builder.build()
+    return builder.build(fillRule: .nonZero)
   }
 
   private func cylinder(
@@ -1783,7 +1813,7 @@ extension ShapeKind {
     )
     builder.close()
 
-    return builder.build()
+    return builder.build(fillRule: .nonZero)
   }
 }
 

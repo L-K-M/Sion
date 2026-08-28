@@ -154,7 +154,8 @@
 
     func testPointHitSkipsTransparentEllipseCornerForElementBelow() throws {
       let frame = SionRect(x: 100, y: 70, width: 160, height: 100)
-      let backdrop = SceneElement.shape(frame: frame, kind: .rectangle)
+      var backdrop = SceneElement.shape(frame: frame, kind: .rectangle)
+      backdrop.style = ElementStyle(fill: .solid(.black))
       var ellipse = SceneElement.shape(frame: frame, kind: .ellipse)
       ellipse.style = ElementStyle(fill: .solid(.black))
       let controller = try makeController(elements: [backdrop, ellipse])

@@ -221,9 +221,33 @@ final class SionArchiveTests: XCTestCase {
       assets: [:]
     )
 
-    XCTAssertTrue(
-      svg.contains("stroke-linejoin=\"miter\" stroke-miterlimit=\"10\"")
+    XCTAssertTrue(svg.contains("stroke-linejoin=\"miter\""))
+    XCTAssertTrue(svg.contains("stroke-miterlimit=\"10\""))
+  }
+
+  func testSVGRoundJoinOmitsMiterLimit() throws {
+    let path = VectorPath(
+      commands: [
+        .move(to: SionPoint(x: 0, y: 0)),
+        .line(to: SionPoint(x: 1, y: 0)),
+        .line(to: SionPoint(x: 1, y: 1)),
+      ]
     )
+    var element = SceneElement.path(
+      frame: SionRect(x: 10, y: 20, width: 200, height: 100),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 4, lineJoin: .round)
+    )
+
+    let svg = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [element])),
+      assets: [:]
+    )
+
+    XCTAssertFalse(svg.contains("stroke-miterlimit"))
   }
 
   func testSVGCustomShapeHonorsFillRule() throws {

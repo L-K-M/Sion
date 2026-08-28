@@ -271,6 +271,14 @@ final class SionCanvasRenderingTests: XCTestCase {
       try renderedPixels(render(elements: [element])),
       try renderedPixels(render(elements: []))
     )
+
+    // Positive control: an equivalent solid pattern renders, so the equality
+    // above measures dash parity rather than strokes never painting.
+    element.style?.stroke?.dashPattern = [40]
+    XCTAssertNotEqual(
+      try renderedPixels(render(elements: [element])),
+      try renderedPixels(render(elements: []))
+    )
   }
 
   func testPixelSamplerUsesExactCoordinatesAndChannels() throws {

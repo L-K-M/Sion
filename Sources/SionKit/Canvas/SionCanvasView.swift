@@ -1691,11 +1691,9 @@
       if let stroke = style.stroke, stroke.width.isFinite, stroke.width > 0 {
         nsColor(stroke.color).setStroke()
         path.lineWidth = CGFloat(stroke.width)
-        let dashPattern = stroke.dashPattern.compactMap { value -> CGFloat? in
-          guard value.isFinite, value >= 0 else { return nil }
-
-          return CGFloat(value)
-        }
+        // Validation guarantees finite non-negative entries; filtering here
+        // could only silently flip dash/gap parity.
+        let dashPattern = stroke.dashPattern.map(CGFloat.init)
         path.setLineDash(dashPattern, count: dashPattern.count, phase: 0)
         path.lineCapStyle = lineCap(stroke.lineCap)
         path.lineJoinStyle = lineJoin(stroke.lineJoin)

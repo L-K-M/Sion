@@ -329,8 +329,12 @@ public enum SVGExporter {
         value.dashPattern.isEmpty
         ? ""
         : " stroke-dasharray=\"\(value.dashPattern.map(number).joined(separator: " "))\""
+      // SVG honors the miter limit only for miter joins.
+      let miterLimit =
+        value.lineJoin == .miter
+        ? " stroke-miterlimit=\"\(number(StrokeGeometryDefaults.miterLimit))\"" : ""
       return
-        "stroke=\"\(value.color.hex)\" stroke-width=\"\(number(value.width))\" stroke-linecap=\"\(value.lineCap.rawValue)\" stroke-linejoin=\"\(value.lineJoin.rawValue)\" stroke-miterlimit=\"\(number(StrokeGeometryDefaults.miterLimit))\"\(dash)"
+        "stroke=\"\(value.color.hex)\" stroke-width=\"\(number(value.width))\" stroke-linecap=\"\(value.lineCap.rawValue)\" stroke-linejoin=\"\(value.lineJoin.rawValue)\"\(miterLimit)\(dash)"
     }
 
     return "stroke=\"none\""

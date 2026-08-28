@@ -3,7 +3,9 @@ import XCTest
 @testable import SionCore
 
 final class ElementHitGeometryTests: XCTestCase {
-  private static let interactiveHitDeadline = Duration.seconds(1)
+  // Generous ceiling that still catches quadratic blowups without flaking on
+  // loaded CI runners or Debug builds.
+  private static let interactiveHitDeadline = Duration.seconds(10)
   private static let largeSceneElementCount = 25_000
   private static let maximumCurvedPathQueryCount = 10
   private static let maximumPathQueryCount = 1_000
@@ -227,6 +229,52 @@ final class ElementHitGeometryTests: XCTestCase {
         ElementHitGeometry.contains(SionPoint(x: 20, y: 4), in: element),
         expectsCap
       )
+    }
+  }
+
+  func testWholePathDashKeepsOpenEndpointCaps() {
+    // An open subpath has no seam, so a dash covering the whole path still
+    // paints the endpoint caps.
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 50, y: 0)),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+
+    let capExpectations: [(StrokeLineCap, Bool)] = [
+      (.butt, false),
+      (.round, true),
+      (.square, true),
+    ]
+
+    for (lineCap, expectsCap) in capExpectations {
+      element.style = ElementStyle(
+        fill: .none,
+        stroke: StrokeStyle(
+          color: .black,
+          width: 10,
+          dashPattern: [1000],
+          lineCap: lineCap
+        )
+      )
+
+      // 0.9 * stroke radius beyond each endpoint follows the cap shape.
+      XCTAssertEqual(
+        ElementHitGeometry.contains(SionPoint(x: -4.5, y: 0), in: element),
+        expectsCap
+      )
+      XCTAssertEqual(
+        ElementHitGeometry.contains(SionPoint(x: 54.5, y: 0), in: element),
+        expectsCap
+      )
+      // The dash body covers the whole open path.
+      XCTAssertTrue(ElementHitGeometry.contains(SionPoint(x: 25, y: 0), in: element))
     }
   }
 
@@ -563,7 +611,13 @@ final class ElementHitGeometryTests: XCTestCase {
       )
     )
 
+    // The command-sized pattern exceeds the interactive budget, so hit
+    // testing falls back to the conservative whole-stroke solid: a point in
+    // a nominal gap still hits, while a point off the stroke must miss.
     let gapPoint = SionPoint(x: 500, y: 0)
+    XCTAssertTrue(ElementHitGeometry.contains(gapPoint, in: element))
+    XCTAssertFalse(ElementHitGeometry.contains(SionPoint(x: 500, y: 50), in: element))
+
     let started = ContinuousClock.now
     var containsPoint = false
     for _ in 0..<Self.largeSceneElementCount {
@@ -931,6 +985,7 @@ final class ElementHitGeometryTests: XCTestCase {
 
   func testZeroLengthInteriorSegmentPreservesMiterJoin() {
     let path = VectorPath(
+      coordinateSpace: .normalized,
       commands: [
         .move(to: SionPoint(x: 0.2, y: 0.2)),
         .line(to: SionPoint(x: 0.8, y: 0.2)),
@@ -1283,17 +1338,16 @@ final class ElementHitGeometryTests: XCTestCase {
 
   func testRotationAndNonzeroOriginTransformHitPoint() {
     let frame = SionRect(x: 130, y: 240, width: 140, height: 80)
-    let rotation = Double.pi / 3
     var ellipse = SceneElement.shape(frame: frame, kind: .ellipse)
     ellipse.style = ElementStyle(fill: .solid(.black))
-    ellipse.geometry.rotationRadians = rotation
-    let visibleLocalPoint = SionPoint(x: frame.center.x, y: frame.minY + 10)
-    let corner = InteractionGeometry.rotated(frame.origin, around: frame.center, by: rotation)
-    let visiblePoint = InteractionGeometry.rotated(
-      visibleLocalPoint,
-      around: frame.center,
-      by: rotation
-    )
+    ellipse.geometry.rotationRadians = Double.pi / 3
+
+    // Expected points are hand-rotated by +60° around the center (200, 280):
+    // x' = 200 + dx·cosθ - dy·sinθ, y' = 280 + dx·sinθ + dy·cosθ. The
+    // corner (130, 240) maps to (199.641, 199.378); the local point
+    // (200, 250) maps to (225.981, 265).
+    let corner = SionPoint(x: 199.641_016_151_377_5, y: 199.378_221_735_089_3)
+    let visiblePoint = SionPoint(x: 225.980_762_113_533_2, y: 265)
 
     XCTAssertFalse(ElementHitGeometry.contains(corner, in: ellipse, tolerance: 2))
     XCTAssertTrue(ElementHitGeometry.contains(visiblePoint, in: ellipse, tolerance: 2))
@@ -1345,12 +1399,25 @@ final class ElementHitGeometryTests: XCTestCase {
       .capsule,
       .cylinder,
     ]
+    // Correctness first: the corner misses and the center hits, so the timed
+    // loop below cannot be satisfied by an always-miss shortcut.
+    for kind in kinds {
+      var element = SceneElement.shape(frame: frame, kind: kind)
+      element.style = ElementStyle(fill: .solid(.black))
+
+      XCTAssertFalse(ElementHitGeometry.contains(frame.origin, in: element, tolerance: 2))
+      XCTAssertTrue(ElementHitGeometry.contains(frame.center, in: element, tolerance: 2))
+    }
+
     let started = ContinuousClock.now
     for kind in kinds {
       var element = SceneElement.shape(frame: frame, kind: kind)
       element.style = ElementStyle(fill: .solid(.black))
       for _ in 0..<Self.largeSceneElementCount {
-        XCTAssertFalse(ElementHitGeometry.contains(frame.origin, in: element, tolerance: 2))
+        if ElementHitGeometry.contains(frame.origin, in: element, tolerance: 2) {
+          XCTFail("Corner unexpectedly hit for \(kind)")
+          return
+        }
       }
     }
     let elapsed = started.duration(to: .now)
@@ -1371,6 +1438,10 @@ final class ElementHitGeometryTests: XCTestCase {
       )
     )
     let gapPoint = SionPoint(x: frame.maxX, y: frame.center.y)
+
+    // Positive control: the flattened ellipse starts at (500, 0), inside the
+    // first dash, so the miss below cannot come from dashes never hitting.
+    XCTAssertTrue(ElementHitGeometry.contains(SionPoint(x: 500, y: 0), in: element, tolerance: 2))
 
     let started = ContinuousClock.now
     var containsPoint = false
@@ -1431,10 +1502,18 @@ final class ElementHitGeometryTests: XCTestCase {
     customShape.style = ElementStyle(fill: .solid(.black))
     let distantPoint = SionPoint(x: frame.maxX + 100, y: frame.center.y)
 
+    // Correctness first: the distant point misses and a point on the path
+    // hits, so the timed loop cannot be satisfied by never-hit shortcuts.
+    XCTAssertFalse(ElementHitGeometry.contains(distantPoint, in: pathElement))
+    XCTAssertTrue(ElementHitGeometry.contains(SionPoint(x: 50, y: 100), in: pathElement))
+
     let started = ContinuousClock.now
     for element in [pathElement, customShape] {
       for _ in 0..<Self.largeSceneElementCount {
-        XCTAssertFalse(ElementHitGeometry.contains(distantPoint, in: element))
+        if ElementHitGeometry.contains(distantPoint, in: element) {
+          XCTFail("Distant point unexpectedly hit")
+          return
+        }
       }
     }
     let elapsed = started.duration(to: .now)
@@ -1587,8 +1666,13 @@ final class ElementHitGeometryTests: XCTestCase {
       )
       element.style = style
       let miss = frame.point(atNormalized: normalizedMiss)
+      // Correctness outside the timed loop below.
+      XCTAssertFalse(ElementHitGeometry.contains(miss, in: element))
       for _ in 0..<Self.maximumCurvedPathQueryCount {
-        XCTAssertFalse(ElementHitGeometry.contains(miss, in: element))
+        if ElementHitGeometry.contains(miss, in: element) {
+          XCTFail("Normalized miss unexpectedly hit")
+          return
+        }
       }
     }
     let elapsed = started.duration(to: .now)

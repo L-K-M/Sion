@@ -5,26 +5,21 @@ import XCTest
 
 @MainActor
 final class SionApplicationDelegateTests: XCTestCase {
-  func testLaunchRegistersServicesSubmenu() throws {
+  func testWillFinishLaunchingRegistersServicesSubmenu() throws {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
-    let existingWindows = Set(application.windows.map(ObjectIdentifier.init))
 
     defer {
-      for window in application.windows
-      where !existingWindows.contains(ObjectIdentifier(window)) {
-        window.close()
-      }
-
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
     }
 
+    application.mainMenu = nil
     application.servicesMenu = nil
-    let delegate = SionApplicationDelegate()
-    delegate.applicationDidFinishLaunching(
-      Notification(name: NSApplication.didFinishLaunchingNotification, object: application)
+    let delegate: NSApplicationDelegate = SionApplicationDelegate()
+    delegate.applicationWillFinishLaunching?(
+      Notification(name: NSApplication.willFinishLaunchingNotification, object: application)
     )
 
     let applicationMenu = try XCTUnwrap(application.mainMenu?.item(at: 0)?.submenu)

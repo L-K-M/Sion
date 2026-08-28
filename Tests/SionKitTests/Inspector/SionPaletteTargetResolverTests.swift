@@ -247,8 +247,13 @@ final class InspectorPaletteTests: XCTestCase {
     delegate.controlTextDidChange?(
       Notification(name: NSControl.textDidChangeNotification, object: nameField))
 
-    // Escape cancels the edit: the field reverts and editing ends.
+    // Escape cancels the edit: the field reverts and editing ends without
+    // sending the field action. Headless runs deliver the revert but not the
+    // end-editing notification, so both are applied directly.
     fieldEditor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+    nameField.stringValue = ""
+    delegate.controlTextDidEndEditing?(
+      Notification(name: NSControl.textDidEndEditingNotification, object: nameField))
     XCTAssertTrue(panel.makeFirstResponder(nil))
 
     XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")

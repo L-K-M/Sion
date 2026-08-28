@@ -27,8 +27,8 @@ NSView and installs `NSShadow.shadowOffset` verbatim; NSShadow offsets
 follow the unflipped base space, so the canvas shadow may render upward,
 disagreeing with the export. Needs a screenshot on macOS; fix by negating
 y when installing the shadow in flipped drawing. `applyShadow` also
-ignores `ShadowStyle.spread`. (#38 may touch the same drawing path —
-coordinate.)
+ignores `ShadowStyle.spread`. (#38 touched the same drawing path and
+landed; the audit should re-check against it.)
 
 ### A4 (P2) Corner-radius default inconsistency
 `SceneElementDefaults.cornerRadius = 14` (Scene.swift) vs the editor's
@@ -157,7 +157,7 @@ snapshots are highly compressible JSON. Accepted deliberately for
 deterministic, dependency-free recovery — if archive size ever matters,
 deflate for non-asset entries is a format-v2 decision with a spec note.
 
-## Missing features (value-ordered)
+## Missing features (IDs are stable; work the P1/P2/P3 tags top-down)
 
 ### M2 (P1) Group / Ungroup (⌘G / ⇧⌘G)
 `GroupContent`, `parentID`, `setParent`, `descendantIDs` all exist; no

@@ -7,7 +7,8 @@ import XCTest
 @MainActor
 final class SionCanvasRenderingTests: XCTestCase {
   private let canvasSize = SionSize(width: 320, height: 240)
-  private let colorAccuracy = 0.04
+  private let colorAccuracy: CGFloat = 0.04
+  private let sRGBColorAccuracy: CGFloat = 2.0 / 255.0
 
   func testElementOpacityMultipliesIntrinsicFillAlpha() throws {
     var shape = SceneElement.shape(
@@ -187,11 +188,11 @@ final class SionCanvasRenderingTests: XCTestCase {
     let image = try render(elements: [shape])
 
     assertEqual(
-      try pixel(in: image, at: point(in: frame, normalized: start)),
+      try pixel(in: image, at: frame.point(atNormalized: start)),
       NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
     )
     assertEqual(
-      try pixel(in: image, at: point(in: frame, normalized: end)),
+      try pixel(in: image, at: frame.point(atNormalized: end)),
       NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
     )
   }
@@ -220,17 +221,140 @@ final class SionCanvasRenderingTests: XCTestCase {
     assertEqual(
       try pixel(
         in: image,
-        at: point(in: frame, normalized: SionPoint(x: 0.25, y: 0.5))
+        at: frame.point(atNormalized: SionPoint(x: 0.25, y: 0.5))
       ),
       NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
     )
     assertEqual(
       try pixel(
         in: image,
-        at: point(in: frame, normalized: SionPoint(x: 0.75, y: 0.5))
+        at: frame.point(atNormalized: SionPoint(x: 0.75, y: 0.5))
       ),
       NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
     )
+  }
+
+  func testRotatedVectorPathKeepsGradientInLocalGeometry() throws {
+    let frame = SionRect(x: 80, y: 60, width: 160, height: 120)
+    let rotation = Double.pi / 2
+    let start = SionPoint(x: 0.25, y: 0.5)
+    let end = SionPoint(x: 0.75, y: 0.5)
+    let path = VectorPath(commands: [
+      .move(to: .zero),
+      .line(to: SionPoint(x: 1, y: 0)),
+      .line(to: SionPoint(x: 1, y: 1)),
+      .line(to: SionPoint(x: 0, y: 1)),
+      .close,
+    ])
+    var element = SceneElement.path(frame: frame, path: path)
+    element.geometry.rotationRadians = rotation
+    element.style = ElementStyle(
+      fill: .linearGradient(
+        LinearGradientFill(
+          stops: [
+            GradientStop(color: SionColor(red: 1, green: 0, blue: 0), location: 0),
+            GradientStop(color: SionColor(red: 0, green: 0, blue: 1), location: 1),
+          ],
+          start: start,
+          end: end
+        )
+      )
+    )
+
+    let image = try render(elements: [element])
+    let rotatedStart = InteractionGeometry.rotated(
+      frame.point(atNormalized: start),
+      around: frame.center,
+      by: rotation
+    )
+    let rotatedEnd = InteractionGeometry.rotated(
+      frame.point(atNormalized: end),
+      around: frame.center,
+      by: rotation
+    )
+
+    assertEqual(
+      try pixel(in: image, at: rotatedStart),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
+    assertEqual(
+      try pixel(in: image, at: rotatedEnd),
+      NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
+    )
+  }
+
+  func testColorsRemainSRGBInDisplayP3Context() throws {
+    let authored = SionColor(red: 0.25, green: 0.5, blue: 0.75)
+    let expected = NSColor(srgbRed: 0.25, green: 0.5, blue: 0.75, alpha: 1)
+    let solidFrame = SionRect(x: 20, y: 60, width: 100, height: 120)
+    var solid = SceneElement.shape(frame: solidFrame, kind: .rectangle)
+    solid.style = ElementStyle(fill: .solid(authored))
+
+    let gradientFrame = SionRect(x: 180, y: 60, width: 100, height: 120)
+    let gradientStart = SionPoint(x: 0.25, y: 0.5)
+    var gradient = SceneElement.shape(frame: gradientFrame, kind: .rectangle)
+    gradient.style = ElementStyle(
+      fill: .linearGradient(
+        LinearGradientFill(
+          stops: [
+            GradientStop(color: authored, location: 0),
+            GradientStop(color: .white, location: 1),
+          ],
+          start: gradientStart,
+          end: SionPoint(x: 0.75, y: 0.5)
+        )
+      )
+    )
+    let displayP3 = try XCTUnwrap(CGColorSpace(name: CGColorSpace.displayP3))
+
+    let image = try render(
+      elements: [solid, gradient],
+      colorSpace: displayP3
+    )
+
+    assertEqual(
+      try pixel(in: image, at: solidFrame.center),
+      expected,
+      accuracy: sRGBColorAccuracy
+    )
+    assertEqual(
+      try pixel(
+        in: image,
+        at: gradientFrame.point(atNormalized: SionPoint(x: 0.1, y: 0.5))
+      ),
+      expected,
+      accuracy: sRGBColorAccuracy
+    )
+  }
+
+  func testColorBridgeConvertsDisplayP3InputToStoredSRGB() throws {
+    let source = NSColor(displayP3Red: 0.25, green: 0.5, blue: 0.75, alpha: 0.8)
+    let expected = try XCTUnwrap(source.usingColorSpace(.sRGB))
+
+    let model = SionColorBridge.modelColor(source)
+    let bridged = SionColorBridge.appKitColor(model)
+
+    XCTAssertEqual(
+      model.red,
+      Double(expected.redComponent),
+      accuracy: Double(sRGBColorAccuracy)
+    )
+    XCTAssertEqual(
+      model.green,
+      Double(expected.greenComponent),
+      accuracy: Double(sRGBColorAccuracy)
+    )
+    XCTAssertEqual(
+      model.blue,
+      Double(expected.blueComponent),
+      accuracy: Double(sRGBColorAccuracy)
+    )
+    XCTAssertEqual(
+      model.alpha,
+      Double(expected.alphaComponent),
+      accuracy: Double(sRGBColorAccuracy)
+    )
+    XCTAssertEqual(bridged.colorSpace, .sRGB)
   }
 
   func testSelectionChromeEscapesElementOpacity() throws {
@@ -334,7 +458,8 @@ final class SionCanvasRenderingTests: XCTestCase {
     elements: [SceneElement],
     assets: [AssetID: SionAsset] = [:],
     selection: Set<ElementID> = [],
-    connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
+    connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil,
+    colorSpace: CGColorSpace? = nil
   ) throws -> NSBitmapImageRep {
     _ = NSApplication.shared
     let scene = SionScene(
@@ -363,7 +488,8 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
     let graphics = try bitmapContext(
       width: Int(canvasSize.width),
-      height: Int(canvasSize.height)
+      height: Int(canvasSize.height),
+      colorSpace: colorSpace
     )
     let context = NSGraphicsContext(cgContext: graphics, flipped: true)
     let previousContext = NSGraphicsContext.current
@@ -377,10 +503,16 @@ final class SionCanvasRenderingTests: XCTestCase {
     return try bitmapRepresentation(from: graphics)
   }
 
-  private func bitmapContext(width: Int, height: Int) throws -> CGContext {
-    let colorSpace = try XCTUnwrap(
-      CGColorSpace(name: CGColorSpace.sRGB)
-    )
+  private func bitmapContext(
+    width: Int,
+    height: Int,
+    colorSpace: CGColorSpace? = nil
+  ) throws -> CGContext {
+    let renderedColorSpace =
+      try colorSpace
+      ?? XCTUnwrap(
+        CGColorSpace(name: CGColorSpace.sRGB)
+      )
     return try XCTUnwrap(
       CGContext(
         data: nil,
@@ -388,7 +520,7 @@ final class SionCanvasRenderingTests: XCTestCase {
         height: height,
         bitsPerComponent: TestBitmap.bitsPerComponent,
         bytesPerRow: 0,
-        space: colorSpace,
+        space: renderedColorSpace,
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
       )
     )
@@ -429,44 +561,40 @@ final class SionCanvasRenderingTests: XCTestCase {
     return try XCTUnwrap(color.usingColorSpace(.sRGB))
   }
 
-  private func point(in frame: SionRect, normalized: SionPoint) -> SionPoint {
-    SionPoint(
-      x: frame.minX + (frame.width * normalized.x),
-      y: frame.minY + (frame.height * normalized.y)
-    )
-  }
-
   private func assertEqual(
     _ actual: NSColor,
     _ expected: NSColor,
+    accuracy: CGFloat? = nil,
     file: StaticString = #filePath,
     line: UInt = #line
   ) {
+    let accuracy = accuracy ?? colorAccuracy
+
     XCTAssertEqual(
       actual.redComponent,
       expected.redComponent,
-      accuracy: colorAccuracy,
+      accuracy: accuracy,
       file: file,
       line: line
     )
     XCTAssertEqual(
       actual.greenComponent,
       expected.greenComponent,
-      accuracy: colorAccuracy,
+      accuracy: accuracy,
       file: file,
       line: line
     )
     XCTAssertEqual(
       actual.blueComponent,
       expected.blueComponent,
-      accuracy: colorAccuracy,
+      accuracy: accuracy,
       file: file,
       line: line
     )
     XCTAssertEqual(
       actual.alphaComponent,
       expected.alphaComponent,
-      accuracy: colorAccuracy,
+      accuracy: accuracy,
       file: file,
       line: line
     )

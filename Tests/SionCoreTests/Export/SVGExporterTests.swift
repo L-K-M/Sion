@@ -238,6 +238,38 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertTrue(groupMarkup.contains("<text "))
   }
 
+  func testLinearGradientPreservesAuthoredSRGBDefinition() throws {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 20, y: 20, width: 120, height: 80),
+      kind: .rectangle
+    )
+    shape.style = ElementStyle(
+      fill: .linearGradient(
+        LinearGradientFill(
+          stops: [
+            GradientStop(
+              color: SionColor(red: 0.25, green: 0.5, blue: 0.75),
+              location: 0
+            ),
+            GradientStop(color: SionColor(red: 1, green: 1, blue: 1), location: 1),
+          ],
+          start: SionPoint(x: 0.25, y: 0.4),
+          end: SionPoint(x: 0.75, y: 0.6)
+        )
+      )
+    )
+
+    let svg = try export([shape])
+
+    XCTAssertTrue(
+      svg.contains(
+        "<linearGradient id=\"gradient-\(shape.id)\" x1=\"25%\" y1=\"40%\" x2=\"75%\" y2=\"60%\">"
+      )
+    )
+    XCTAssertTrue(svg.contains("stop-color=\"#4080bfff\""))
+    XCTAssertTrue(svg.contains("stop-color=\"#ffffffff\""))
+  }
+
   func testConnectorEffectsWrapRouteMarkersAndLabel() throws {
     let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000002"))
     var connector = SceneElement.connector(

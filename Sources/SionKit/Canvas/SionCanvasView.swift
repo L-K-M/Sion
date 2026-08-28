@@ -906,7 +906,7 @@
           samplesPerPixel: PreviewMetrics.samplesPerPixel,
           hasAlpha: true,
           isPlanar: false,
-          colorSpaceName: .calibratedRGB,
+          colorSpaceName: .sRGB,
           bytesPerRow: 0,
           bitsPerPixel: 0
         ),
@@ -1619,22 +1619,7 @@
         nsColor(color).setFill()
         path.fill()
       case .linearGradient(let gradient):
-        let stops = gradient.stops.sorted { $0.location < $1.location }
-        let colors = stops.map { nsColor($0.color) }
-        let locations = stops.map { CGFloat($0.location) }
-        if colors.count > 1 {
-          let renderedGradient = locations.withUnsafeBufferPointer { buffer in
-            NSGradient(
-              colors: colors,
-              atLocations: buffer.baseAddress,
-              colorSpace: .deviceRGB
-            )
-          }
-          renderedGradient?.draw(in: path, angle: gradientAngle(gradient))
-        } else if let color = colors.first {
-          color.setFill()
-          path.fill()
-        }
+        drawLinearGradient(gradient, in: path)
       }
 
       if let stroke = style.stroke, stroke.width.isFinite, stroke.width > 0 {
@@ -1652,6 +1637,63 @@
       }
 
       NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private func drawLinearGradient(_ gradient: LinearGradientFill, in path: NSBezierPath) {
+      guard gradient.stops.count > 1 else {
+        if let color = gradient.stops.first?.color {
+          nsColor(color).setFill()
+          path.fill()
+        }
+
+        return
+      }
+
+      let bounds = path.bounds
+      let start = gradientPoint(gradient.start, in: bounds)
+      let end = gradientPoint(gradient.end, in: bounds)
+      guard start != end else {
+        guard let color = gradient.stops.last?.color else { return }
+
+        nsColor(color).setFill()
+        path.fill()
+        return
+      }
+
+      let colors = gradient.stops.map { nsColor($0.color).cgColor }
+      let locations = gradient.stops.map { CGFloat($0.location) }
+      guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return }
+      let renderedGradient = locations.withUnsafeBufferPointer { buffer in
+        CGGradient(
+          colorsSpace: colorSpace,
+          colors: colors as CFArray,
+          locations: buffer.baseAddress
+        )
+      }
+      guard let renderedGradient,
+        let context = NSGraphicsContext.current?.cgContext
+      else {
+        return
+      }
+
+      NSGraphicsContext.saveGraphicsState()
+      defer { NSGraphicsContext.restoreGraphicsState() }
+
+      // SVG gradients pad with endpoint colors; match that contract in Canvas.
+      path.addClip()
+      context.drawLinearGradient(
+        renderedGradient,
+        start: start,
+        end: end,
+        options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+      )
+    }
+
+    private func gradientPoint(_ point: SionPoint, in bounds: NSRect) -> NSPoint {
+      NSPoint(
+        x: bounds.minX + (bounds.width * CGFloat(point.x)),
+        y: bounds.minY + (bounds.height * CGFloat(point.y))
+      )
     }
 
     private func drawText(_ content: TextContent, frame: SionRect) {
@@ -2847,12 +2889,7 @@
   }
 
   private func nsColor(_ color: SionColor) -> NSColor {
-    NSColor(
-      calibratedRed: clampedUnit(color.red),
-      green: clampedUnit(color.green),
-      blue: clampedUnit(color.blue),
-      alpha: clampedUnit(color.alpha)
-    )
+    SionColorBridge.appKitColor(color)
   }
 
   private func nsFont(_ style: TextStyle) -> NSFont {
@@ -2941,13 +2978,6 @@
     case .nearestNeighbor: .none
     case .highQuality: .high
     }
-  }
-
-  private func gradientAngle(_ gradient: LinearGradientFill) -> CGFloat {
-    let delta = gradient.end - gradient.start
-    guard delta.dx.isFinite, delta.dy.isFinite else { return 0 }
-
-    return atan2(delta.dy, delta.dx) * 180 / .pi
   }
 
   private func clampedUnit(_ value: Double) -> CGFloat {

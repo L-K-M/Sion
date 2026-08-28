@@ -295,24 +295,6 @@ duplicate announcements.
 
 **Depends.** Reuse typed model errors; accessibility delivery joins P2.7.
 
-### P1.9 Render exact gradients in sRGB
-
-**Evidence.** Canvas reduces `LinearGradientFill.start/end` to an angle through
-`NSGradient.draw(in:angle:)`, losing authored position and length; SVG retains
-the exact endpoints. The Canvas color bridge constructs deprecated calibrated
-RGB colors while the format/export values are sRGB.
-
-**Scope.** Clip a Core Graphics linear gradient to the element path and map the
-stored normalized endpoints into local geometry without re-sorting validated
-stops. Convert every `SionColor` through an explicit sRGB color space.
-
-**Accept.** Pixel/SVG fixtures cover off-center and short gradients, transparent
-stops, rotations, paths, and wide-gamut system displays. Solid and gradient
-hex samples match exported sRGB within a documented tolerance.
-
-**Depends.** Build on shipped whole-element compositing and P1.7 renderer
-fixtures.
-
 ### P1.10 Correct the cylinder primitive
 
 **Evidence.** Canvas and SVG cylinder paths bulge the top rim upward and bottom

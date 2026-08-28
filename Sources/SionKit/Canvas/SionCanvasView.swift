@@ -605,7 +605,6 @@
     }
 
     @objc func toggleGridVisibility(_ sender: Any?) {
-      commitPendingEdits()
       attemptEdit { try editorController.toggleGridVisibility() }
     }
 

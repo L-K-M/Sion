@@ -271,6 +271,24 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     XCTAssertEqual(showGrid.state, .off)
   }
 
+  func testShowGridMenuIsDisabledDuringInlineTextEditing() throws {
+    _ = NSApplication.shared
+    let text = SceneElement.text(
+      frame: SionRect(x: 40, y: 40, width: 180, height: 80),
+      text: "Draft"
+    )
+    let controller = try makeController(elements: [text])
+    let canvas = SionCanvasView(editorController: controller)
+    let showGrid = NSMenuItem()
+    showGrid.action = TestAction.toggleGridVisibility
+
+    canvas.beginTextEditing(text.id)
+    defer { canvas.discardPendingEdits() }
+
+    XCTAssertFalse(canvas.validateMenuItem(showGrid))
+    XCTAssertEqual(showGrid.state, .off)
+  }
+
   private func makeController(
     elements: [SceneElement],
     canvas: SionCanvas = SionCanvas(),

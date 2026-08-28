@@ -97,7 +97,7 @@ final class SionEditorControllerInsertionTests: XCTestCase {
   func testToolbarToolsSeparateBasicShapesAndOmitMagnetEditing() {
     XCTAssertEqual(
       SionEditorController.Tool.allCases.map(\.title),
-      ["Select", "Rectangle", "Circle", "Text", "Connector"]
+      ["Select", "Rounded Rectangle", "Circle", "Text", "Connector"]
     )
   }
 

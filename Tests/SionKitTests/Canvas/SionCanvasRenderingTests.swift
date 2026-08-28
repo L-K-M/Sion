@@ -332,7 +332,7 @@ final class SionCanvasRenderingTests: XCTestCase {
     assertEqual(
       try pixel(
         in: image,
-        at: gradientFrame.point(atNormalized: SionPoint(x: 0.1, y: 0.5))
+        at: gradientFrame.point(atNormalized: gradientStart)
       ),
       expected,
       accuracy: sRGBColorAccuracy

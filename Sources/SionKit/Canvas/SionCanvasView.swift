@@ -1329,6 +1329,10 @@
 
       let route = connectorRouteProvider(element)
       guard element.content.connector == nil || route != nil else {
+        if !rendersOffscreenPreview, isSelected {
+          drawSelection(for: element)
+        }
+
         return
       }
 

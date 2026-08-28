@@ -93,12 +93,22 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
     let previousWindowsMenu = application.windowsMenu
+    let existingWindows = Set(application.windows.map(ObjectIdentifier.init))
     defer {
+      for window in application.windows
+      where !existingWindows.contains(ObjectIdentifier(window)) {
+        window.windowController?.document?.close()
+        window.close()
+      }
+
       application.mainMenu = previousMainMenu
       application.windowsMenu = previousWindowsMenu
     }
 
-    SionMainMenu.install()
+    let delegate = SionApplicationDelegate()
+    delegate.applicationDidFinishLaunching(
+      Notification(name: NSApplication.didFinishLaunchingNotification)
+    )
 
     let arrangeMenu = try XCTUnwrap(
       application.mainMenu?.item(withTitle: TestMenu.arrange)?.submenu

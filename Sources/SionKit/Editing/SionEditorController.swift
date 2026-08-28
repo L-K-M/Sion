@@ -313,6 +313,23 @@
       !selection.isEmpty
     }
 
+    var canCopySelection: Bool {
+      !selection.isEmpty
+    }
+
+    var canDeleteSelection: Bool {
+      guard !editor.hasPendingGesture, !selection.isEmpty else { return false }
+
+      var removedIDs = selection
+      for id in selection {
+        removedIDs.formUnion(editor.document.scene.descendantIDs(of: id))
+      }
+
+      return editor.document.scene.elements.allSatisfy { element in
+        !removedIDs.contains(element.id) || element.lockState == .editable
+      }
+    }
+
     func canMoveSelectionInZOrder(_ movement: ZOrderMovement) -> Bool {
       zOrderPlan(for: movement) != nil
     }

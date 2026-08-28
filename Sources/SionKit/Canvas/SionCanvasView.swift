@@ -667,6 +667,14 @@
     /// AppKit discovers menu validation through Objective-C responder dispatch.
     @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
       switch menuItem.action {
+      case #selector(copy(_:)):
+        return editorController.canCopySelection
+      case #selector(cut(_:)):
+        return editorController.canCopySelection && editorController.canDeleteSelection
+      case #selector(delete(_:)):
+        return editorController.canDeleteSelection
+      case #selector(paste(_:)):
+        return hasPasteableContent(in: .general)
       case #selector(duplicate(_:)):
         return editorController.canDuplicateSelection
       case #selector(bringToFront(_:)):
@@ -727,6 +735,7 @@
     }
 
     @objc func cut(_ sender: Any?) {
+      guard editorController.canDeleteSelection else { return }
       guard copySelection(to: .general) else { return }
 
       try? editorController.deleteSelection()
@@ -1210,6 +1219,37 @@
       return pasteboard.writeObjects([item])
     }
 
+    private func hasPasteableContent(in pasteboard: NSPasteboard) -> Bool {
+      if pasteboard.availableType(from: PasteboardType.binaryPasteTypes) != nil {
+        return true
+      }
+
+      if pastedImageFile(from: pasteboard) != nil {
+        return true
+      }
+
+      guard let text = pasteboard.string(forType: .string) else { return false }
+
+      return !text.isEmpty
+    }
+
+    private func pastedImageFile(
+      from pasteboard: NSPasteboard
+    ) -> (url: URL, type: ImagePasteType)? {
+      guard
+        let fileURL = pasteboard.readObjects(
+          forClasses: [NSURL.self],
+          options: [.urlReadingFileURLsOnly: true]
+        )?.first as? URL,
+        let type = ImagePasteType(fileExtension: fileURL.pathExtension),
+        isSupportedAssetSize(fileURL)
+      else {
+        return nil
+      }
+
+      return (fileURL, type)
+    }
+
     private func pasteSelection(from pasteboard: NSPasteboard, at point: SionPoint) -> Bool {
       guard let data = pasteboard.data(forType: PasteboardType.selection),
         data.count <= SionArchiveConstants.maximumEntryByteCount
@@ -1222,28 +1262,18 @@
     }
 
     private func pasteImage(from pasteboard: NSPasteboard, at point: SionPoint) -> Bool {
-      if let fileURL = pasteboard.readObjects(
-        forClasses: [NSURL.self],
-        options: [.urlReadingFileURLsOnly: true]
-      )?.first as? URL,
-        let type = ImagePasteType(fileExtension: fileURL.pathExtension),
-        isSupportedAssetSize(fileURL),
-        let data = try? Data(contentsOf: fileURL)
+      if let file = pastedImageFile(from: pasteboard),
+        let data = try? Data(contentsOf: file.url)
       {
         return insertPastedImage(
           data: data,
-          type: type,
-          filename: fileURL.lastPathComponent,
+          type: file.type,
+          filename: file.url.lastPathComponent,
           at: point
         )
       }
 
-      let preservedTypes: [(NSPasteboard.PasteboardType, ImagePasteType)] = [
-        (.pdf, .pdf),
-        (ImagePasteType.svgPasteboardType, .svg),
-        (.tiff, .tiff),
-      ]
-      for (pasteboardType, imageType) in preservedTypes {
+      for (pasteboardType, imageType) in ImagePasteType.preservedPasteboardTypes {
         guard let data = pasteboard.data(forType: pasteboardType),
           data.count <= SionArchiveConstants.maximumEntryByteCount
         else {
@@ -2604,6 +2634,11 @@
     case tiff
 
     static let svgPasteboardType = NSPasteboard.PasteboardType("public.svg-image")
+    static let preservedPasteboardTypes: [(NSPasteboard.PasteboardType, ImagePasteType)] = [
+      (.pdf, .pdf),
+      (svgPasteboardType, .svg),
+      (.tiff, .tiff),
+    ]
 
     init?(fileExtension: String) {
       switch fileExtension.lowercased() {
@@ -2694,6 +2729,13 @@
 
   private enum PasteboardType {
     static let selection = NSPasteboard.PasteboardType("ch.lkmc.sion.selection")
+    static let binaryPasteTypes: [NSPasteboard.PasteboardType] = [
+      selection,
+      .pdf,
+      ImagePasteType.svgPasteboardType,
+      .tiff,
+      .png,
+    ]
   }
 
   private enum CanvasKeyCode {

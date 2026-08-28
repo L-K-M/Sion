@@ -304,6 +304,17 @@ final class MermaidImporterTests: XCTestCase {
     }
   }
 
+  func testRejectsUnsupportedNodeDecorations() {
+    for decoration in UnsupportedNodeDecoration.allCases {
+      let source = "flowchart LR\n  \(decoration.rawValue)"
+
+      XCTAssertTrue(
+        MermaidImporter.elements(from: source, centeredAt: .zero).isEmpty,
+        decoration.rawValue
+      )
+    }
+  }
+
   func testGeneratedMermaidCanBeImportedAgain() throws {
     let first = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 160, height: 80),
@@ -352,6 +363,15 @@ private enum UnsupportedImportedArrow: String, CaseIterable {
   case dotted = "-.->"
   case thick = "==>"
   case line = "---"
+}
+
+private enum UnsupportedNodeDecoration: String, CaseIterable {
+  case stadium = "A([Stadium])"
+  case subroutine = "A[[Subroutine]]"
+  case cylinder = "A[(Cylinder)]"
+  case circle = "A((Circle))"
+  case hexagon = "A{{Hexagon}}"
+  case parallelogram = "A[/Parallelogram/]"
 }
 
 private enum ImportedDirection: String, CaseIterable {

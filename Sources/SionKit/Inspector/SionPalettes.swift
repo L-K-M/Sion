@@ -229,7 +229,7 @@
     private func configureNameField() {
       nameField.target = self
       nameField.action = #selector(changeName(_:))
-      nameField.sendsActionOnEndEditing = true
+      (nameField.cell as? NSTextFieldCell)?.sendsActionOnEndEditing = true
       nameField.setAccessibilityLabel("Element name")
     }
 

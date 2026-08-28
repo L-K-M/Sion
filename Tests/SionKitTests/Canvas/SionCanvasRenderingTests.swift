@@ -319,6 +319,45 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
   }
 
+  func testVectorQuadraticAfterCloseStartsAtSubpathOrigin() throws {
+    let frame = SionRect(x: 40, y: 40, width: 240, height: 160)
+    let subpathStart = SionPoint(x: 0.1, y: 0.2)
+    let control = SionPoint(x: 0.1, y: 0.8)
+    let end = SionPoint(x: 0.5, y: 0.8)
+    let closedSubpath: [PathCommand] = [
+      .move(to: subpathStart),
+      .line(to: SionPoint(x: 0.9, y: 0.2)),
+      .line(to: SionPoint(x: 0.9, y: 0.8)),
+      .close,
+    ]
+    let style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 5)
+    )
+    var implicitReset = SceneElement.path(
+      frame: frame,
+      path: VectorPath(
+        commands: closedSubpath + [.quadratic(control: control, to: end)]
+      )
+    )
+    implicitReset.style = style
+    var explicitReset = SceneElement.path(
+      frame: frame,
+      path: VectorPath(
+        commands: closedSubpath + [
+          .move(to: subpathStart),
+          .quadratic(control: control, to: end),
+        ]
+      )
+    )
+    explicitReset.style = style
+
+    XCTAssertEqual(
+      try renderedPixels(render(elements: [implicitReset])),
+      try renderedPixels(render(elements: [explicitReset]))
+    )
+  }
+
   func testColorsRemainSRGBInDisplayP3Context() throws {
     let authored = SionColor(red: 0.25, green: 0.5, blue: 0.75)
     let terminal = SionColor(red: 0.75, green: 0.25, blue: 0.5)

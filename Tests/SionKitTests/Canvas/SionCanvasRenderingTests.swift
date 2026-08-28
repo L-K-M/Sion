@@ -167,6 +167,26 @@ final class SionCanvasRenderingTests: XCTestCase {
     XCTAssertGreaterThan(lower.redComponent, 0.8)
   }
 
+  func testPixelSamplerUsesExactCoordinatesAndChannels() throws {
+    let graphics = try bitmapContext(width: 3, height: 2)
+    graphics.setFillColor(NSColor.white.cgColor)
+    graphics.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
+    graphics.setFillColor(NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1).cgColor)
+    graphics.fill(CGRect(x: 1, y: 0, width: 1, height: 1))
+    graphics.setFillColor(NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1).cgColor)
+    graphics.fill(CGRect(x: 2, y: 1, width: 1, height: 1))
+    let image = try XCTUnwrap(graphics.makeImage())
+
+    assertEqual(
+      try pixel(in: image, at: SionPoint(x: 1, y: 1)),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
+    assertEqual(
+      try pixel(in: image, at: SionPoint(x: 2, y: 0)),
+      NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
+    )
+  }
+
   func testGradientHonorsAuthoredStartAndEndPoints() throws {
     let frame = SionRect(x: 80, y: 60, width: 160, height: 120)
     let start = SionPoint(x: 0.25, y: 0.5)
@@ -594,48 +614,37 @@ final class SionCanvasRenderingTests: XCTestCase {
       throw TestPixelError.outOfBounds
     }
 
-    let sourceY = image.height - pixelY - 1
-    let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
-    var components = [UInt8](repeating: 0, count: TestBitmap.componentsPerPixel)
+    guard image.bitsPerComponent == TestBitmap.bitsPerComponent,
+      image.bitsPerPixel == TestBitmap.bitsPerPixel,
+      image.alphaInfo == .premultipliedLast,
+      image.bitmapInfo.contains(.byteOrder32Big)
+    else {
+      throw TestPixelError.unsupportedFormat
+    }
+    let data = try XCTUnwrap(image.dataProvider?.data)
+    let bytes = try XCTUnwrap(CFDataGetBytePtr(data))
+    let offset = (pixelY * image.bytesPerRow) + (pixelX * TestBitmap.componentsPerPixel)
+    let alpha = CGFloat(bytes[offset + 3]) / 255
+    guard alpha > 0 else {
+      return NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0)
+    }
 
-    return try components.withUnsafeMutableBytes { bytes in
-      let context = try XCTUnwrap(
-        CGContext(
-          data: bytes.baseAddress,
-          width: 1,
-          height: 1,
-          bitsPerComponent: TestBitmap.bitsPerComponent,
-          bytesPerRow: TestBitmap.componentsPerPixel,
-          space: colorSpace,
-          bitmapInfo: TestBitmap.bitmapInfo.rawValue
-        )
-      )
-      context.interpolationQuality = .none
-      context.setBlendMode(.copy)
-      context.translateBy(x: CGFloat(-pixelX), y: CGFloat(-sourceY))
-      context.draw(
-        image,
-        in: CGRect(
-          x: 0,
-          y: 0,
-          width: CGFloat(image.width),
-          height: CGFloat(image.height)
-        )
-      )
-
-      let values = bytes.bindMemory(to: UInt8.self)
-      let alpha = CGFloat(values[3]) / 255
-      guard alpha > 0 else {
-        return NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0)
-      }
-
-      return NSColor(
-        srgbRed: (CGFloat(values[0]) / 255) / alpha,
-        green: (CGFloat(values[1]) / 255) / alpha,
-        blue: (CGFloat(values[2]) / 255) / alpha,
-        alpha: alpha
+    let sourceSpace = try XCTUnwrap(image.colorSpace)
+    let appKitColorSpace = try XCTUnwrap(NSColorSpace(cgColorSpace: sourceSpace))
+    let components = [
+      (CGFloat(bytes[offset]) / 255) / alpha,
+      (CGFloat(bytes[offset + 1]) / 255) / alpha,
+      (CGFloat(bytes[offset + 2]) / 255) / alpha,
+      alpha,
+    ]
+    let sourceColor = try components.withUnsafeBufferPointer { buffer in
+      NSColor(
+        colorSpace: appKitColorSpace,
+        components: try XCTUnwrap(buffer.baseAddress),
+        count: buffer.count
       )
     }
+    return try XCTUnwrap(sourceColor.usingColorSpace(.sRGB))
   }
 
   private func assertEqual(
@@ -719,6 +728,7 @@ final class SionCanvasRenderingTests: XCTestCase {
 private enum TestBitmap {
   static let bitsPerComponent = 8
   static let componentsPerPixel = 4
+  static let bitsPerPixel = bitsPerComponent * componentsPerPixel
   static let bitmapInfo = CGBitmapInfo(
     rawValue: CGImageAlphaInfo.premultipliedLast.rawValue
   ).union(.byteOrder32Big)
@@ -726,4 +736,5 @@ private enum TestBitmap {
 
 private enum TestPixelError: Error {
   case outOfBounds
+  case unsupportedFormat
 }

@@ -82,13 +82,7 @@
       super.showWindow(sender)
       window?.makeFirstResponder(canvasView)
 
-      guard !didApplyInitialZoom else { return }
-      didApplyInitialZoom = true
-      guard !editorController.document.scene.elements.isEmpty else { return }
-
-      DispatchQueue.main.async { [weak self] in
-        self?.zoomToFit(nil)
-      }
+      applyInitialZoomIfNeeded()
     }
 
     override func close() {
@@ -312,6 +306,19 @@
 
     private func synchronizeUI() {
       toolControl?.selectedSegment = editorController.tool.rawValue
+    }
+
+    private func applyInitialZoomIfNeeded() {
+      guard !didApplyInitialZoom else { return }
+      guard !editorController.document.scene.elements.isEmpty else { return }
+
+      // Fit only after AppKit exposes a usable viewport; a later show can retry.
+      scrollView.layoutSubtreeIfNeeded()
+      let available = scrollView.contentSize
+      guard available.width > 0, available.height > 0 else { return }
+
+      didApplyInitialZoom = true
+      zoomToFit(nil)
     }
 
     private func setMagnification(_ requested: CGFloat) {

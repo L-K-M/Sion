@@ -404,6 +404,19 @@
       nameEditState = .changed
     }
 
+    func control(
+      _ control: NSControl,
+      textView: NSTextView,
+      doCommandBy commandSelector: Selector
+    ) -> Bool {
+      // Escape reverts the field; dropping the pending edit keeps the cancel
+      // from being committed when editing ends.
+      if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+        nameEditState = .unchanged
+      }
+      return false
+    }
+
     func controlTextDidEndEditing(_ notification: Notification) {
       guard let field = notification.object as? NSTextField, field === nameField else { return }
 

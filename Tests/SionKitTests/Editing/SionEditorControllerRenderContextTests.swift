@@ -39,6 +39,42 @@
 
       XCTAssertEqual(buildCount, 1)
     }
+
+    func testMovedDuplicateUpdatesItsSelectedIndexEntry() throws {
+      let original = SceneElement.shape(
+        frame: SionRect(x: 0, y: 0, width: 80, height: 60),
+        kind: .rectangle
+      )
+      var buildCount = 0
+      let controller = try SionEditorController(
+        package: SionPackage(
+          document: SionDocument(scene: SionScene(elements: [original]))
+        ),
+        undoManagerProvider: { nil },
+        didChange: { _ in },
+        renderContextBuilder: { scene in
+          buildCount += 1
+          return SceneRenderContext(scene: scene)
+        }
+      )
+      controller.select(original.id)
+      let duplicateID = try XCTUnwrap(controller.duplicateSelection().first)
+      let buildCountAfterDuplication = buildCount
+      try controller.beginMove()
+
+      try controller.moveSelection(by: SionVector(dx: 200, dy: 0))
+      let duplicate = try XCTUnwrap(
+        controller.document.scene.element(withID: duplicateID)
+      )
+      let query = controller.elementsForRendering(
+        intersecting: duplicate.geometry.frame
+      )
+      try controller.endMove()
+
+      XCTAssertEqual(controller.selection, [duplicateID])
+      XCTAssertTrue(query.contains { $0.id == duplicateID })
+      XCTAssertEqual(buildCount, buildCountAfterDuplication)
+    }
   }
 
 #endif

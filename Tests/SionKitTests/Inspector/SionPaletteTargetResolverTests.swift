@@ -237,13 +237,26 @@ final class InspectorPaletteTests: XCTestCase {
         .first { $0.accessibilityLabel() == "Element name" }
     )
 
+    let delegate = try XCTUnwrap(nameField.delegate as? NSTextFieldDelegate)
+
+    // Positive control: ending an edit after typing commits it.
+    nameField.stringValue = "Shared"
+    delegate.controlTextDidChange?(
+      Notification(name: NSControl.textDidChangeNotification, object: nameField))
+    delegate.controlTextDidEndEditing?(
+      Notification(name: NSControl.textDidEndEditingNotification, object: nameField))
+    XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "Shared")
+    XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Shared")
+    undoManager.undo()
+    XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")
+    XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Second")
+
     XCTAssertTrue(panel.makeFirstResponder(nameField))
     let fieldEditor = try XCTUnwrap(nameField.currentEditor() as? NSTextView)
     fieldEditor.selectAll(nil)
     fieldEditor.insertText("Shared", replacementRange: fieldEditor.selectedRange())
 
     // Typing marks the edit as changed before Escape cancels it.
-    let delegate = try XCTUnwrap(nameField.delegate as? NSTextFieldDelegate)
     delegate.controlTextDidChange?(
       Notification(name: NSControl.textDidChangeNotification, object: nameField))
 

@@ -274,7 +274,10 @@ final class SionCanvasRenderingTests: XCTestCase {
 
     // Positive control: an equivalent solid pattern renders, so the equality
     // above measures dash parity rather than strokes never painting.
-    element.style?.stroke?.dashPattern = [40]
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 8, dashPattern: [40], lineCap: .butt)
+    )
     XCTAssertNotEqual(
       try renderedPixels(render(elements: [element])),
       try renderedPixels(render(elements: []))

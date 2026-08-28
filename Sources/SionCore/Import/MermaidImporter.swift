@@ -122,7 +122,7 @@ public enum MermaidImporter {
         return nil
       }
       return MermaidDiagram(
-        direction: MermaidDirection(token: tokens.dropFirst().first),
+        direction: MermaidDirection(declarationTokens: tokens.dropFirst()),
         lines: lines[lines.index(after: index)...]
       )
     }
@@ -286,8 +286,19 @@ private enum MermaidDirection {
   case leftToRight
   case rightToLeft
 
-  init?(token: Substring?) {
-    switch token?.lowercased() {
+  init?(declarationTokens: ArraySlice<Substring>) {
+    guard let firstToken = declarationTokens.first else {
+      self = .topToBottom
+      return
+    }
+
+    let separatorIndex = firstToken.firstIndex(of: MermaidSyntax.statementSeparator)
+    guard separatorIndex != nil || declarationTokens.dropFirst().isEmpty else {
+      return nil
+    }
+
+    let directionToken = separatorIndex.map { firstToken[..<$0] } ?? firstToken[...]
+    switch directionToken.lowercased() {
     case "tb", "td":
       self = .topToBottom
     case "bt":
@@ -334,6 +345,7 @@ private enum MermaidSyntax {
   static let arrows = ["-.->", "-->", "==>", "---"]
   static let commentPrefix = "%%"
   static let frontMatterDelimiter = "---"
+  static let statementSeparator: Character = ";"
   static let ignoredStatements = Set([
     "classdef", "class", "click", "direction", "end", "linkstyle", "style", "subgraph",
   ])

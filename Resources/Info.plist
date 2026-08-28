@@ -10,6 +10,10 @@
     <string>Sion</string>
     <key>CFBundleIdentifier</key>
     <string>ch.lkmc.Sion</string>
+    <key>CFBundleHelpBookFolder</key>
+    <string>Sion.help</string>
+    <key>CFBundleHelpBookName</key>
+    <string>ch.lkmc.Sion.help</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleIconFile</key>

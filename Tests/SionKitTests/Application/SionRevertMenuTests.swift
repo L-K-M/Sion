@@ -7,11 +7,13 @@ import XCTest
 final class SionRevertMenuTests: XCTestCase {
   func testLaunchInstallsNativeRevertCommand() throws {
     let application = NSApplication.shared
+    let previousHelpMenu = application.helpMenu
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
 
     defer {
+      application.helpMenu = previousHelpMenu
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu

@@ -43,6 +43,7 @@ final class SionCanvasMenuValidationTests: XCTestCase {
 
   func testInlineEditorHandlesFindAndSpellingCommands() throws {
     let application = NSApplication.shared
+    let previousHelpMenu = application.helpMenu
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
@@ -55,6 +56,7 @@ final class SionCanvasMenuValidationTests: XCTestCase {
 
     defer {
       canvas.discardPendingEdits()
+      application.helpMenu = previousHelpMenu
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu
@@ -219,10 +221,12 @@ final class SionCanvasMenuValidationTests: XCTestCase {
 
   func testArrangeExtremeShortcutsDoNotClaimWindowTabChords() throws {
     let application = NSApplication.shared
+    let previousHelpMenu = application.helpMenu
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
     defer {
+      application.helpMenu = previousHelpMenu
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu
@@ -249,10 +253,12 @@ final class SionCanvasMenuValidationTests: XCTestCase {
 
   func testShowGridMenuTogglesCanvasAndTracksUndoState() throws {
     let application = NSApplication.shared
+    let previousHelpMenu = application.helpMenu
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
     defer {
+      application.helpMenu = previousHelpMenu
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu

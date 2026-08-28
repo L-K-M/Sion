@@ -91,6 +91,22 @@ final class SceneArrangementTests: XCTestCase {
     XCTAssertEqual(firstGap, 35, accuracy: 0.000_001)
   }
 
+  func testDistributeUsesTheSelectionWideFarEdge() {
+    let frames = [
+      SionRect(x: 0, y: 0, width: 10, height: 10),
+      SionRect(x: 0, y: 0, width: 100, height: 10),
+      SionRect(x: 0, y: 0, width: 30, height: 10),
+    ]
+
+    let offsets = SceneArrangement.distributedOffsets(frames, axis: .horizontal)
+    let moved = zip(frames, offsets).map { $0.translated(by: $1) }
+
+    XCTAssertEqual(moved[0].minX, 0, accuracy: 0.000_001)
+    XCTAssertEqual(moved[2].maxX, 100, accuracy: 0.000_001)
+    XCTAssertEqual(moved[1].minX - moved[0].maxX, -20, accuracy: 0.000_001)
+    XCTAssertEqual(moved[2].minX - moved[1].maxX, -20, accuracy: 0.000_001)
+  }
+
   func testDistributeKeepsMembershipButReordersAlongAxis() {
     // Out-of-order input still distributes in sorted order.
     let frames = [

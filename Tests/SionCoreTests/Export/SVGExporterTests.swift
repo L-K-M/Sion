@@ -414,6 +414,17 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertFalse(group.contains("<text>outside</text>"))
   }
 
+  func testElementGroupIgnoresNonGroupTagPrefixes() throws {
+    let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000009"))
+    let source =
+      "<svg><g id=\"element-\(id)\"><glyph/><text>inside</text></g><text>outside</text></svg>"
+
+    let group = try elementGroup(id: id, in: source)
+
+    XCTAssertTrue(group.contains("<text>inside</text>"))
+    XCTAssertFalse(group.contains("<text>outside</text>"))
+  }
+
   func testNumberAttributeMatchesExactName() {
     let tag = Substring(#"<filter dx="9" x="-4" dy="8" y="-3">"#)
 

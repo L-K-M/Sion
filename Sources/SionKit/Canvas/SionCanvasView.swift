@@ -62,6 +62,7 @@
     private let editorController: SionEditorController
     private let connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider
     private let creationFailureFeedback: @MainActor () -> Void
+    private let pasteboard: NSPasteboard
     private var observerID: UUID?
     private var magnificationObservation: NSKeyValueObservation?
     private var drag: Drag?
@@ -71,6 +72,7 @@
     private var editingCanvasBounds: SionRect
     private var canvasExtent: CanvasExtent
     private var textRenderCache: [TextRenderKey: TextRender] = [:]
+    private var pasteboardValidation: PasteboardValidation?
 
     /// Everything that determines one measured text layout. Widths quantize
     /// to half points so a resize drag does not thrash the cache per pixel.
@@ -90,9 +92,15 @@
       let measuredHeight: CGFloat
     }
 
+    private struct PasteboardValidation {
+      let changeCount: Int
+      let isPasteable: Bool
+    }
+
     init(
       editorController: SionEditorController,
       creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() },
+      pasteboard: NSPasteboard = .general,
       connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
     ) {
       self.editorController = editorController
@@ -100,6 +108,7 @@
         connectorRouteProvider
         ?? { editorController.connectorRoute(for: $0) }
       self.creationFailureFeedback = creationFailureFeedback
+      self.pasteboard = pasteboard
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
         of: scene,
@@ -674,7 +683,7 @@
       case #selector(delete(_:)):
         return editorController.canDeleteSelection
       case #selector(paste(_:)):
-        return hasPasteableContent(in: .general)
+        return hasPasteableContent(in: pasteboard)
       case #selector(duplicate(_:)):
         return editorController.canDuplicateSelection
       case #selector(bringToFront(_:)):
@@ -710,7 +719,6 @@
 
     @objc func paste(_ sender: Any?) {
       let point = visibleCanvasCenter()
-      let pasteboard = NSPasteboard.general
 
       if pasteSelection(from: pasteboard, at: point) {
         return
@@ -731,12 +739,12 @@
     }
 
     @objc func copy(_ sender: Any?) {
-      _ = copySelection(to: .general)
+      _ = copySelection(to: pasteboard)
     }
 
     @objc func cut(_ sender: Any?) {
       guard editorController.canDeleteSelection else { return }
-      guard copySelection(to: .general) else { return }
+      guard copySelection(to: pasteboard) else { return }
 
       try? editorController.deleteSelection()
     }
@@ -1220,6 +1228,23 @@
     }
 
     private func hasPasteableContent(in pasteboard: NSPasteboard) -> Bool {
+      let changeCount = pasteboard.changeCount
+      if let pasteboardValidation,
+        pasteboardValidation.changeCount == changeCount
+      {
+        return pasteboardValidation.isPasteable
+      }
+
+      let isPasteable = pasteboardContainsAcceptedContent(pasteboard)
+      pasteboardValidation = PasteboardValidation(
+        changeCount: changeCount,
+        isPasteable: isPasteable
+      )
+      return isPasteable
+    }
+
+    /// Provider-backed data is read once per pasteboard revision.
+    private func pasteboardContainsAcceptedContent(_ pasteboard: NSPasteboard) -> Bool {
       if hasPasteableBinaryContent(in: pasteboard) {
         return true
       }

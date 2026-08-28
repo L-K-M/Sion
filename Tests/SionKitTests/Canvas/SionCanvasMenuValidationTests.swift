@@ -45,10 +45,8 @@ final class SionCanvasMenuValidationTests: XCTestCase {
   func testPasteValidationRequiresSupportedContent() throws {
     _ = NSApplication.shared
     let controller = try makeController(elements: [])
-    let canvas = SionCanvasView(editorController: controller)
-    let pasteboard = NSPasteboard.general
-    pasteboard.clearContents()
-    defer { pasteboard.clearContents() }
+    let pasteboard = testPasteboard()
+    let canvas = SionCanvasView(editorController: controller, pasteboard: pasteboard)
 
     XCTAssertFalse(canvas.editMenuItemIsEnabled(action: #selector(SionCanvasView.paste(_:))))
 
@@ -72,15 +70,13 @@ final class SionCanvasMenuValidationTests: XCTestCase {
   func testPasteValidationRejectsEmptySupportedFile() throws {
     _ = NSApplication.shared
     let controller = try makeController(elements: [])
-    let canvas = SionCanvasView(editorController: controller)
+    let pasteboard = testPasteboard()
+    let canvas = SionCanvasView(editorController: controller, pasteboard: pasteboard)
     let fileURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
       .appendingPathExtension(TestPasteboard.imageFileExtension)
     try Data().write(to: fileURL)
     defer { try? FileManager.default.removeItem(at: fileURL) }
-    let pasteboard = NSPasteboard.general
-    pasteboard.clearContents()
-    defer { pasteboard.clearContents() }
     XCTAssertTrue(pasteboard.writeObjects([fileURL as NSURL]))
 
     XCTAssertFalse(canvas.editMenuItemIsEnabled(action: #selector(SionCanvasView.paste(_:))))
@@ -96,12 +92,10 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     lockedChild.parentID = group.id
     lockedChild.lockState = .locked
     let controller = try makeController(elements: [group, lockedChild])
-    let canvas = SionCanvasView(editorController: controller)
+    let pasteboard = testPasteboard()
+    let canvas = SionCanvasView(editorController: controller, pasteboard: pasteboard)
     let document = controller.document
-    let pasteboard = NSPasteboard.general
-    pasteboard.clearContents()
     pasteboard.setString(TestPasteboard.existingText, forType: .string)
-    defer { pasteboard.clearContents() }
     controller.select(group.id)
 
     canvas.cut(nil)
@@ -118,10 +112,8 @@ final class SionCanvasMenuValidationTests: XCTestCase {
       elements: [element],
       didChange: { _ in changes += 1 }
     )
-    let canvas = SionCanvasView(editorController: controller)
-    let pasteboard = NSPasteboard.general
-    pasteboard.clearContents()
-    defer { pasteboard.clearContents() }
+    let pasteboard = testPasteboard()
+    let canvas = SionCanvasView(editorController: controller, pasteboard: pasteboard)
     controller.select(element.id)
 
     canvas.cut(nil)
@@ -188,6 +180,14 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     SceneElement.shape(
       id: ElementID(rawValue: UUID(uuidString: id)!),
       frame: SionRect(x: 0, y: 0, width: 50, height: 40)
+    )
+  }
+
+  private func testPasteboard() -> NSPasteboard {
+    NSPasteboard(
+      name: NSPasteboard.Name(
+        rawValue: "ch.lkmc.sion.tests.\(UUID().uuidString)"
+      )
     )
   }
 }

@@ -190,6 +190,32 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testZeroLengthDashPreservesGapAndRoundCap() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 100, y: 0)),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 10,
+        dashPattern: [0, 20],
+        lineCap: .round
+      )
+    )
+
+    XCTAssertFalse(ElementHitGeometry.contains(SionPoint(x: 10, y: 0), in: element))
+    XCTAssertTrue(ElementHitGeometry.contains(SionPoint(x: 20, y: 4), in: element))
+  }
+
   func testTinyDashPatternCompletesWithinInteractiveDeadline() {
     let frame = SionRect(x: 100, y: 200, width: 100, height: 100)
     let path = VectorPath(commands: [

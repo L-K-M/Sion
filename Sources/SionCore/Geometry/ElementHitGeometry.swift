@@ -21,7 +21,8 @@ package enum ElementHitGeometry {
     case .shape(let content):
       let hitExpansion = element.style.hitExpansion(tolerance: hitTolerance)
       let broadPhaseHit =
-        content.kind.passesNormalizedFrameBroadPhase(
+        element.style.hasVisibleArtwork
+        && content.kind.passesNormalizedFrameBroadPhase(
           localPoint,
           in: frame,
           expansion: hitExpansion
@@ -49,6 +50,8 @@ package enum ElementHitGeometry {
 
       return labelBounds.expanded(by: hitTolerance).contains(localPoint)
     case .path(let content):
+      guard element.style.hasVisibleArtwork else { return false }
+
       let hitExpansion = element.style.hitExpansion(tolerance: hitTolerance)
       guard
         content.path.passesNormalizedFrameBroadPhase(
@@ -1815,6 +1818,10 @@ extension VectorPath {
 }
 
 extension ElementStyle {
+  fileprivate var hasVisibleArtwork: Bool {
+    hasVisibleFill || visibleStroke != nil
+  }
+
   fileprivate var hasVisibleFill: Bool {
     guard opacity > 0 else { return false }
 

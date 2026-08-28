@@ -5,6 +5,7 @@ import XCTest
 final class ElementHitGeometryTests: XCTestCase {
   private static let interactiveHitDeadline = Duration.seconds(1)
   private static let largeSceneElementCount = 25_000
+  private static let maximumPathQueryCount = 1_000
 
   func testTransparentFrameCornersMissNonrectangularShapes() {
     let frame = SionRect(x: 120, y: 80, width: 160, height: 100)
@@ -1246,6 +1247,36 @@ final class ElementHitGeometryTests: XCTestCase {
     for element in [pathElement, customShape] {
       for _ in 0..<Self.largeSceneElementCount {
         XCTAssertFalse(ElementHitGeometry.contains(distantPoint, in: element))
+      }
+    }
+    let elapsed = started.duration(to: .now)
+
+    XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
+  }
+
+  func testMaximumUnpaintedPathsStayWithinInteractiveDeadline() {
+    var commands: [PathCommand] = [.move(to: .zero)]
+    for index in 1..<SceneLimits.maximumPathCommandCount {
+      commands.append(
+        .line(
+          to: SionPoint(
+            x: index.isMultiple(of: 2) ? 0 : 1,
+            y: 1
+          )
+        )
+      )
+    }
+    let frame = SionRect(x: 0, y: 0, width: 100, height: 100)
+    let path = VectorPath(commands: commands)
+    var pathElement = SceneElement.path(frame: frame, path: path)
+    pathElement.style = ElementStyle(fill: .none)
+    var customShape = SceneElement.shape(frame: frame, kind: .custom(path))
+    customShape.style = ElementStyle(fill: .none)
+
+    let started = ContinuousClock.now
+    for element in [pathElement, customShape] {
+      for _ in 0..<Self.maximumPathQueryCount {
+        XCTAssertFalse(ElementHitGeometry.contains(frame.center, in: element))
       }
     }
     let elapsed = started.duration(to: .now)

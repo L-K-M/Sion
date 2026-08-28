@@ -61,19 +61,30 @@ final class ElementHitGeometryTests: XCTestCase {
     ]
 
     for size in sizes {
-      let frame = SionRect(origin: SionPoint(x: 40, y: 30), size: size)
-      var cylinder = SceneElement.shape(frame: frame, kind: .cylinder)
-      cylinder.style = ElementStyle(
-        fill: .none,
-        stroke: StrokeStyle(color: .black, width: 4)
-      )
-      let arcHeight = frame.height * ShapeGeometryDefaults.cylinderArcFraction
-      let rimPoint = SionPoint(x: frame.center.x, y: frame.minY + (2 * arcHeight))
+      for rotation in [0.0, Double.pi / 3] {
+        let frame = SionRect(origin: SionPoint(x: 40, y: 30), size: size)
+        var cylinder = SceneElement.shape(frame: frame, kind: .cylinder)
+        cylinder.geometry.rotationRadians = rotation
+        cylinder.style = ElementStyle(
+          fill: .none,
+          stroke: StrokeStyle(color: .black, width: 4)
+        )
+        let arcHeight = frame.height * ShapeGeometryDefaults.cylinderArcFraction
+        let localRimPoint = SionPoint(
+          x: frame.center.x,
+          y: frame.minY + (2 * arcHeight)
+        )
+        let rimPoint = InteractionGeometry.rotated(
+          localRimPoint,
+          around: frame.center,
+          by: rotation
+        )
 
-      XCTAssertTrue(
-        ElementHitGeometry.contains(rimPoint, in: cylinder),
-        "Missing front rim hit for \(size)"
-      )
+        XCTAssertTrue(
+          ElementHitGeometry.contains(rimPoint, in: cylinder),
+          "Missing front rim hit for \(size), rotation \(rotation)"
+        )
+      }
     }
   }
 

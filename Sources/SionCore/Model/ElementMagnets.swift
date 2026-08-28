@@ -3,7 +3,17 @@ import Foundation
 extension SceneElement {
   /// Expands editing presets against the element's visible outline.
   public var expandedMagnets: [Magnet] {
-    MagnetResolver.magnets(
+    if case .shape(let shape) = content,
+      case .cylinder = shape.kind,
+      case .preset(.vertices) = magnetConfiguration
+    {
+      return MagnetResolver.magnets(
+        for: magnetConfiguration,
+        normalizedOutline: ShapeGeometryRecipe.cylinder.vertexMagnetOutline
+      )
+    }
+
+    return MagnetResolver.magnets(
       for: magnetConfiguration,
       normalizedOutline: normalizedMagnetOutline
     )
@@ -78,7 +88,9 @@ extension ShapeKind {
       return ElementMagnetOutlines.hexagon
     case .custom(let path):
       return path.normalizedMagnetOutline(for: size)
-    case .rectangle, .roundedRectangle, .ellipse, .capsule, .cylinder:
+    case .cylinder:
+      return ShapeGeometryRecipe.cylinder.magnetOutline
+    case .rectangle, .roundedRectangle, .ellipse, .capsule:
       return MagnetResolver.rectangleOutline
     }
   }

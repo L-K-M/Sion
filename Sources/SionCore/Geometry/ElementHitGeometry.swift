@@ -1498,6 +1498,31 @@ extension ShapeKind {
       return false
     }
 
+    if containsOuter(point, in: frame, style: style, tolerance: tolerance) {
+      return true
+    }
+
+    guard case .cylinder = self, style.visibleStroke != nil else {
+      return false
+    }
+
+    var detailStyle = style
+    detailStyle.fill = .none
+    return ShapeGeometryRecipe.cylinder.detailStrokes.contains { detail in
+      detail.flattened(in: frame).contains(
+        point,
+        style: detailStyle,
+        tolerance: tolerance
+      )
+    }
+  }
+
+  private func containsOuter(
+    _ point: SionPoint,
+    in frame: SionRect,
+    style: ElementStyle,
+    tolerance: Double
+  ) -> Bool {
     if let coarsePath = coarseFlattened(in: frame) {
       guard coarsePath.contains(point, style: style, tolerance: tolerance) else {
         return false
@@ -1659,7 +1684,7 @@ extension ShapeKind {
         maximumCurveSubdivisionDepth: maximumBuiltInCurveSubdivisionDepth
       )
     case .cylinder:
-      return cylinder(
+      return ShapeGeometryRecipe.cylinder.outerOutline.flattened(
         in: frame,
         maximumCurveSubdivisionDepth: maximumBuiltInCurveSubdivisionDepth
       )
@@ -1776,45 +1801,6 @@ extension ShapeKind {
     return builder.build(fillRule: .nonZero)
   }
 
-  private func cylinder(
-    in frame: SionRect,
-    maximumCurveSubdivisionDepth: Int
-  ) -> FlattenedPath {
-    let arcHeight = min(
-      frame.height * ShapeGeometryDefaults.cylinderArcFraction,
-      frame.height / 2
-    )
-    let horizontalControl = (frame.width / 2) * HitGeometryDefaults.arcControlFactor
-    let verticalControl = arcHeight * HitGeometryDefaults.arcControlFactor
-    var builder = FlattenedPathBuilder(
-      maximumCurveSubdivisionDepth: maximumCurveSubdivisionDepth
-    )
-    builder.move(to: SionPoint(x: frame.minX, y: frame.minY + arcHeight))
-    builder.cubic(
-      control1: SionPoint(x: frame.minX, y: frame.minY + arcHeight - verticalControl),
-      control2: SionPoint(x: frame.center.x - horizontalControl, y: frame.minY),
-      to: SionPoint(x: frame.center.x, y: frame.minY)
-    )
-    builder.cubic(
-      control1: SionPoint(x: frame.center.x + horizontalControl, y: frame.minY),
-      control2: SionPoint(x: frame.maxX, y: frame.minY + arcHeight - verticalControl),
-      to: SionPoint(x: frame.maxX, y: frame.minY + arcHeight)
-    )
-    builder.line(to: SionPoint(x: frame.maxX, y: frame.maxY - arcHeight))
-    builder.cubic(
-      control1: SionPoint(x: frame.maxX, y: frame.maxY - arcHeight + verticalControl),
-      control2: SionPoint(x: frame.center.x + horizontalControl, y: frame.maxY),
-      to: SionPoint(x: frame.center.x, y: frame.maxY)
-    )
-    builder.cubic(
-      control1: SionPoint(x: frame.center.x - horizontalControl, y: frame.maxY),
-      control2: SionPoint(x: frame.minX, y: frame.maxY - arcHeight + verticalControl),
-      to: SionPoint(x: frame.minX, y: frame.maxY - arcHeight)
-    )
-    builder.close()
-
-    return builder.build(fillRule: .nonZero)
-  }
 }
 
 extension VectorPath {
@@ -1981,7 +1967,10 @@ extension VectorPath {
     return finishActiveSubpath()
   }
 
-  fileprivate func flattened(in frame: SionRect) -> FlattenedPath {
+  fileprivate func flattened(
+    in frame: SionRect,
+    maximumCurveSubdivisionDepth: Int? = nil
+  ) -> FlattenedPath {
     let curveCount = commands.reduce(into: 0) { count, command in
       switch command {
       case .quadratic, .cubic:
@@ -1991,9 +1980,8 @@ extension VectorPath {
       }
     }
     var builder = FlattenedPathBuilder(
-      maximumCurveSubdivisionDepth: HitGeometryDefaults.subdivisionDepth(
-        curveCount: curveCount
-      )
+      maximumCurveSubdivisionDepth: maximumCurveSubdivisionDepth
+        ?? HitGeometryDefaults.subdivisionDepth(curveCount: curveCount)
     )
 
     func resolve(_ point: SionPoint) -> SionPoint {

@@ -50,6 +50,20 @@ final class SceneRenderGeometryTests: XCTestCase {
     )
   }
 
+  func testCylinderFrontRimStaysInsideOuterPaintedBounds() {
+    let frame = SionRect(x: 60, y: 40, width: 200, height: 80)
+    var cylinder = SceneElement.shape(frame: frame, kind: .cylinder)
+    cylinder.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 4)
+    )
+
+    XCTAssertEqual(
+      SceneRenderGeometry.unrotatedArtworkBounds(of: cylinder),
+      frame.expanded(by: 2)
+    )
+  }
+
   func testContentBoundsIncludeDistantShadow() {
     var shape = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 100, height: 100),

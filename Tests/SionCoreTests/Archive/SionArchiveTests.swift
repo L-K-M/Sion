@@ -277,6 +277,7 @@ final class SionArchiveTests: XCTestCase {
       frame: SionRect(x: 60, y: 40, width: 200, height: 80),
       kind: .cylinder
     )
+    cylinder.geometry.rotationRadians = .pi / 2
     cylinder.style = ElementStyle(
       fill: .none,
       stroke: StrokeStyle(color: .black, width: 4)
@@ -287,9 +288,16 @@ final class SionArchiveTests: XCTestCase {
 
     XCTAssertTrue(
       svg.contains(
+        "<path d=\"M60 50C60 44.477 104.772 40 160 40C215.228 40 260 44.477 260 50L260 110C260 115.523 215.228 120 160 120C104.772 120 60 115.523 60 110Z\""
+      )
+    )
+    XCTAssertTrue(
+      svg.contains(
         "<path d=\"M60 50C60 55.523 104.772 60 160 60C215.228 60 260 55.523 260 50\" fill=\"none\""
       )
     )
+    XCTAssertTrue(svg.contains("transform=\"rotate(90 160 80)\""))
+    XCTAssertTrue(svg.contains("stroke-width=\"4\""))
   }
 
   func testSVGTilesImagesAndHandlesExtremeShapeValues() throws {

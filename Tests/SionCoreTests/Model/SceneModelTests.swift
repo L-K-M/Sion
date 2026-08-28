@@ -151,12 +151,16 @@ final class SceneModelTests: XCTestCase {
       cylinder.expandedMagnets.map(\.normalizedPosition),
       [
         SionPoint(x: 0, y: arcFraction),
-        SionPoint(x: 0.5, y: 0),
         SionPoint(x: 1, y: arcFraction),
         SionPoint(x: 1, y: 1 - arcFraction),
-        SionPoint(x: 0.5, y: 1),
         SionPoint(x: 0, y: 1 - arcFraction),
+        SionPoint(x: 0.5, y: 0),
+        SionPoint(x: 0.5, y: 1),
       ]
+    )
+    XCTAssertEqual(
+      cylinder.expandedMagnets.map(\.id.rawValue),
+      ["vertex-0", "vertex-1", "vertex-2", "vertex-3", "vertex-4", "vertex-5"]
     )
   }
 

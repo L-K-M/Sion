@@ -767,9 +767,7 @@ private struct StrokeHitGeometry {
     _ point: SionPoint,
     in run: StrokeRun
   ) -> Bool? {
-    guard run.segments.allSatisfy({ $0.segment.length <= HitGeometryDefaults.epsilon }) else {
-      return nil
-    }
+    guard run.segments.isEmpty else { return nil }
 
     // A moveto paints nothing; an explicit zero-length subpath paints its cap.
     guard run.hasStrokeCommand, let origin = run.points.first else { return false }
@@ -960,33 +958,33 @@ private struct StrokeHitGeometry {
   }
 
   private func joinPoints(in run: StrokeRun) -> [StrokeJoin] {
-    let points = run.vertices
-    guard points.count >= 2 else { return [] }
+    let segments = run.segments
+    guard segments.count >= 2 else { return [] }
 
     if run.closure == .closed {
-      return points.indices.map { index in
+      return segments.indices.map { index in
         let previousIndex =
-          index == points.startIndex
-          ? points.index(before: points.endIndex) : points.index(before: index)
-        let nextIndex =
-          points.index(after: index) == points.endIndex
-          ? points.startIndex : points.index(after: index)
+          index == segments.startIndex
+          ? segments.index(before: segments.endIndex) : segments.index(before: index)
+        let incoming = segments[previousIndex].segment
+        let outgoing = segments[index].segment
 
         return StrokeJoin(
-          previous: points[previousIndex],
-          vertex: points[index],
-          next: points[nextIndex]
+          previous: incoming.start,
+          vertex: outgoing.start,
+          next: outgoing.end
         )
       }
     }
 
-    guard points.count >= 3 else { return [] }
+    return segments.indices.dropFirst().map { index in
+      let incoming = segments[segments.index(before: index)].segment
+      let outgoing = segments[index].segment
 
-    return points.indices.dropFirst().dropLast().map { index in
-      StrokeJoin(
-        previous: points[points.index(before: index)],
-        vertex: points[index],
-        next: points[points.index(after: index)]
+      return StrokeJoin(
+        previous: incoming.start,
+        vertex: outgoing.start,
+        next: outgoing.end
       )
     }
   }
@@ -1059,7 +1057,10 @@ private struct StrokeRun {
 
   init(subpath: FlattenedSubpath) {
     points = subpath.points
-    segments = subpath.strokeSegments
+    // Zero-length segments do not replace neighboring cap or join tangents.
+    segments = subpath.strokeSegments.filter {
+      $0.segment.length > HitGeometryDefaults.epsilon
+    }
     closure = subpath.closure
   }
 

@@ -261,9 +261,10 @@ and documented pixel tolerances.
 
 ### P1.8 Replace silent command failures with coherent feedback
 
-**Evidence.** Canvas and palettes often use `try?` plus `NSSound.beep()`.
-Rejected edits can leave controls showing values the model refused. Arrange
-logs and beeps, but most failures have no stable user-facing explanation.
+**Evidence.** Inspector controls now restore model values after a rejected
+semantic edit. Canvas and other palette paths still often use `try?` plus
+`NSSound.beep()`. Arrange logs and beeps, but most failures have no stable
+user-facing explanation.
 
 **Scope.** Add one typed editor-result/feedback channel. Roll controls back to
 model values and show a compact nonmodal banner with details or retry when

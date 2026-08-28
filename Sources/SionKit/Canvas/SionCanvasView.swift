@@ -1220,7 +1220,7 @@
     }
 
     private func hasPasteableContent(in pasteboard: NSPasteboard) -> Bool {
-      if pasteboard.availableType(from: PasteboardType.binaryPasteTypes) != nil {
+      if hasPasteableBinaryContent(in: pasteboard) {
         return true
       }
 
@@ -1231,6 +1231,20 @@
       guard let text = pasteboard.string(forType: .string) else { return false }
 
       return !text.isEmpty
+    }
+
+    private func hasPasteableBinaryContent(in pasteboard: NSPasteboard) -> Bool {
+      for type in PasteboardType.binaryPasteTypes {
+        guard let data = pasteboard.data(forType: type), !data.isEmpty,
+          data.count <= SionArchiveConstants.maximumEntryByteCount
+        else {
+          continue
+        }
+
+        return true
+      }
+
+      return false
     }
 
     private func pastedImageFile(
@@ -1252,6 +1266,7 @@
 
     private func pasteSelection(from pasteboard: NSPasteboard, at point: SionPoint) -> Bool {
       guard let data = pasteboard.data(forType: PasteboardType.selection),
+        !data.isEmpty,
         data.count <= SionArchiveConstants.maximumEntryByteCount
       else {
         return false
@@ -1275,6 +1290,7 @@
 
       for (pasteboardType, imageType) in ImagePasteType.preservedPasteboardTypes {
         guard let data = pasteboard.data(forType: pasteboardType),
+          !data.isEmpty,
           data.count <= SionArchiveConstants.maximumEntryByteCount
         else {
           continue
@@ -1302,6 +1318,7 @@
       }
 
       if let data = pasteboard.data(forType: .png),
+        !data.isEmpty,
         data.count <= SionArchiveConstants.maximumEntryByteCount
       {
         return insertPastedImage(data: data, type: .png, filename: nil, at: point)
@@ -1316,7 +1333,11 @@
       filename: String?,
       at point: SionPoint
     ) -> Bool {
-      guard data.count <= SionArchiveConstants.maximumEntryByteCount else { return false }
+      guard !data.isEmpty,
+        data.count <= SionArchiveConstants.maximumEntryByteCount
+      else {
+        return false
+      }
 
       Task { @MainActor [weak self] in
         let display = await Task.detached(priority: .userInitiated) {

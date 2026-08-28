@@ -1,5 +1,12 @@
 import Foundation
 
+@testable import SionCore
+
+let testArchiveGenerator = SionArchiveGenerator(
+  name: "SionCoreTests",
+  version: "1.0.0"
+)
+
 func testPNGData(width: UInt32 = 1, height: UInt32 = 1) -> Data {
   let encoded =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="

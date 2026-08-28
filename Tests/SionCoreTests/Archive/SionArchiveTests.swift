@@ -87,6 +87,29 @@ final class SionArchiveTests: XCTestCase {
     XCTAssertEqual(decoded, expected)
   }
 
+  func testArchiveWritesDeterministicGenerator() throws {
+    let encoded = try SionArchive.encode(
+      package: SionPackage(),
+      intent: .manual,
+      at: Date(timeIntervalSince1970: 1_787_830_522)
+    )
+    let entries = Dictionary(
+      uniqueKeysWithValues: try StoredZIPArchive.decode(encoded.data).map { ($0.path, $0.data) }
+    )
+    let manifest = try CanonicalJSON.decodeStrict(
+      SionManifest.self,
+      from: entries[SionArchiveConstants.manifestPath]!
+    )
+
+    XCTAssertEqual(
+      manifest.generator,
+      GeneratorDescriptor(
+        name: testArchiveGenerator.name,
+        version: testArchiveGenerator.version
+      )
+    )
+  }
+
   func testExistingHistoryDatesNormalizeBeforeCommit() throws {
     let fixture = try makeFixture()
     let sceneData = try CanonicalJSON.encode(

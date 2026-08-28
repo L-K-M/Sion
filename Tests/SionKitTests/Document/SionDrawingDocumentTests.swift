@@ -103,6 +103,29 @@ final class SionDrawingDocumentTests: XCTestCase {
     )
   }
 
+  func testSerializationWritesInjectedGenerator() throws {
+    let document = SionDrawingDocument(
+      archiveGenerator: DocumentArchiveFixture.generator
+    )
+
+    let data = try document.data(ofType: SionDrawingDocument.typeIdentifier)
+    let entries = Dictionary(
+      uniqueKeysWithValues: try StoredZIPArchive.decode(data).map { ($0.path, $0.data) }
+    )
+    let manifest = try CanonicalJSON.decodeStrict(
+      SionManifest.self,
+      from: entries[SionArchiveConstants.manifestPath]!
+    )
+
+    XCTAssertEqual(
+      manifest.generator,
+      GeneratorDescriptor(
+        name: DocumentArchiveFixture.generator.name,
+        version: DocumentArchiveFixture.generator.version
+      )
+    )
+  }
+
   func testSaveAsUpdatesWindowAndArchiveTitles() async throws {
     let document = SionDrawingDocument()
     document.makeWindowControllers()
@@ -221,6 +244,13 @@ final class SionDrawingDocumentTests: XCTestCase {
 
 private enum DocumentPreview {
   static let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+}
+
+private enum DocumentArchiveFixture {
+  static let generator = SionArchiveGenerator(
+    name: "SionKitTests",
+    version: "2.0.0"
+  )
 }
 
 private enum RevertFixture {

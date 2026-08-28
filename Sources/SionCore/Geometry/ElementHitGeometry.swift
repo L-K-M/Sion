@@ -212,30 +212,26 @@ private struct FlattenedPath {
 
 private struct FlattenedSubpath {
   let points: [SionPoint]
-  let segmentTangentDirectionDeltas: [Double]
+  let explicitStrokeSegments: [FlattenedStrokeSegment]
   let closure: SubpathClosure
   let approximationTolerance: Double
   let truncationTolerance: Double
   let dashPhaseUncertainty: Double
 
   var strokeSegments: [FlattenedStrokeSegment] {
-    guard points.count >= 2 else { return [] }
-
-    var result = zip(points, points.dropFirst()).enumerated().map { index, points in
-      FlattenedStrokeSegment(
-        segment: SionLineSegment(start: points.0, end: points.1),
-        tangentDirectionDelta: segmentTangentDirectionDeltas[index]
-      )
-    }
+    var result = explicitStrokeSegments
     if closure == .closed,
       points.first != points.last,
       let first = points.first,
       let last = points.last
     {
+      let direction = (first - last).normalized
       result.append(
         FlattenedStrokeSegment(
           segment: SionLineSegment(start: last, end: first),
-          tangentDirectionDelta: 0
+          tangentDirectionDelta: 0,
+          startTangentDirection: direction,
+          endTangentDirection: direction
         )
       )
     }
@@ -269,7 +265,7 @@ private struct FlattenedSubpath {
 private struct FlattenedPathBuilder {
   private var subpaths: [FlattenedSubpath] = []
   private var activePoints: [SionPoint] = []
-  private var activeSegmentTangentDirectionDeltas: [Double] = []
+  private var activeStrokeSegments: [FlattenedStrokeSegment] = []
   private var currentPoint: SionPoint?
   private var activeApproximationTolerance = 0.0
   private var activeTruncationTolerance = 0.0
@@ -285,18 +281,26 @@ private struct FlattenedPathBuilder {
   mutating func move(to point: SionPoint) {
     finishActivePath(closure: .open)
     activePoints = [point]
-    activeSegmentTangentDirectionDeltas = []
+    activeStrokeSegments = []
     currentPoint = point
   }
 
   mutating func line(to point: SionPoint) {
-    guard startActivePathIfNeeded() != nil else {
+    guard let start = startActivePathIfNeeded() else {
       move(to: point)
       return
     }
 
+    let direction = (point - start).normalized
+    activeStrokeSegments.append(
+      FlattenedStrokeSegment(
+        segment: SionLineSegment(start: start, end: point),
+        tangentDirectionDelta: 0,
+        startTangentDirection: direction,
+        endTangentDirection: direction
+      )
+    )
     activePoints.append(point)
-    activeSegmentTangentDirectionDeltas.append(0)
     currentPoint = point
   }
 
@@ -348,7 +352,7 @@ private struct FlattenedPathBuilder {
     subpaths.append(
       FlattenedSubpath(
         points: activePoints,
-        segmentTangentDirectionDeltas: activeSegmentTangentDirectionDeltas,
+        explicitStrokeSegments: activeStrokeSegments,
         closure: closure,
         approximationTolerance: activeApproximationTolerance,
         truncationTolerance: activeTruncationTolerance,
@@ -356,7 +360,7 @@ private struct FlattenedPathBuilder {
       )
     )
     activePoints = []
-    activeSegmentTangentDirectionDeltas = []
+    activeStrokeSegments = []
     activeApproximationTolerance = 0
     activeTruncationTolerance = 0
     activeDashPhaseUncertainty = 0
@@ -370,7 +374,7 @@ private struct FlattenedPathBuilder {
     guard let currentPoint else { return nil }
 
     activePoints = [currentPoint]
-    activeSegmentTangentDirectionDeltas = []
+    activeStrokeSegments = []
     return currentPoint
   }
 
@@ -492,14 +496,25 @@ private struct FlattenedPathBuilder {
       controlPolygonLength: start.distance(to: control) + control.distance(to: end),
       chordLength: start.distance(to: end)
     )
-    activePoints.append(end)
-    activeSegmentTangentDirectionDeltas.append(
-      maximumTangentDirectionDelta(
-        chord: end - start,
-        firstControlEdge: control - start,
-        secondControlEdge: end - control
+    activeStrokeSegments.append(
+      FlattenedStrokeSegment(
+        segment: SionLineSegment(start: start, end: end),
+        tangentDirectionDelta: maximumTangentDirectionDelta(
+          chord: end - start,
+          firstControlEdge: control - start,
+          secondControlEdge: end - control
+        ),
+        startTangentDirection: firstNonzeroDirection(
+          control - start,
+          end - start
+        ),
+        endTangentDirection: firstNonzeroDirection(
+          end - control,
+          end - start
+        )
       )
     )
+    activePoints.append(end)
   }
 
   private mutating func appendCubicLeaf(
@@ -519,15 +534,43 @@ private struct FlattenedPathBuilder {
         + control2.distance(to: end),
       chordLength: start.distance(to: end)
     )
-    activePoints.append(end)
-    activeSegmentTangentDirectionDeltas.append(
-      maximumTangentDirectionDelta(
-        chord: end - start,
-        firstControlEdge: control1 - start,
-        secondControlEdge: control2 - control1,
-        thirdControlEdge: end - control2
+    activeStrokeSegments.append(
+      FlattenedStrokeSegment(
+        segment: SionLineSegment(start: start, end: end),
+        tangentDirectionDelta: maximumTangentDirectionDelta(
+          chord: end - start,
+          firstControlEdge: control1 - start,
+          secondControlEdge: control2 - control1,
+          thirdControlEdge: end - control2
+        ),
+        startTangentDirection: firstNonzeroDirection(
+          control1 - start,
+          control2 - start,
+          end - start
+        ),
+        endTangentDirection: firstNonzeroDirection(
+          end - control2,
+          end - control1,
+          end - start
+        )
       )
     )
+    activePoints.append(end)
+  }
+
+  private func firstNonzeroDirection(
+    _ first: SionVector,
+    _ second: SionVector,
+    _ third: SionVector = .zero
+  ) -> SionVector {
+    if first.lengthSquared > 0 {
+      return first.normalized
+    }
+    if second.lengthSquared > 0 {
+      return second.normalized
+    }
+
+    return third.normalized
   }
 
   private func maximumTangentDirectionDelta(
@@ -676,9 +719,9 @@ private struct StrokeHitGeometry {
       let incoming = segments[segments.index(before: index)]
       if joinContains(
         point,
-        previous: incoming.segment.start,
         vertex: outgoing.segment.start,
-        next: outgoing.segment.end
+        incomingDirection: incoming.endTangentDirection,
+        outgoingDirection: outgoing.startTangentDirection
       ) {
         return true
       }
@@ -693,9 +736,9 @@ private struct StrokeHitGeometry {
 
     return joinContains(
       point,
-      previous: incoming.segment.start,
       vertex: outgoing.segment.start,
-      next: outgoing.segment.end
+      incomingDirection: incoming.endTangentDirection,
+      outgoingDirection: outgoing.startTangentDirection
     )
   }
 
@@ -750,7 +793,12 @@ private struct StrokeHitGeometry {
     }
 
     return joinPoints(in: run).contains { join in
-      joinContains(point, previous: join.previous, vertex: join.vertex, next: join.next)
+      joinContains(
+        point,
+        vertex: join.vertex,
+        incomingDirection: join.incomingDirection,
+        outgoingDirection: join.outgoingDirection
+      )
     }
   }
 
@@ -900,7 +948,9 @@ private struct StrokeHitGeometry {
           segment: flattenedSegment.segment,
           startDistance: distance,
           endDistance: distance + length,
-          tangentDirectionDelta: flattenedSegment.tangentDirectionDelta
+          tangentDirectionDelta: flattenedSegment.tangentDirectionDelta,
+          startTangentDirection: flattenedSegment.startTangentDirection,
+          endTangentDirection: flattenedSegment.endTangentDirection
         )
       )
       distance += length
@@ -911,12 +961,12 @@ private struct StrokeHitGeometry {
 
   private func joinContains(
     _ point: SionPoint,
-    previous: SionPoint,
     vertex: SionPoint,
-    next: SionPoint
+    incomingDirection: SionVector,
+    outgoingDirection: SionVector
   ) -> Bool {
-    let incoming = (vertex - previous).normalized
-    let outgoing = (next - vertex).normalized
+    let incoming = incomingDirection.normalized
+    let outgoing = outgoingDirection.normalized
     guard incoming.lengthSquared > 0, outgoing.lengthSquared > 0 else { return false }
 
     let turn = cross(incoming, outgoing)
@@ -961,25 +1011,25 @@ private struct StrokeHitGeometry {
         let previousIndex =
           index == segments.startIndex
           ? segments.index(before: segments.endIndex) : segments.index(before: index)
-        let incoming = segments[previousIndex].segment
-        let outgoing = segments[index].segment
+        let incoming = segments[previousIndex]
+        let outgoing = segments[index]
 
         return StrokeJoin(
-          previous: incoming.start,
-          vertex: outgoing.start,
-          next: outgoing.end
+          vertex: outgoing.segment.start,
+          incomingDirection: incoming.endTangentDirection,
+          outgoingDirection: outgoing.startTangentDirection
         )
       }
     }
 
     return segments.indices.dropFirst().map { index in
-      let incoming = segments[segments.index(before: index)].segment
-      let outgoing = segments[index].segment
+      let incoming = segments[segments.index(before: index)]
+      let outgoing = segments[index]
 
       return StrokeJoin(
-        previous: incoming.start,
-        vertex: outgoing.start,
-        next: outgoing.end
+        vertex: outgoing.segment.start,
+        incomingDirection: incoming.endTangentDirection,
+        outgoingDirection: outgoing.startTangentDirection
       )
     }
   }
@@ -1076,12 +1126,14 @@ private struct StrokeRun {
 private struct FlattenedStrokeSegment {
   let segment: SionLineSegment
   let tangentDirectionDelta: Double
+  let startTangentDirection: SionVector
+  let endTangentDirection: SionVector
 }
 
 private struct StrokeJoin {
-  let previous: SionPoint
   let vertex: SionPoint
-  let next: SionPoint
+  let incomingDirection: SionVector
+  let outgoingDirection: SionVector
 }
 
 private struct MeasuredStrokeSegment {
@@ -1089,6 +1141,8 @@ private struct MeasuredStrokeSegment {
   let startDistance: Double
   let endDistance: Double
   let tangentDirectionDelta: Double
+  let startTangentDirection: SionVector
+  let endTangentDirection: SionVector
 
   var length: Double {
     endDistance - startDistance

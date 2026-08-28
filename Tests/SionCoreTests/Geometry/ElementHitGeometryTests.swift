@@ -992,6 +992,42 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testCurvedMiterUsesEndpointTangentForSolidAndDashedStrokes() {
+    let vertex = SionPoint(x: 0.2, y: 0.2)
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .quadratic(control: SionPoint(x: 0, y: 0.2), to: vertex),
+        .line(to: SionPoint(x: -865.825, y: 500.2)),
+      ]
+    )
+    let dashPatterns: [[Double]] = [[], [10_000, 1]]
+    for dashPattern in dashPatterns {
+      var element = SceneElement.path(
+        frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+        path: path
+      )
+      element.style = ElementStyle(
+        fill: .none,
+        stroke: StrokeStyle(
+          color: .black,
+          width: 200,
+          dashPattern: dashPattern,
+          lineCap: .butt,
+          lineJoin: .miter
+        )
+      )
+
+      XCTAssertTrue(
+        ElementHitGeometry.contains(
+          SionPoint(x: vertex.x + 300, y: vertex.y - 75),
+          in: element
+        )
+      )
+    }
+  }
+
   func testSubepsilonTurnPreservesBevelGeometry() {
     let path = VectorPath(
       coordinateSpace: .localPoints,

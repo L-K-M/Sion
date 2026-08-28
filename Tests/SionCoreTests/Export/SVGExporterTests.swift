@@ -458,10 +458,11 @@ final class SVGExporterTests: XCTestCase {
 
     // Match the element's closing group, not a nested effect group.
     while depth > 0 {
-      let nextOpening = source.range(
-        of: "<g",
-        range: searchStart..<source.endIndex
-      )
+      let nextOpening = ["<g>", "<g "]
+        .compactMap {
+          source.range(of: $0, range: searchStart..<source.endIndex)
+        }
+        .min(by: { $0.lowerBound < $1.lowerBound })
       let nextClosing = try XCTUnwrap(
         source.range(of: "</g>", range: searchStart..<source.endIndex)
       )

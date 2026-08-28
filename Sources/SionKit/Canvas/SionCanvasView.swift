@@ -1678,7 +1678,7 @@
         nsColor(stroke.color).setStroke()
         path.lineWidth = CGFloat(stroke.width)
         let dashPattern = stroke.dashPattern.compactMap { value -> CGFloat? in
-          guard value.isFinite, value > 0 else { return nil }
+          guard value.isFinite, value >= 0 else { return nil }
 
           return CGFloat(value)
         }

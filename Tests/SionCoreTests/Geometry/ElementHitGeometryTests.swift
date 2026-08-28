@@ -190,7 +190,7 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
-  func testZeroLengthDashPreservesGapAndRoundCap() {
+  func testZeroLengthDashPreservesGapAndCap() {
     let path = VectorPath(
       coordinateSpace: .localPoints,
       commands: [
@@ -202,18 +202,29 @@ final class ElementHitGeometryTests: XCTestCase {
       frame: SionRect(x: 0, y: 0, width: 1, height: 1),
       path: path
     )
-    element.style = ElementStyle(
-      fill: .none,
-      stroke: StrokeStyle(
-        color: .black,
-        width: 10,
-        dashPattern: [0, 20],
-        lineCap: .round
-      )
-    )
+    let capExpectations: [(StrokeLineCap, Bool)] = [
+      (.butt, false),
+      (.round, true),
+      (.square, true),
+    ]
 
-    XCTAssertFalse(ElementHitGeometry.contains(SionPoint(x: 10, y: 0), in: element))
-    XCTAssertTrue(ElementHitGeometry.contains(SionPoint(x: 20, y: 4), in: element))
+    for (lineCap, expectsCap) in capExpectations {
+      element.style = ElementStyle(
+        fill: .none,
+        stroke: StrokeStyle(
+          color: .black,
+          width: 10,
+          dashPattern: [0, 20],
+          lineCap: lineCap
+        )
+      )
+
+      XCTAssertFalse(ElementHitGeometry.contains(SionPoint(x: 10, y: 0), in: element))
+      XCTAssertEqual(
+        ElementHitGeometry.contains(SionPoint(x: 20, y: 4), in: element),
+        expectsCap
+      )
+    }
   }
 
   func testTinyDashPatternCompletesWithinInteractiveDeadline() {

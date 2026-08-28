@@ -850,6 +850,10 @@ private struct StrokeHitGeometry {
     )
 
     for span in spans {
+      if span.isZeroLengthDash, stroke.lineCap == .butt {
+        continue
+      }
+
       let start = span.range.lowerBound - measuredSegment.startDistance
       let end = span.range.upperBound - measuredSegment.startDistance
       let startExtension = span.startsWithCap && stroke.lineCap == .square ? radius : 0
@@ -1104,6 +1108,7 @@ private struct DashPaintSpan {
   let range: ClosedRange<Double>
   let startsWithCap: Bool
   let endsWithCap: Bool
+  let isZeroLengthDash: Bool
 }
 
 private struct DashPattern {
@@ -1116,8 +1121,14 @@ private struct DashPattern {
       return nil
     }
 
-    var lengths = source.filter { $0.isFinite && $0 > 0 }
-    guard !lengths.isEmpty else { return nil }
+    guard source.allSatisfy({ $0.isFinite && $0 >= 0 }),
+      source.contains(where: { $0 > 0 })
+    else {
+      return nil
+    }
+
+    // Zero dashes preserve pattern parity and can still paint caps.
+    var lengths = source
 
     if !lengths.count.isMultiple(of: 2) {
       lengths += lengths
@@ -1184,6 +1195,7 @@ private struct DashPattern {
     uncertainty: Double
   ) -> [DashPaintSpan] {
     candidatePaintRanges(near: distance).compactMap { candidate in
+      let isZeroLengthDash = candidate.lowerBound == candidate.upperBound
       let pathStart = max(0, candidate.lowerBound - uncertainty)
       let pathEnd = min(pathLength, candidate.upperBound + uncertainty)
       guard pathStart <= pathEnd else { return nil }
@@ -1191,7 +1203,7 @@ private struct DashPattern {
       let start = max(segmentRange.lowerBound, pathStart)
       let end = min(segmentRange.upperBound, pathEnd)
       // A shared vertex belongs to the segment that contains painted length.
-      guard start < end else { return nil }
+      guard start < end || isZeroLengthDash && start == end else { return nil }
 
       let startsAtPaintBoundary = start == pathStart
       let endsAtPaintBoundary = end == pathEnd
@@ -1207,7 +1219,8 @@ private struct DashPattern {
       return DashPaintSpan(
         range: start...end,
         startsWithCap: startsWithCap,
-        endsWithCap: endsWithCap
+        endsWithCap: endsWithCap,
+        isZeroLengthDash: isZeroLengthDash
       )
     }
   }

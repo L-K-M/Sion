@@ -11,6 +11,8 @@
     let pixelSize: SionSize
   }
 
+  /// Runs decoding off the main actor and cooperatively cancels between stages.
+  /// An active ImageIO or Core Graphics call cannot be interrupted.
   struct SafeImageRenditionService: Sendable {
     typealias Build = @Sendable (Data) async -> SafeImageRendition?
 
@@ -18,15 +20,7 @@
 
     init() {
       build = { data in
-        let task = Task.detached(priority: .userInitiated) {
-          SafeImageRenditionBuilder.make(from: data)
-        }
-
-        return await withTaskCancellationHandler {
-          await task.value
-        } onCancel: {
-          task.cancel()
-        }
+        SafeImageRenditionBuilder.make(from: data)
       }
     }
 
@@ -37,7 +31,14 @@
     func make(from data: Data) async -> SafeImageRendition? {
       guard !Task.isCancelled else { return nil }
 
-      let rendition = await build(data)
+      let task = Task.detached(priority: .userInitiated) {
+        await build(data)
+      }
+      let rendition = await withTaskCancellationHandler {
+        await task.value
+      } onCancel: {
+        task.cancel()
+      }
       guard !Task.isCancelled else { return nil }
 
       return rendition
@@ -45,6 +46,7 @@
   }
 
   /// Downsamples imports through ImageIO before AppKit sees their pixels.
+  /// Returns nil if the current task is cancelled between decoding stages.
   enum SafeImageRenditionBuilder {
     static func make(from data: Data) -> SafeImageRendition? {
       guard !Task.isCancelled,

@@ -19,7 +19,7 @@ final class SionCanvasImagePasteTests: XCTestCase {
     let service = SafeImageRenditionService(build: { _ in
       started.fulfill()
       await gate.wait()
-      await cancellation.record(Task.isCancelled)
+      await cancellation.observeCurrentTask()
       resumed.fulfill()
       return rendition
     })
@@ -43,10 +43,13 @@ final class SionCanvasImagePasteTests: XCTestCase {
     await gate.open()
 
     await fulfillment(of: [resumed])
-    await fulfillment(of: [unexpectedChange], timeout: 0.1)
-    let observedCancellation = await cancellation.observedCancellation
+    await fulfillment(
+      of: [unexpectedChange],
+      timeout: ImagePasteTestTiming.noDocumentChangeTimeout
+    )
+    let cancellationObservation = await cancellation.observation
 
-    XCTAssertTrue(observedCancellation)
+    XCTAssertEqual(cancellationObservation, .cancelled)
     XCTAssertTrue(controller.document.scene.elements.isEmpty)
   }
 
@@ -80,11 +83,21 @@ final class SionCanvasImagePasteTests: XCTestCase {
 }
 
 private actor CancellationRecord {
-  private(set) var observedCancellation = false
+  private(set) var observation = CancellationObservation.pending
 
-  func record(_ isCancelled: Bool) {
-    observedCancellation = isCancelled
+  func observeCurrentTask() {
+    observation = Task.isCancelled ? .cancelled : .active
   }
+}
+
+private enum CancellationObservation {
+  case active
+  case cancelled
+  case pending
+}
+
+private enum ImagePasteTestTiming {
+  static let noDocumentChangeTimeout: TimeInterval = 0.5
 }
 
 private actor ImageRenditionGate {

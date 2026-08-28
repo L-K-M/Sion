@@ -65,6 +65,30 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     XCTAssertTrue(canvas.editMenuItemIsEnabled(action: #selector(SionCanvasView.paste(_:))))
   }
 
+  func testCutDoesNotReplaceClipboardWhenDeletionCannotRun() throws {
+    _ = NSApplication.shared
+    let group = SceneElement.group(
+      id: ElementID(rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!),
+      frame: SionRect(x: 0, y: 0, width: 100, height: 100)
+    )
+    var lockedChild = shape(id: "00000000-0000-0000-0000-000000000002")
+    lockedChild.parentID = group.id
+    lockedChild.lockState = .locked
+    let controller = try makeController(elements: [group, lockedChild])
+    let canvas = SionCanvasView(editorController: controller)
+    let document = controller.document
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    pasteboard.setString(TestPasteboard.existingText, forType: .string)
+    defer { pasteboard.clearContents() }
+    controller.select(group.id)
+
+    canvas.cut(nil)
+
+    XCTAssertEqual(controller.document, document)
+    XCTAssertEqual(pasteboard.string(forType: .string), TestPasteboard.existingText)
+  }
+
   func testArrangeExtremeShortcutsDoNotClaimWindowTabChords() throws {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
@@ -74,10 +98,7 @@ final class SionCanvasMenuValidationTests: XCTestCase {
       application.windowsMenu = previousWindowsMenu
     }
 
-    let delegate = SionApplicationDelegate()
-    delegate.applicationDidFinishLaunching(
-      Notification(name: NSApplication.didFinishLaunchingNotification)
-    )
+    SionMainMenu.install()
 
     let arrangeMenu = try XCTUnwrap(
       application.mainMenu?.item(withTitle: TestMenu.arrange)?.submenu
@@ -120,6 +141,7 @@ private enum TestMenu {
 }
 
 private enum TestPasteboard {
+  static let existingText = "Existing clipboard"
   static let unsupported = NSPasteboard.PasteboardType("example.unsupported")
 }
 

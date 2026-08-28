@@ -44,8 +44,8 @@ public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
 }
 
 @MainActor
-private enum SionMainMenu {
-  static func install() {
+package enum SionMainMenu {
+  package static func install() {
     let menu = NSMenu()
     menu.addItem(applicationMenu())
     menu.addItem(fileMenu())

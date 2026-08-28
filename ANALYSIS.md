@@ -463,10 +463,10 @@ sound-only.
 ### P2.8 Replace the fixed Library with shapes, styles, and stencils
 
 **Evidence.** `ShapeKind` renders eight built-in primitives plus custom paths.
-The toolbar exposes rounded rectangle and ellipse; Library adds diamond. Plain
-rectangle, triangle, hexagon, capsule, cylinder, and custom paths have no
-creation surface. There are no reusable stencils, recent colors, favorites, or
-style tokens.
+The toolbar exposes rounded rectangle and ellipse; Library exposes all eight
+built-in primitives at the viewport center. Custom paths have no creation
+surface. There are no reusable stencils, recent colors, favorites, or style
+tokens.
 
 **Scope.** Build a searchable keyboard-accessible icon grid for every built-in
 shape, then add drag-to-place, recent/favorite styles, reusable user stencils,
@@ -615,11 +615,12 @@ and D3 framing terms.
 
 ### P2.16 Honor Mermaid direction and topology
 
-**Evidence.** `MermaidImporter` recognizes flowchart/graph headers but ignores
-the header's TB/TD/BT/LR/RL direction token; `MermaidLayout` always uses a
-three-column row-major grid. Unsupported, malformed, and unparsed statements
-are skipped without import diagnostics. Subgraphs and arrow variants such as
-`==>` and `-.->` are ignored or flattened.
+**Evidence.** `MermaidImporter` honors TB/TD/BT/LR/RL direction in its simple
+order-based grid, but does not rank nodes from graph topology. Unsupported,
+malformed, and unparsed statements are skipped without import diagnostics.
+Subgraphs and arrow variants such as `==>` and `-.->` are ignored or flattened.
+Valid same-line statements after a header are rejected as a whole rather than
+partially imported.
 
 **Scope.** Build a deterministic layered graph layout: rank by topology, order
 to reduce crossings, honor direction, reserve node/label bounds, and define a
@@ -640,13 +641,15 @@ The same engine can seed X1.
 
 ### P2.17 Complete native app integration
 
-**Evidence.** Standard Settings, Open Recent, Revert, Help, Find/Spelling, Page
+**Evidence.** Standard Settings, Open Recent, Help, Find/Spelling, Page
 Setup, and Print flows are incomplete. The Services submenu is registered for
 AppKit-managed providers. Window minimum size, localization hooks,
 signing/notarization/update strategy, sandbox/file access, and
 strict-concurrency migration remain open; `Package.swift` uses Swift 5 language
 mode under a Swift 6.3.3 toolchain. Save As now keeps the native display name
 and archived title synchronized without dirtying the document.
+Revert to Saved now routes through `NSDocument`; archive reads discard pending
+inline edits and restore canvas focus.
 
 **Scope.** Add responder-chain menus and native panels in small PRs. Decide the
 sandbox/security-scoped bookmark model, then configure Developer ID signing,

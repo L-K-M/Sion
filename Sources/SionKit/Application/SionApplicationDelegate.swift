@@ -8,8 +8,12 @@ public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
     super.init()
   }
 
-  public func applicationDidFinishLaunching(_ notification: Notification) {
+  public func applicationWillFinishLaunching(_ notification: Notification) {
+    // Install before AppKit discovers system-managed menu roles.
     SionMainMenu.install()
+  }
+
+  public func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.activate(ignoringOtherApps: true)
 
     guard documentController.documents.isEmpty else {
@@ -61,6 +65,14 @@ private enum SionMainMenu {
     submenu.addItem(
       item("About Sion", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
     submenu.addItem(.separator())
+
+    let servicesMenu = NSMenu(title: "Services")
+    submenu.addItem(parentItem(title: servicesMenu.title, submenu: servicesMenu))
+    submenu.addItem(.separator())
+
+    // AppKit populates the registered submenu from available services.
+    NSApp.servicesMenu = servicesMenu
+
     submenu.addItem(item("Hide Sion", action: #selector(NSApplication.hide(_:)), key: "h"))
     submenu.addItem(
       item(

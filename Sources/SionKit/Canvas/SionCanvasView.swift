@@ -717,7 +717,9 @@
         return editorController.canRevealHiddenElements
       case #selector(toggleGridVisibility(_:)):
         menuItem.state = editorController.gridVisibility == .visible ? .on : .off
-        return true
+
+        // Text editing owns the active model gesture; defer the grid command.
+        return textEditor == nil
       default:
         return true
       }

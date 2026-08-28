@@ -396,6 +396,39 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testUncertainClosedDashKeepsPossibleCapAtSeam() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 100, y: 0)),
+        .quadratic(
+          control: SionPoint(x: 150, y: 100),
+          to: SionPoint(x: 200, y: 0)
+        ),
+        .line(to: .zero),
+        .close,
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 10,
+        dashPattern: [447.87, 1_000],
+        lineCap: .square,
+        lineJoin: .bevel
+      )
+    )
+
+    // The true curve length enters the gap, leaving a square cap at the seam.
+    XCTAssertTrue(ElementHitGeometry.contains(SionPoint(x: -4, y: 0), in: element))
+  }
+
   func testExplicitClosingLineKeepsMiterAtSeam() {
     let frame = SionRect(x: 0, y: 0, width: 100, height: 100)
     let path = VectorPath(commands: [

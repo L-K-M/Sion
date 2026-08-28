@@ -120,7 +120,14 @@ final class SionApplicationDelegateTests: XCTestCase {
     let servicesItem = try XCTUnwrap(applicationMenu.item(withTitle: "Services"))
     let servicesMenu = try XCTUnwrap(servicesItem.submenu)
 
-    XCTAssertTrue(application.servicesMenu === servicesMenu)
+    let roleMenu = application.servicesMenu
+    XCTAssertTrue(
+      roleMenu === servicesMenu,
+      "DIAG role="
+        + (roleMenu.map { "\($0) super=\($0.supermenu.map(String.init(describing:)) ?? "nil")" }
+          ?? "nil")
+        + " item=" + String(describing: servicesMenu)
+        + " itemSuper=" + (servicesMenu.supermenu.map(String.init(describing:)) ?? "nil"))
     let hideItem = try XCTUnwrap(applicationMenu.item(withTitle: "Hide Sion"))
     XCTAssertLessThan(
       applicationMenu.index(of: servicesItem),

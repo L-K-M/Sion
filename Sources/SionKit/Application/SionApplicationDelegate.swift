@@ -83,7 +83,11 @@ private enum SionMainMenu {
     // its previous owner first so no attached menu is re-parented.
     var servicesMenu = applicationMenu.servicesMenu
     if let attached = NSApp.servicesMenu, attached !== servicesMenu {
-      attached.supermenu?.submenu = nil
+      // Release the role's menu from any previous owner item before adopting
+      // it; assigning an attached menu to our item would throw.
+      if let ownerMenu = attached.supermenu {
+        ownerMenu.items.first { $0.submenu === attached }?.submenu = nil
+      }
       servicesMenu = attached
     }
     if applicationMenu.servicesItem.submenu !== servicesMenu {

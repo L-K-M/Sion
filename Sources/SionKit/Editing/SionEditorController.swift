@@ -154,6 +154,7 @@
     }
 
     var document: SionDocument { editor.document }
+    var gridVisibility: GridVisibility { editor.document.scene.canvas.grid.visibility }
 
     var selectedElements: [SceneElement] {
       editor.document.scene.elements.filter { selection.contains($0.id) }
@@ -307,6 +308,22 @@
         name: "Reveal All",
         commands: hidden.flatMap(revealCommands)
       )
+    }
+
+    func toggleGridVisibility() throws {
+      var canvas = editor.document.scene.canvas
+      let actionName: String
+
+      switch canvas.grid.visibility {
+      case .hidden:
+        canvas.grid.visibility = .visible
+        actionName = EditorActionName.showGrid
+      case .visible:
+        canvas.grid.visibility = .hidden
+        actionName = EditorActionName.hideGrid
+      }
+
+      try perform(name: actionName, command: .setCanvas(canvas))
     }
 
     var canDuplicateSelection: Bool {
@@ -1682,6 +1699,8 @@
 
   private enum EditorActionName {
     static let editText = "Edit Text"
+    static let hideGrid = "Hide Grid"
+    static let showGrid = "Show Grid"
   }
 
   private struct PendingTextEdit {

@@ -594,15 +594,18 @@
       editorController.selectAll()
     }
 
-    /// Arrange actions throw on validation failures; surface them audibly
-    /// instead of silently doing nothing.
+    /// Semantic actions throw on validation failures; surface them audibly.
     private func attemptEdit(_ action: () throws -> Void) {
       do {
         try action()
       } catch {
-        NSLog("Arrange action failed: %@", String(describing: error))
+        NSLog("Edit action failed: %@", String(describing: error))
         NSSound.beep()
       }
+    }
+
+    @objc func toggleGridVisibility(_ sender: Any?) {
+      attemptEdit { try editorController.toggleGridVisibility() }
     }
 
     @objc func duplicate(_ sender: Any?) {
@@ -712,6 +715,11 @@
         return editorController.canHideSelection
       case #selector(revealHiddenElements(_:)):
         return editorController.canRevealHiddenElements
+      case #selector(toggleGridVisibility(_:)):
+        menuItem.state = editorController.gridVisibility == .visible ? .on : .off
+
+        // Text editing owns the active model gesture; defer the grid command.
+        return textEditor == nil
       default:
         return true
       }

@@ -142,6 +142,8 @@ private enum SionMainMenu {
     submenu.addItem(item("Actual Size", action: AppAction.actualSize, key: "0"))
     submenu.addItem(item("Zoom to Fit", action: AppAction.zoomToFit, key: "1"))
     submenu.addItem(.separator())
+    submenu.addItem(item("Show Grid", action: AppAction.toggleGridVisibility))
+    submenu.addItem(.separator())
     submenu.addItem(
       item("Inspector", action: AppAction.showInspector, key: "i", modifiers: [.command, .option]))
     submenu.addItem(
@@ -216,6 +218,7 @@ private enum AppAction {
   static let showHistory = Selector(("showHistory:"))
   static let showInspector = Selector(("showInspector:"))
   static let showLibrary = Selector(("showLibrary:"))
+  static let toggleGridVisibility = Selector(("toggleGridVisibility:"))
   static let undo = Selector(("undo:"))
   static let unlockSelection = Selector(("unlockSelection:"))
   static let zoomIn = Selector(("zoomIn:"))

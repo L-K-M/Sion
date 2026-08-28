@@ -24,7 +24,7 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
 
   func testEscapeRestoresCursorAfterUntouchedMove() throws {
     _ = NSApplication.shared
-    let fixture = try makeFixture(for: .move, hostedInDocumentWindow: false)
+    let fixture = try makeFixture(for: .move, host: .detached)
     let previousCursor = NSCursor.current
     defer { previousCursor.set() }
 
@@ -46,7 +46,7 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
     for dragKind in GestureDragKind.allCases where dragKind.usesEditorGesture {
       XCTContext.runActivity(named: dragKind.rawValue) { _ in
         do {
-          let fixture = try makeFixture(for: dragKind, hostedInDocumentWindow: false)
+          let fixture = try makeFixture(for: dragKind, host: .detached)
           try beginDrag(fixture)
 
           XCTAssertNotEqual(fixture.controller.document, fixture.documentBeforeDrag)
@@ -71,7 +71,7 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
 
   func testCancelOperationStepsFromTextToAnchorsToSelection() throws {
     _ = NSApplication.shared
-    let fixture = try makeFixture(for: .move, hostedInDocumentWindow: false)
+    let fixture = try makeFixture(for: .move, host: .detached)
     fixture.controller.select(fixture.targetID)
 
     fixture.canvas.beginTextEditing(fixture.targetID)
@@ -103,10 +103,7 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
     of dragKind: GestureDragKind,
     after loss: GestureLoss
   ) throws {
-    let fixture = try makeFixture(
-      for: dragKind,
-      hostedInDocumentWindow: loss.requiresDocumentWindow
-    )
+    let fixture = try makeFixture(for: dragKind, host: loss.fixtureHost)
     defer { fixture.windowController?.close() }
 
     try beginDrag(fixture)
@@ -241,7 +238,7 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
 
   private func makeFixture(
     for kind: GestureDragKind,
-    hostedInDocumentWindow: Bool
+    host: GestureFixtureHost
   ) throws -> GestureFixture {
     let target = SceneElement.shape(
       frame: GestureTestGeometry.targetFrame,
@@ -265,12 +262,13 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
     let points = kind.points(in: target.geometry.frame)
     let windowController: SionDocumentWindowController?
     let canvas: SionCanvasView
-    if hostedInDocumentWindow {
-      let host = SionDocumentWindowController(editorController: controller)
-      let scrollView = try XCTUnwrap(host.window?.contentView as? NSScrollView)
+    switch host {
+    case .documentWindow:
+      let windowHost = SionDocumentWindowController(editorController: controller)
+      let scrollView = try XCTUnwrap(windowHost.window?.contentView as? NSScrollView)
       canvas = try XCTUnwrap(scrollView.documentView as? SionCanvasView)
-      windowController = host
-    } else {
+      windowController = windowHost
+    case .detached:
       canvas = SionCanvasView(
         editorController: controller,
         creationFailureFeedback: {}
@@ -469,14 +467,19 @@ private enum GestureLoss: String, CaseIterable {
   case windowResign
   case missingMouseUp
 
-  var requiresDocumentWindow: Bool {
+  var fixtureHost: GestureFixtureHost {
     switch self {
     case .responderChange, .windowResign:
-      true
+      .documentWindow
     case .escape, .externalUndo, .missingMouseUp:
-      false
+      .detached
     }
   }
+}
+
+private enum GestureFixtureHost {
+  case detached
+  case documentWindow
 }
 
 private struct GestureFixture {

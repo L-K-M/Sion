@@ -637,14 +637,16 @@ The same engine can seed X1.
 
 ### P2.17 Complete native app integration
 
-**Evidence.** Standard Settings, Help, Find/Spelling, Page Setup, and Print
-flows are incomplete. `NSDocumentController` documents automatic Open Recent
+**Evidence.** Standard Settings, Help, Page Setup, and Print flows are
+incomplete. `NSDocumentController` documents automatic Open Recent
 insertion, but a native finished-launch probe found that a plain programmatic
 submenu is not populated. A retained menu delegate now reads AppKit's document
 history at display time and routes opening and clearing through the document
 controller. Launch coverage injects URL/open/clear dependencies without
 mutating persistent recent state. The Services submenu is registered for
-AppKit-managed providers. Window minimum size, localization hooks,
+AppKit-managed providers. Find and one-shot spelling commands work in the active
+inline text editor; document-wide search/replacement and persistent spelling
+preferences remain open. Window minimum size, localization hooks,
 signing/notarization/update strategy, sandbox/file access, and
 strict-concurrency migration remain open; `Package.swift` uses Swift 5 language
 mode under a Swift 6.3.3 toolchain. Save As now keeps the native display name

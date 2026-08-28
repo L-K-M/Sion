@@ -736,6 +736,12 @@
         return editorController.canHideSelection
       case #selector(revealHiddenElements(_:)):
         return editorController.canRevealHiddenElements
+      case #selector(NSResponder.performTextFinderAction(_:)),
+        #selector(NSTextView.centerSelectionInVisibleArea(_:)),
+        #selector(NSText.showGuessPanel(_:)),
+        #selector(NSText.checkSpelling(_:)):
+        // The active NSTextView owns text commands; a bare canvas must not claim them.
+        return false
       case #selector(toggleGridVisibility(_:)):
         menuItem.state = editorController.gridVisibility == .visible ? .on : .off
 
@@ -804,6 +810,8 @@
       let frame = textEditingFrame(for: element).insetBy(dx: -2, dy: -2)
       let textView = NSTextView(frame: NSRect(origin: .zero, size: frame.size))
       textView.isRichText = false
+      // A panel preserves the small transient editor's content area.
+      textView.usesFindPanel = true
       textView.autoresizingMask = [.width, .height]
       configureTextEditor(textView, text: text, element: element, frame: frame)
 

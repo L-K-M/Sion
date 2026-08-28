@@ -425,6 +425,57 @@
   private final class LibraryPaletteController: NSViewController, PaletteContent {
     typealias Target = SionDocumentWindowController
 
+    private enum LibraryShape: Int, CaseIterable {
+      case rectangle
+      case roundedRectangle
+      case ellipse
+      case diamond
+      case triangle
+      case hexagon
+      case capsule
+      case cylinder
+
+      var title: String {
+        switch self {
+        case .rectangle: "Rectangle"
+        case .roundedRectangle: "Rounded Rectangle"
+        case .ellipse: "Ellipse"
+        case .diamond: "Diamond"
+        case .triangle: "Triangle"
+        case .hexagon: "Hexagon"
+        case .capsule: "Capsule"
+        case .cylinder: "Cylinder"
+        }
+      }
+
+      var symbolName: String {
+        switch self {
+        case .rectangle: "rectangle"
+        case .roundedRectangle: "rectangle.rounded"
+        case .ellipse: "circle"
+        case .diamond: "diamond"
+        case .triangle: "triangle"
+        case .hexagon: "hexagon"
+        case .capsule: "capsule"
+        case .cylinder: "cylinder"
+        }
+      }
+
+      var kind: ShapeKind {
+        switch self {
+        case .rectangle: .rectangle
+        case .roundedRectangle:
+          .roundedRectangle(radius: SceneElementDefaults.cornerRadius)
+        case .ellipse: .ellipse
+        case .diamond: .diamond
+        case .triangle: .triangle
+        case .hexagon: .hexagon
+        case .capsule: .capsule
+        case .cylinder: .cylinder
+        }
+      }
+    }
+
     private weak var target: SionDocumentWindowController?
 
     override func loadView() {
@@ -433,17 +484,26 @@
       stack.alignment = .leading
       stack.spacing = InspectorMetrics.spacing
       stack.edgeInsets = InspectorMetrics.insets
-      stack.addArrangedSubview(
-        libraryButton(
-          "Rounded Rectangle", symbol: "rectangle.rounded", action: #selector(addRoundedRectangle)))
-      stack.addArrangedSubview(
-        libraryButton("Ellipse", symbol: "circle", action: #selector(addEllipse)))
-      stack.addArrangedSubview(
-        libraryButton("Diamond", symbol: "diamond", action: #selector(addDiamond)))
+
+      for shape in LibraryShape.allCases {
+        stack.addArrangedSubview(libraryButton(for: shape))
+      }
+
       stack.addArrangedSubview(
         libraryButton("Text", symbol: "textformat", action: #selector(addText)))
-      stack.addArrangedSubview(NSView())
-      view = stack
+
+      // The fixed-height palette keeps every labeled entry keyboard reachable.
+      let scrollView = NSScrollView()
+      scrollView.hasVerticalScroller = true
+      scrollView.documentView = stack
+      stack.translatesAutoresizingMaskIntoConstraints = false
+      NSLayoutConstraint.activate([
+        stack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+        stack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+        stack.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+        stack.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+      ])
+      view = scrollView
     }
 
     func retarget(to target: SionDocumentWindowController?) {
@@ -453,27 +513,13 @@
       }
     }
 
-    @objc private func addRoundedRectangle() {
-      guard let target else { return }
+    @objc private func addShape(_ sender: NSButton) {
+      guard let target, let shape = LibraryShape(rawValue: sender.tag) else { return }
 
       _ = try? target.paletteEditorController.insertShape(
         centeredAt: target.canvasVisibleCenter,
-        kind: .roundedRectangle(radius: SceneElementDefaults.cornerRadius)
+        kind: shape.kind
       )
-    }
-
-    @objc private func addEllipse() {
-      guard let target else { return }
-
-      _ = try? target.paletteEditorController.insertShape(
-        centeredAt: target.canvasVisibleCenter, kind: .ellipse)
-    }
-
-    @objc private func addDiamond() {
-      guard let target else { return }
-
-      _ = try? target.paletteEditorController.insertShape(
-        centeredAt: target.canvasVisibleCenter, kind: .diamond)
     }
 
     @objc private func addText() {
@@ -489,6 +535,16 @@
       }
 
       target.beginTextEditing(id)
+    }
+
+    private func libraryButton(for shape: LibraryShape) -> NSButton {
+      let button = libraryButton(
+        shape.title,
+        symbol: shape.symbolName,
+        action: #selector(addShape(_:))
+      )
+      button.tag = shape.rawValue
+      return button
     }
 
     private func libraryButton(_ title: String, symbol: String, action: Selector) -> NSButton {

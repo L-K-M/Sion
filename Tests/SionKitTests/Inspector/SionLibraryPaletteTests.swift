@@ -61,11 +61,11 @@ final class SionLibraryPaletteTests: XCTestCase {
     let lastButton = try XCTUnwrap(buttons.last)
     let bottomOrigin = NSPoint(
       x: scrollView.contentView.bounds.minX,
-      y: max(stack.bounds.minY, stack.bounds.maxY - scrollView.documentVisibleRect.height)
+      y: max(stack.bounds.minY, stack.bounds.maxY - scrollView.contentView.bounds.height)
     )
     scrollView.contentView.scroll(to: bottomOrigin)
     scrollView.reflectScrolledClipView(scrollView.contentView)
-    let visibleRect = scrollView.documentVisibleRect
+    let visibleRect = scrollView.contentView.bounds
 
     XCTAssertLessThanOrEqual(visibleRect.minY, lastButton.frame.minY)
     XCTAssertGreaterThanOrEqual(visibleRect.maxY, lastButton.frame.maxY)

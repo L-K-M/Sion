@@ -56,6 +56,13 @@ final class ArchiveMutationTests: XCTestCase {
     )
   }
 
+  func testErrorIdentityDistinguishesArchiveFailures() {
+    XCTAssertNotEqual(
+      errorIdentity(SionArchiveError.invalidMimetype),
+      errorIdentity(SionArchiveError.sceneDescriptorMismatch)
+    )
+  }
+
   private func encodedArchive() throws -> Data {
     try SionArchive.encode(
       package: SionPackage(),

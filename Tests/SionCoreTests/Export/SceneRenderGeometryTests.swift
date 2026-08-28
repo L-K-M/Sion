@@ -173,6 +173,40 @@ final class SceneRenderGeometryTests: XCTestCase {
     )
   }
 
+  func testPaintedBoundsAddPositiveSpreadToBlurExtent() {
+    let accuracy = 0.001
+    let spread = 15.0
+    var combined = SceneElement.shape(
+      frame: SionRect(x: 40, y: 60, width: 100, height: 80),
+      kind: .rectangle
+    )
+    combined.style = ElementStyle(
+      fill: .solid(.black),
+      shadows: [
+        ShadowStyle(
+          color: .black,
+          offset: .zero,
+          blurRadius: 20,
+          spread: spread
+        )
+      ]
+    )
+    var blurOnly = combined
+    blurOnly.style.shadows[0].spread = 0
+
+    let combinedBounds = SceneRenderGeometry.paintedBounds(of: combined)
+    let blurOnlyBounds = SceneRenderGeometry.paintedBounds(of: blurOnly)
+
+    XCTAssertEqual(combinedBounds.width, blurOnlyBounds.width + (spread * 2), accuracy: accuracy)
+    XCTAssertEqual(
+      combinedBounds.height,
+      blurOnlyBounds.height + (spread * 2),
+      accuracy: accuracy
+    )
+    XCTAssertEqual(combinedBounds.minX, blurOnlyBounds.minX - spread, accuracy: accuracy)
+    XCTAssertEqual(combinedBounds.minY, blurOnlyBounds.minY - spread, accuracy: accuracy)
+  }
+
   func testRotatedShadowBoundsCoverCanvasAndSVGOffsets() {
     var shape = SceneElement.shape(
       frame: SionRect(x: 100, y: 80, width: 40, height: 80),

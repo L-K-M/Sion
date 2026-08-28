@@ -176,6 +176,49 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     XCTAssertFalse(canvas.editMenuItemIsEnabled(action: #selector(SionCanvasView.paste(_:))))
   }
 
+  func testLossyMermaidPasteReportsSourcePreservation() throws {
+    _ = NSApplication.shared
+    let controller = try makeController(elements: [])
+    let pasteboard = testPasteboard()
+    var feedback: [SionEditorFeedback] = []
+    let canvas = SionCanvasView(
+      editorController: controller,
+      editorFeedback: { feedback.append($0) },
+      pasteboard: pasteboard
+    )
+    pasteboard.setString(TestPasteboard.lossyMermaid, forType: .string)
+
+    canvas.paste(nil)
+
+    XCTAssertEqual(
+      feedback,
+      [.mermaidSourcePreserved(.omissions(firstLine: 3, count: 1))]
+    )
+    let inserted = try XCTUnwrap(controller.document.scene.elements.first)
+    guard case .text(let text) = inserted.content else {
+      return XCTFail("Expected preserved source text")
+    }
+    XCTAssertEqual(text.string, TestPasteboard.lossyMermaid)
+  }
+
+  func testCompleteMermaidPasteDoesNotReportFeedback() throws {
+    _ = NSApplication.shared
+    let controller = try makeController(elements: [])
+    let pasteboard = testPasteboard()
+    var feedback: [SionEditorFeedback] = []
+    let canvas = SionCanvasView(
+      editorController: controller,
+      editorFeedback: { feedback.append($0) },
+      pasteboard: pasteboard
+    )
+    pasteboard.setString(TestPasteboard.completeMermaid, forType: .string)
+
+    canvas.paste(nil)
+
+    XCTAssertTrue(feedback.isEmpty)
+    XCTAssertEqual(controller.document.scene.elements.count, 3)
+  }
+
   func testCutDoesNotReplaceClipboardWhenDeletionCannotRun() throws {
     _ = NSApplication.shared
     let group = SceneElement.group(
@@ -420,8 +463,17 @@ private enum TestAction {
 }
 
 private enum TestPasteboard {
+  static let completeMermaid = """
+    flowchart LR
+      A --> B
+    """
   static let existingText = "Existing clipboard"
   static let imageFileExtension = "png"
+  static let lossyMermaid = """
+    flowchart LR
+      A --> B
+      style A fill:#fff
+    """
   static let selection = NSPasteboard.PasteboardType("ch.lkmc.sion.selection")
   static let unsupported = NSPasteboard.PasteboardType("example.unsupported")
 }

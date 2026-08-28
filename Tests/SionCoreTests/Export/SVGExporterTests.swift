@@ -274,6 +274,29 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertTrue(groupMarkup.contains("<text "))
   }
 
+  func testEveryBlendModeUsesItsSVGCompositingValue() throws {
+    let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000011"))
+
+    for blendMode in BlendMode.allCases {
+      var shape = SceneElement.shape(
+        id: id,
+        frame: SionRect(x: 20, y: 20, width: 120, height: 80),
+        kind: .rectangle
+      )
+      shape.style = ElementStyle(fill: .solid(.black), blendMode: blendMode)
+
+      let svg = try export([shape])
+      let group = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
+
+      XCTAssertTrue(
+        group.text.contains(
+          "style=\"\(SVGCompositingSpec.blendModeProperty):\(SVGCompositingSpec.value(for: blendMode))\""
+        ),
+        blendMode.rawValue
+      )
+    }
+  }
+
   func testLinearGradientPreservesAuthoredSRGBDefinition() throws {
     var shape = SceneElement.shape(
       frame: SionRect(x: 20, y: 20, width: 120, height: 80),
@@ -572,4 +595,22 @@ private enum SVGFilterSpec {
   static let widthAttribute = "width"
   static let xAttribute = "x"
   static let yAttribute = "y"
+}
+
+private enum SVGCompositingSpec {
+  static let blendModeProperty = "mix-blend-mode"
+
+  static func value(for blendMode: BlendMode) -> String {
+    switch blendMode {
+    case .normal: normalValue
+    case .multiply: multiplyValue
+    case .screen: screenValue
+    case .overlay: overlayValue
+    }
+  }
+
+  private static let multiplyValue = "multiply"
+  private static let normalValue = "normal"
+  private static let overlayValue = "overlay"
+  private static let screenValue = "screen"
 }

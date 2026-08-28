@@ -57,7 +57,7 @@ final class SionCanvasRenderingTests: XCTestCase {
     XCTAssertEqual(overlap.blueComponent, fill.blueComponent, accuracy: colorAccuracy)
   }
 
-  func testOverlayUsesTheOverlayBlendEquation() throws {
+  func testEveryBlendModeMatchesCoreGraphicsReference() throws {
     var backdrop = SceneElement.shape(
       frame: SionRect(x: 60, y: 40, width: 200, height: 160),
       kind: .rectangle
@@ -66,20 +66,28 @@ final class SionCanvasRenderingTests: XCTestCase {
       fill: .solid(SionColor(red: 0.25, green: 0.25, blue: 0.25))
     )
 
-    var overlay = SceneElement.shape(
+    var foreground = SceneElement.shape(
       frame: SionRect(x: 90, y: 70, width: 140, height: 100),
       kind: .rectangle
     )
-    overlay.style = ElementStyle(
-      fill: .solid(SionColor(red: 0.8, green: 0.8, blue: 0.8)),
-      blendMode: .overlay
+    foreground.style = ElementStyle(
+      fill: .solid(SionColor(red: 0.8, green: 0.8, blue: 0.8))
     )
 
     let point = SionPoint(x: 160, y: 120)
-    let actual = try pixel(in: render(elements: [backdrop, overlay]), at: point)
-    let expected = try overlayReferenceColor(at: point)
 
-    assertEqual(actual, expected)
+    for blendMode in BlendMode.allCases {
+      try XCTContext.runActivity(named: blendMode.rawValue) { _ in
+        foreground.style.blendMode = blendMode
+        let actual = try pixel(
+          in: render(elements: [backdrop, foreground]),
+          at: point
+        )
+        let expected = try blendReferenceColor(blendMode, at: point)
+
+        assertEqual(actual, expected, file: #filePath, line: #line)
+      }
+    }
   }
 
   func testZeroOpacitySuppressesEveryArtworkKind() throws {
@@ -760,7 +768,10 @@ final class SionCanvasRenderingTests: XCTestCase {
     NSBitmapImageRep(cgImage: try XCTUnwrap(context.makeImage()))
   }
 
-  private func overlayReferenceColor(at point: SionPoint) throws -> NSColor {
+  private func blendReferenceColor(
+    _ blendMode: BlendMode,
+    at point: SionPoint
+  ) throws -> NSColor {
     let graphics = try bitmapContext(
       width: Int(canvasSize.width),
       height: Int(canvasSize.height)
@@ -778,10 +789,19 @@ final class SionCanvasRenderingTests: XCTestCase {
     graphics.setFillColor(
       NSColor(srgbRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).cgColor
     )
-    graphics.setBlendMode(.overlay)
+    graphics.setBlendMode(coreGraphicsBlendMode(blendMode))
     graphics.fill(bounds)
 
     return try pixel(in: XCTUnwrap(graphics.makeImage()), at: point)
+  }
+
+  private func coreGraphicsBlendMode(_ blendMode: BlendMode) -> CGBlendMode {
+    switch blendMode {
+    case .normal: .normal
+    case .multiply: .multiply
+    case .screen: .screen
+    case .overlay: .overlay
+    }
   }
 
   private func pixel(in image: CGImage, at point: SionPoint) throws -> NSColor {

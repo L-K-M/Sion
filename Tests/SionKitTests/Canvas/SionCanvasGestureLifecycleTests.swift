@@ -40,6 +40,35 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
     XCTAssertEqual(fixture.controller.document, fixture.documentBeforeDrag)
   }
 
+  func testNewMouseDownReplacesMissedEditorDrag() {
+    _ = NSApplication.shared
+
+    for dragKind in GestureDragKind.allCases where dragKind.usesEditorGesture {
+      XCTContext.runActivity(named: dragKind.rawValue) { _ in
+        do {
+          let fixture = try makeFixture(for: dragKind, hostedInDocumentWindow: false)
+          try beginDrag(fixture)
+
+          XCTAssertNotEqual(fixture.controller.document, fixture.documentBeforeDrag)
+
+          fixture.canvas.mouseDown(
+            with: try mouseEvent(.leftMouseDown, fixture: fixture, at: fixture.start)
+          )
+
+          XCTAssertEqual(fixture.controller.document, fixture.documentBeforeDrag)
+          XCTAssertTrue(fixture.controller.hasPendingEditorGesture)
+
+          fixture.canvas.cancelOperation(nil)
+
+          XCTAssertEqual(fixture.controller.document, fixture.documentBeforeDrag)
+          XCTAssertFalse(fixture.controller.hasPendingEditorGesture)
+        } catch {
+          XCTFail("Gesture fixture failed: \(error)")
+        }
+      }
+    }
+  }
+
   func testCancelOperationStepsFromTextToAnchorsToSelection() throws {
     _ = NSApplication.shared
     let fixture = try makeFixture(for: .move, hostedInDocumentWindow: false)

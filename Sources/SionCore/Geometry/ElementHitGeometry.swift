@@ -695,8 +695,13 @@ private struct StrokeHitGeometry {
       return containsPoint
     }
 
-    let segments = measuredSegments(in: subpath)
+    guard let segments = measuredSegments(in: subpath) else {
+      return contains(point, in: run)
+    }
     guard let pathLength = segments.last?.endDistance else { return false }
+    guard dashPattern.preservesPhasePrecision(upTo: pathLength) else {
+      return contains(point, in: run)
+    }
 
     let seamState = dashSeamState(
       in: subpath,
@@ -947,25 +952,28 @@ private struct StrokeHitGeometry {
     return false
   }
 
-  private func measuredSegments(in subpath: FlattenedSubpath) -> [MeasuredStrokeSegment] {
+  private func measuredSegments(in subpath: FlattenedSubpath) -> [MeasuredStrokeSegment]? {
     var distance = 0.0
     var result: [MeasuredStrokeSegment] = []
 
     for flattenedSegment in subpath.strokeSegments {
       let length = flattenedSegment.segment.length
       guard length > 0 else { continue }
+      let endDistance = distance + length
+      // Collapsed cumulative length makes later dash phase unknowable.
+      guard endDistance.isFinite, endDistance > distance else { return nil }
 
       result.append(
         MeasuredStrokeSegment(
           segment: flattenedSegment.segment,
           startDistance: distance,
-          endDistance: distance + length,
+          endDistance: endDistance,
           tangentDirectionDelta: flattenedSegment.tangentDirectionDelta,
           startTangentDirection: flattenedSegment.startTangentDirection,
           endTangentDirection: flattenedSegment.endTangentDirection
         )
       )
-      distance += length
+      distance = endDistance
     }
 
     return result
@@ -1170,6 +1178,7 @@ private struct DashPaintSpan {
 
 private struct DashPattern {
   private let cumulativeEnds: [Double]
+  private let minimumPositiveLength: Double
   private let positivePaintRanges: [ClosedRange<Double>]
   private let period: Double
 
@@ -1193,6 +1202,7 @@ private struct DashPattern {
     }
 
     var total = 0.0
+    var minimumPositiveLength = Double.infinity
     var ends: [Double] = []
     var paintRanges: [ClosedRange<Double>] = []
     ends.reserveCapacity(lengths.count)
@@ -1201,6 +1211,12 @@ private struct DashPattern {
       let start = total
       total += length
       guard total.isFinite else { return nil }
+      if length > 0 {
+        // Collapsed boundaries cannot preserve renderer dash phase.
+        guard total > start else { return nil }
+
+        minimumPositiveLength = min(minimumPositiveLength, length)
+      }
 
       ends.append(total)
       if index.isMultiple(of: 2), length > 0 {
@@ -1210,8 +1226,14 @@ private struct DashPattern {
     guard total > 0 else { return nil }
 
     cumulativeEnds = ends
+    self.minimumPositiveLength = minimumPositiveLength
     positivePaintRanges = paintRanges
     period = total
+  }
+
+  func preservesPhasePrecision(upTo distance: Double) -> Bool {
+    let scale = max(period, max(0, distance))
+    return scale + minimumPositiveLength > scale
   }
 
   func mayPaintContinuously(

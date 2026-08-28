@@ -312,7 +312,7 @@ final class ElementHitGeometryTests: XCTestCase {
       .line(to: SionPoint(x: 1, y: 0.5)),
     ])
     var element = SceneElement.path(frame: frame, path: path)
-    let validSubpixelDashLength = 0.000_01
+    let validSubpixelDashLength = Double.ulpOfOne
     element.style = ElementStyle(
       fill: .none,
       stroke: StrokeStyle(
@@ -368,6 +368,68 @@ final class ElementHitGeometryTests: XCTestCase {
     let paintedVertex = SionPoint(x: Double(curveCount - 1) * curveWidth, y: 0)
 
     XCTAssertTrue(ElementHitGeometry.contains(paintedVertex, in: element, tolerance: 2))
+  }
+
+  func testCollapsedAccumulatedLineLengthKeepsPaintedDashSelectable() {
+    let tinyLength = 0.000_000_01
+    let terminalCommands: [PathCommand] = [
+      .line(to: .zero),
+      .line(to: SionPoint(x: -tinyLength, y: 0)),
+    ]
+    var commands: [PathCommand] = [
+      .move(to: .zero),
+      .line(to: SionPoint(x: SceneLimits.maximumCoordinateMagnitude, y: 0)),
+    ]
+    let availableSegmentCount =
+      SceneLimits.maximumPathCommandCount - commands.count - terminalCommands.count
+    // An odd count ends at x=1 and puts the terminal segment in a painted dash.
+    let accumulationSegmentCount =
+      availableSegmentCount.isMultiple(of: 2)
+      ? availableSegmentCount - 1 : availableSegmentCount
+    for index in 0..<accumulationSegmentCount {
+      commands.append(
+        .line(
+          to: SionPoint(
+            x: index.isMultiple(of: 2) ? 1 : SceneLimits.maximumCoordinateMagnitude,
+            y: 0
+          )
+        )
+      )
+    }
+    commands += terminalCommands
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: commands
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: tinyLength / 16,
+        dashPattern: [1, 1],
+        lineCap: .butt,
+        lineJoin: .bevel
+      )
+    )
+    let paintedPoint = SionPoint(x: -(tinyLength * 0.75), y: 0)
+    var withoutTinySegment = element
+    withoutTinySegment.content = .path(
+      PathContent(
+        path: VectorPath(
+          coordinateSpace: .localPoints,
+          commands: Array(path.commands.dropLast())
+        )
+      )
+    )
+    XCTAssertFalse(
+      ElementHitGeometry.contains(paintedPoint, in: withoutTinySegment)
+    )
+
+    XCTAssertTrue(ElementHitGeometry.contains(paintedPoint, in: element))
   }
 
   func testCurveLengthUncertaintyKeepsDistantDashGapClear() {

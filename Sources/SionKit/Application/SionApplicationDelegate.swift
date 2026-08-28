@@ -73,6 +73,7 @@ private enum SionMainMenu {
     menu.addItem(arrangeMenu())
     menu.addItem(viewMenu())
     menu.addItem(windowMenu())
+    menu.addItem(helpMenu())
     NSApp.mainMenu = menu
   }
 
@@ -251,6 +252,21 @@ private enum SionMainMenu {
     submenu.addItem(item("Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:))))
     NSApp.windowsMenu = submenu
     return parentItem(title: "Window", submenu: submenu)
+  }
+
+  private static func helpMenu() -> NSMenuItem {
+    let submenu = NSMenu(title: "Help")
+    let helpItem = item(
+      "Sion Help",
+      action: #selector(NSApplication.showHelp(_:)),
+      key: "?"
+    )
+    helpItem.target = NSApp
+    submenu.addItem(helpItem)
+
+    // AppKit adds its menu search UI and opens the registered help book.
+    NSApp.helpMenu = submenu
+    return parentItem(title: submenu.title, submenu: submenu)
   }
 
   private static func parentItem(title: String, submenu: NSMenu) -> NSMenuItem {

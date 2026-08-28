@@ -113,7 +113,59 @@ private enum SionMainMenu {
     submenu.addItem(item("Delete", action: AppAction.delete, key: "\u{8}", modifiers: []))
     submenu.addItem(.separator())
     submenu.addItem(item("Select All", action: AppAction.selectAll, key: "a"))
+    submenu.addItem(.separator())
+    submenu.addItem(findMenu())
+    submenu.addItem(spellingMenu())
     return parentItem(title: "Edit", submenu: submenu)
+  }
+
+  private static func findMenu() -> NSMenuItem {
+    let submenu = NSMenu(title: "Find")
+    submenu.addItem(
+      finderItem("Find…", action: .showFindInterface, key: "f")
+    )
+    submenu.addItem(
+      finderItem("Find Next", action: .nextMatch, key: "g")
+    )
+    submenu.addItem(
+      finderItem(
+        "Find Previous",
+        action: .previousMatch,
+        key: "g",
+        modifiers: [.command, .shift]
+      )
+    )
+    submenu.addItem(.separator())
+    submenu.addItem(
+      finderItem("Use Selection for Find", action: .setSearchString, key: "e")
+    )
+    submenu.addItem(
+      item(
+        "Jump to Selection",
+        action: #selector(NSTextView.centerSelectionInVisibleArea(_:)),
+        key: "j"
+      )
+    )
+    return parentItem(title: submenu.title, submenu: submenu)
+  }
+
+  private static func spellingMenu() -> NSMenuItem {
+    let submenu = NSMenu(title: "Spelling and Grammar")
+    submenu.addItem(
+      item(
+        "Show Spelling and Grammar",
+        action: #selector(NSText.showGuessPanel(_:)),
+        key: ":"
+      )
+    )
+    submenu.addItem(
+      item(
+        "Check Document Now",
+        action: #selector(NSText.checkSpelling(_:)),
+        key: ";"
+      )
+    )
+    return parentItem(title: submenu.title, submenu: submenu)
   }
 
   private static func arrangeMenu() -> NSMenuItem {
@@ -195,6 +247,23 @@ private enum SionMainMenu {
   ) -> NSMenuItem {
     let menuItem = NSMenuItem(title: title, action: action, keyEquivalent: key)
     menuItem.keyEquivalentModifierMask = key.isEmpty ? [] : modifiers
+    return menuItem
+  }
+
+  private static func finderItem(
+    _ title: String,
+    action: NSTextFinder.Action,
+    key: String,
+    modifiers: NSEvent.ModifierFlags = [.command]
+  ) -> NSMenuItem {
+    // NSTextView owns searching; the tag selects its AppKit operation.
+    let menuItem = item(
+      title,
+      action: #selector(NSResponder.performTextFinderAction(_:)),
+      key: key,
+      modifiers: modifiers
+    )
+    menuItem.tag = action.rawValue
     return menuItem
   }
 }

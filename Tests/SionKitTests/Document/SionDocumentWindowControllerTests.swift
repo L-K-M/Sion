@@ -106,10 +106,44 @@ final class SionDocumentWindowControllerTests: XCTestCase {
       NSWindow.removeFrame(usingName: autosaveName)
     }
     let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    let magnificationBeforeShow = scrollView.magnification
 
     windowController.showWindow(nil)
 
-    XCTAssertLessThan(scrollView.magnification, ZoomTestCommand.actualSizeMagnification)
+    XCTAssertNotEqual(
+      scrollView.magnification,
+      magnificationBeforeShow,
+      accuracy: InitialFitTestGeometry.magnificationAccuracy
+    )
+  }
+
+  func testInitialFitRetriesAfterVisibleViewportBecomesUsable() throws {
+    _ = NSApplication.shared
+    let windowController = try makeInitialFitWindowController()
+    let window = try XCTUnwrap(windowController.window)
+    let autosaveName = isolateFrameAutosave(for: window)
+    defer {
+      windowController.close()
+      NSWindow.removeFrame(usingName: autosaveName)
+    }
+    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    let magnificationBeforeShow = scrollView.magnification
+
+    window.setContentSize(.zero)
+    windowController.showWindow(nil)
+    XCTAssertEqual(
+      scrollView.magnification,
+      magnificationBeforeShow,
+      accuracy: InitialFitTestGeometry.magnificationAccuracy
+    )
+
+    window.setContentSize(InitialFitTestGeometry.windowContentSize)
+
+    XCTAssertNotEqual(
+      scrollView.magnification,
+      magnificationBeforeShow,
+      accuracy: InitialFitTestGeometry.magnificationAccuracy
+    )
   }
 
   func testInitialFitDoesNotOverrideSubsequentZoomCommand() throws {

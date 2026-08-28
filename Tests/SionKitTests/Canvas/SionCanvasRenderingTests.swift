@@ -472,7 +472,7 @@ final class SionCanvasRenderingTests: XCTestCase {
     selection: Set<ElementID> = [],
     connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil,
     colorSpace: CGColorSpace? = nil
-  ) throws -> NSBitmapImageRep {
+  ) throws -> CGImage {
     _ = NSApplication.shared
     let scene = SionScene(
       canvas: SionCanvas(
@@ -512,7 +512,7 @@ final class SionCanvasRenderingTests: XCTestCase {
     graphics.scaleBy(x: 1, y: -1)
     canvas.draw(canvas.bounds)
     context.flushGraphics()
-    return try bitmapRepresentation(from: graphics)
+    return try XCTUnwrap(graphics.makeImage())
   }
 
   private func bitmapContext(
@@ -539,17 +539,7 @@ final class SionCanvasRenderingTests: XCTestCase {
   }
 
   private func bitmapRepresentation(from context: CGContext) throws -> NSBitmapImageRep {
-    let image = try XCTUnwrap(context.makeImage())
-    let bitmap = NSBitmapImageRep(cgImage: image)
-    guard
-      let colorSpace = image.colorSpace,
-      let appKitColorSpace = NSColorSpace(cgColorSpace: colorSpace)
-    else {
-      return bitmap
-    }
-
-    // The AppKit initializer otherwise retags CG pixels as generic RGB.
-    return bitmap.retagging(with: appKitColorSpace) ?? bitmap
+    NSBitmapImageRep(cgImage: try XCTUnwrap(context.makeImage()))
   }
 
   private func overlayReferenceColor(at point: SionPoint) throws -> NSColor {
@@ -573,14 +563,54 @@ final class SionCanvasRenderingTests: XCTestCase {
     graphics.setBlendMode(.overlay)
     graphics.fill(bounds)
 
-    return try pixel(in: bitmapRepresentation(from: graphics), at: point)
+    return try pixel(in: XCTUnwrap(graphics.makeImage()), at: point)
   }
 
-  private func pixel(in image: NSBitmapImageRep, at point: SionPoint) throws -> NSColor {
-    let color = try XCTUnwrap(
-      image.colorAt(x: Int(point.x), y: Int(point.y))
-    )
-    return try XCTUnwrap(color.usingColorSpace(.sRGB))
+  private func pixel(in image: CGImage, at point: SionPoint) throws -> NSColor {
+    let pixelX = min(max(0, Int(point.x)), image.width - 1)
+    let pixelY = min(max(0, Int(point.y)), image.height - 1)
+    let sourceY = image.height - pixelY - 1
+    let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+    var components = [UInt8](repeating: 0, count: TestBitmap.componentsPerPixel)
+
+    return try components.withUnsafeMutableBytes { bytes in
+      let context = try XCTUnwrap(
+        CGContext(
+          data: bytes.baseAddress,
+          width: 1,
+          height: 1,
+          bitsPerComponent: TestBitmap.bitsPerComponent,
+          bytesPerRow: TestBitmap.componentsPerPixel,
+          space: colorSpace,
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+      )
+      context.interpolationQuality = .none
+      context.setBlendMode(.copy)
+      context.translateBy(x: CGFloat(-pixelX), y: CGFloat(-sourceY))
+      context.draw(
+        image,
+        in: CGRect(
+          x: 0,
+          y: 0,
+          width: CGFloat(image.width),
+          height: CGFloat(image.height)
+        )
+      )
+
+      let values = bytes.bindMemory(to: UInt8.self)
+      let alpha = CGFloat(values[3]) / 255
+      guard alpha > 0 else {
+        return NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0)
+      }
+
+      return NSColor(
+        srgbRed: (CGFloat(values[0]) / 255) / alpha,
+        green: (CGFloat(values[1]) / 255) / alpha,
+        blue: (CGFloat(values[2]) / 255) / alpha,
+        alpha: alpha
+      )
+    }
   }
 
   private func assertEqual(
@@ -622,15 +652,27 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
   }
 
-  private func renderedPixels(_ image: NSBitmapImageRep) throws -> Data {
-    let bytes = try XCTUnwrap(image.bitmapData)
-    let visibleBytesPerRow = image.pixelsWide * image.samplesPerPixel
-    var pixels = Data(capacity: visibleBytesPerRow * image.pixelsHigh)
+  private func renderedPixels(_ image: CGImage) throws -> Data {
+    let context = try bitmapContext(width: image.width, height: image.height)
+    context.setBlendMode(.copy)
+    context.draw(
+      image,
+      in: CGRect(
+        x: 0,
+        y: 0,
+        width: CGFloat(image.width),
+        height: CGFloat(image.height)
+      )
+    )
 
-    // NSBitmapImageRep leaves row-padding bytes uninitialized.
-    for row in 0..<image.pixelsHigh {
+    let bytes = try XCTUnwrap(context.data)
+      .assumingMemoryBound(to: UInt8.self)
+    let visibleBytesPerRow = image.width * TestBitmap.componentsPerPixel
+    var pixels = Data(capacity: visibleBytesPerRow * image.height)
+
+    for row in 0..<image.height {
       pixels.append(
-        bytes.advanced(by: row * image.bytesPerRow),
+        bytes.advanced(by: row * context.bytesPerRow),
         count: visibleBytesPerRow
       )
     }
@@ -651,4 +693,5 @@ final class SionCanvasRenderingTests: XCTestCase {
 
 private enum TestBitmap {
   static let bitsPerComponent = 8
+  static let componentsPerPixel = 4
 }

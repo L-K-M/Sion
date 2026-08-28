@@ -296,12 +296,8 @@
 
     /// One name edit applies atomically across the current selection.
     func renameSelection(_ name: String?) throws {
+      guard canRenameSelection else { return }
       let elements = selectedElements
-      guard !elements.isEmpty,
-        elements.allSatisfy({ $0.lockState == .editable })
-      else {
-        return
-      }
 
       let commands = elements.compactMap { element -> SceneCommand? in
         guard element.name != name else { return nil }

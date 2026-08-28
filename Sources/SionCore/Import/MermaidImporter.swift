@@ -98,7 +98,8 @@ public enum MermaidImporter {
           Link(
             source: parsedLink.source.identifier,
             target: parsedLink.target.identifier,
-            label: parsedLink.label
+            label: parsedLink.label,
+            edgeIdentifier: parsedLink.edgeIdentifier
           )
         )
 
@@ -185,6 +186,7 @@ public enum MermaidImporter {
       if let label = link.label {
         connector.content = connector.content.withConnectorLabel(label)
       }
+      connector.name = link.edgeIdentifier
       elements.append(connector)
     }
 
@@ -235,22 +237,27 @@ public enum MermaidImporter {
     }
 
     return ParsedLink(
-      source: source,
+      source: source.node,
       target: target,
       label: parsedTarget.label,
-      arrow: arrow
+      arrow: arrow,
+      edgeIdentifier: source.edgeIdentifier
     )
   }
 
-  private static func parseLinkSource(_ fragment: String) -> Node? {
+  private static func parseLinkSource(_ fragment: String) -> ParsedLinkSource? {
     let value = fragment.trimmingCharacters(in: .whitespaces)
     guard let separator = value.lastIndex(where: \Character.isWhitespace) else {
-      return parseNode(value)
+      guard let node = parseNode(value) else { return nil }
+
+      return ParsedLinkSource(node: node, edgeIdentifier: nil)
     }
 
     let edgeIdentifier = value[value.index(after: separator)...]
     guard edgeIdentifier.last == MermaidSyntax.edgeIdentifierSuffix else {
-      return parseNode(value)
+      guard let node = parseNode(value) else { return nil }
+
+      return ParsedLinkSource(node: node, edgeIdentifier: nil)
     }
 
     let identifier = edgeIdentifier.dropLast()
@@ -258,7 +265,12 @@ public enum MermaidImporter {
       return nil
     }
 
-    return parseNode(String(value[..<separator]))
+    guard let node = parseNode(String(value[..<separator])) else { return nil }
+
+    return ParsedLinkSource(
+      node: node,
+      edgeIdentifier: String(identifier)
+    )
   }
 
   private static func targetAndLabel(from fragment: String) -> (target: String, label: String?) {
@@ -380,12 +392,19 @@ private struct ParsedLink {
   let target: Node
   let label: String?
   let arrow: String
+  let edgeIdentifier: String?
+}
+
+private struct ParsedLinkSource {
+  let node: Node
+  let edgeIdentifier: String?
 }
 
 private struct Link {
   let source: String
   let target: String
   let label: String?
+  let edgeIdentifier: String?
 }
 
 private struct MermaidDiagram {

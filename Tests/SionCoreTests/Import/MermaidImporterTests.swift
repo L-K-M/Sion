@@ -316,7 +316,8 @@ final class MermaidImporterTests: XCTestCase {
   }
 
   func testPreservesEdgeIdentifiersAsConnectorNames() throws {
-    let source = "flowchart LR\n  A edge_one@--> B"
+    let edgeIdentifier = "edge_one"
+    let source = "flowchart LR\n  A \(edgeIdentifier)@--> B"
     let report = MermaidImporter.importReport(
       from: source,
       centeredAt: .zero
@@ -326,7 +327,7 @@ final class MermaidImporterTests: XCTestCase {
     )
 
     XCTAssertTrue(report.omissions.isEmpty)
-    XCTAssertEqual(connector.name, "edge_one")
+    XCTAssertEqual(connector.name, edgeIdentifier)
     XCTAssertEqual(
       MermaidImporter.elements(
         from: source,

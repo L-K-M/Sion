@@ -296,9 +296,12 @@ final class SVGExporterTests: XCTestCase {
 
       let svg = try export([shape])
       let group = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
+      let style = try XCTUnwrap(
+        stringAttribute(SVGCompositingSpec.styleAttribute, in: group.text)
+      )
 
       XCTAssertTrue(
-        group.text.contains(
+        style.contains(
           "\(SVGCompositingSpec.blendModeProperty):\(SVGCompositingSpec.value(for: blendMode).rawValue)"
         ),
         blendMode.rawValue
@@ -596,6 +599,18 @@ final class SVGExporterTests: XCTestCase {
     let valueStart = attribute.index(attribute.startIndex, offsetBy: prefix.count)
     return Double(attribute[valueStart..<valueEnd])
   }
+
+  private func stringAttribute(_ name: String, in tag: Substring) -> Substring? {
+    let prefix = " \(name)=\""
+    guard
+      let attribute = tag.range(of: prefix),
+      let valueEnd = tag[attribute.upperBound...].firstIndex(of: "\"")
+    else {
+      return nil
+    }
+
+    return tag[attribute.upperBound..<valueEnd]
+  }
 }
 
 private enum SVGFilterSpec {
@@ -610,6 +625,7 @@ private enum SVGFilterSpec {
 
 private enum SVGCompositingSpec {
   static let blendModeProperty = "mix-blend-mode"
+  static let styleAttribute = "style"
 
   static func value(for blendMode: BlendMode) -> SVGBlendModeSpec {
     switch blendMode {

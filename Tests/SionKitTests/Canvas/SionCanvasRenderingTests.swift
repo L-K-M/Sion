@@ -131,7 +131,7 @@ final class SionCanvasRenderingTests: XCTestCase {
       at: SionPoint(x: 232, y: 113)
     )
 
-    assertEqual(color, .white)
+    assertEqual(color, NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
   }
 
   func testConnectorDecorationsRequireAVisibleStroke() throws {

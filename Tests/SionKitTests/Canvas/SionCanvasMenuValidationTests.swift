@@ -89,6 +89,29 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     XCTAssertEqual(pasteboard.string(forType: .string), TestPasteboard.existingText)
   }
 
+  func testCutCopiesAndDeletesEditableSelection() throws {
+    _ = NSApplication.shared
+    let element = shape(id: "00000000-0000-0000-0000-000000000001")
+    var changes = 0
+    let controller = try makeController(
+      elements: [element],
+      didChange: { _ in changes += 1 }
+    )
+    let canvas = SionCanvasView(editorController: controller)
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    defer { pasteboard.clearContents() }
+    controller.select(element.id)
+
+    canvas.cut(nil)
+
+    XCTAssertTrue(controller.document.scene.elements.isEmpty)
+    XCTAssertEqual(changes, 1)
+    let data = try XCTUnwrap(pasteboard.data(forType: TestPasteboard.selection))
+    let payload = try SceneSelectionPayload(data: data)
+    XCTAssertEqual(payload.elements.map(\.id), [element.id])
+  }
+
   func testArrangeExtremeShortcutsDoNotClaimWindowTabChords() throws {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
@@ -124,13 +147,16 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     XCTAssertEqual(sendBackward.keyEquivalentModifierMask, [.command])
   }
 
-  private func makeController(elements: [SceneElement]) throws -> SionEditorController {
+  private func makeController(
+    elements: [SceneElement],
+    didChange: @escaping (SionEditorController.DocumentChange) -> Void = { _ in }
+  ) throws -> SionEditorController {
     try SionEditorController(
       package: SionPackage(
         document: SionDocument(scene: SionScene(elements: elements))
       ),
       undoManagerProvider: { nil },
-      didChange: { _ in }
+      didChange: didChange
     )
   }
 
@@ -152,6 +178,7 @@ private enum TestMenu {
 
 private enum TestPasteboard {
   static let existingText = "Existing clipboard"
+  static let selection = NSPasteboard.PasteboardType("ch.lkmc.sion.selection")
   static let unsupported = NSPasteboard.PasteboardType("example.unsupported")
 }
 

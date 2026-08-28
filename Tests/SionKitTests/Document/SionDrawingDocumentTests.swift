@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 @testable import SionCore
@@ -89,6 +90,7 @@ final class SionDrawingDocumentTests: XCTestCase {
     let windowController = try XCTUnwrap(
       document.windowControllers.first as? SionDocumentWindowController
     )
+    // LIFO runs responder cleanup before closing the window.
     defer { windowController.close() }
 
     let data = try document.data(ofType: SionDrawingDocument.typeIdentifier)
@@ -163,8 +165,73 @@ final class SionDrawingDocumentTests: XCTestCase {
     let package = try SionArchive.decode(Data(contentsOf: recoveryURL))
     XCTAssertEqual(package.document.title, authoredTitle)
   }
+
+  @MainActor
+  func testReadForRevertRestoresSavedContentAndCanvasFocus() throws {
+    let savedElement = SceneElement.text(
+      frame: SionRect(x: 40, y: 40, width: 180, height: 80),
+      text: RevertFixture.savedText
+    )
+    let savedPackage = SionPackage(
+      document: SionDocument(scene: SionScene(elements: [savedElement]))
+    )
+    let savedArchive = try SionArchive.encode(package: savedPackage, intent: .manual)
+    let document = SionDrawingDocument()
+    try document.editingController.load(savedPackage)
+    document.makeWindowControllers()
+    let windowController = try XCTUnwrap(
+      document.windowControllers.first as? SionDocumentWindowController
+    )
+    defer { windowController.close() }
+
+    let window = try XCTUnwrap(windowController.window)
+    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    let canvas = try XCTUnwrap(scrollView.documentView as? SionCanvasView)
+    defer {
+      // Do not let a stale responder turn this assertion into a test hang.
+      window.makeFirstResponder(canvas)
+    }
+
+    windowController.beginTextEditing(savedElement.id)
+    let textView = try XCTUnwrap(window.firstResponder as? NSTextView)
+    textView.string = RevertFixture.unsavedText
+    textView.didChangeText()
+
+    XCTAssertTrue(document.isDocumentEdited)
+    XCTAssertEqual(
+      document.editingController.document.scene.element(withID: savedElement.id)?.textContent,
+      RevertFixture.unsavedText
+    )
+
+    try document.read(
+      from: savedArchive.data,
+      ofType: SionDrawingDocument.typeIdentifier
+    )
+
+    XCTAssertEqual(
+      document.editingController.document.scene.element(withID: savedElement.id)?.textContent,
+      RevertFixture.savedText
+    )
+    XCTAssertFalse(document.isDocumentEdited)
+    XCTAssertFalse(document.undoManager?.canUndo ?? true)
+    XCTAssertNil(textView.window)
+    XCTAssertTrue(window.firstResponder === canvas)
+  }
 }
 
 private enum DocumentPreview {
   static let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+}
+
+private enum RevertFixture {
+  static let savedText = "Saved"
+  static let unsavedText = "Unsaved"
+}
+
+extension SceneElement {
+  fileprivate var textContent: String? {
+    guard case .text(let text) = content else { return nil }
+
+    return text.string
+  }
 }

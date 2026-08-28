@@ -29,7 +29,7 @@ final class SionLibraryPaletteTests: XCTestCase {
       NSApp.windows.first { $0.title == "Library" && $0.isVisible }
     )
     let descendants = try XCTUnwrap(panel.contentView).libraryTestDescendants
-    let buttons = descendants.compactMap { $0 as? NSButton }
+    let buttons = descendants.compactMap { $0 as? NSButton }.filter { !$0.title.isEmpty }
     let expectedShapes: [(title: String, kind: ShapeKind, size: SionSize)] = [
       ("Rectangle", .rectangle, SionSize(width: 160, height: 96)),
       (

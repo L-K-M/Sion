@@ -126,6 +126,72 @@ final class ElementHitGeometryTests: XCTestCase {
     XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
   }
 
+  func testAccumulatedCurveLengthErrorKeepsPaintedDashSelectable() {
+    let curveCount = 1_000
+    let curveWidth = 800.0
+    var commands: [PathCommand] = [.move(to: .zero)]
+    for index in 0..<curveCount {
+      let startX = Double(index) * curveWidth
+      commands.append(
+        .quadratic(
+          control: SionPoint(x: startX + (curveWidth / 2), y: -500),
+          to: SionPoint(x: startX + curveWidth, y: 0)
+        )
+      )
+    }
+    let path = VectorPath(coordinateSpace: .localPoints, commands: commands)
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 2,
+        dashPattern: [40, 40],
+        lineCap: .butt,
+        lineJoin: .round
+      )
+    )
+
+    // Exact curve length puts this vertex 6.646 points inside a painted dash.
+    let paintedVertex = SionPoint(x: Double(curveCount - 1) * curveWidth, y: 0)
+
+    XCTAssertTrue(ElementHitGeometry.contains(paintedVertex, in: element, tolerance: 2))
+  }
+
+  func testCurveLengthUncertaintyKeepsDistantDashGapClear() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .quadratic(
+          control: SionPoint(x: 400, y: -500),
+          to: SionPoint(x: 800, y: 0)
+        ),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 2,
+        dashPattern: [40, 40],
+        lineCap: .butt
+      )
+    )
+
+    // This curve point is 20 points from either boundary of its dash gap.
+    let distantGapPoint = SionPoint(x: 38.602_581_7, y: -45.924_853_2)
+
+    XCTAssertFalse(ElementHitGeometry.contains(distantGapPoint, in: element, tolerance: 2))
+  }
+
   func testClosedDashSpanningPerimeterKeepsMiterAtSeam() {
     let frame = SionRect(x: 0, y: 0, width: 100, height: 100)
     let path = VectorPath(commands: [
@@ -175,6 +241,32 @@ final class ElementHitGeometryTests: XCTestCase {
 
     XCTAssertTrue(
       ElementHitGeometry.contains(SionPoint(x: 13, y: 13), in: element, tolerance: 0)
+    )
+  }
+
+  func testClosedTwoPointStrokeKeepsRoundJoins() {
+    let frame = SionRect(x: 0, y: 0, width: 100, height: 100)
+    let path = VectorPath(commands: [
+      .move(to: SionPoint(x: 0.2, y: 0.5)),
+      .line(to: SionPoint(x: 0.8, y: 0.5)),
+      .close,
+    ])
+    var element = SceneElement.path(frame: frame, path: path)
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 20,
+        lineCap: .butt,
+        lineJoin: .round
+      )
+    )
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 15, y: 50), in: element, tolerance: 0)
+    )
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 85, y: 50), in: element, tolerance: 0)
     )
   }
 
@@ -402,6 +494,26 @@ final class ElementHitGeometryTests: XCTestCase {
     )
 
     XCTAssertTrue(ElementHitGeometry.contains(curvePoint, in: element, tolerance: 2))
+  }
+
+  func testLargeCurvedShapeMissesStayWithinInteractiveDeadline() {
+    let frame = SionRect(
+      x: 0,
+      y: 0,
+      width: SceneLimits.maximumCoordinateMagnitude,
+      height: SceneLimits.maximumCoordinateMagnitude
+    )
+    var ellipse = SceneElement.shape(frame: frame, kind: .ellipse)
+    ellipse.style = ElementStyle(fill: .solid(.black))
+    let largeCurvedShapeCount = 256
+
+    let started = ContinuousClock.now
+    for _ in 0..<largeCurvedShapeCount {
+      XCTAssertFalse(ElementHitGeometry.contains(frame.origin, in: ellipse, tolerance: 2))
+    }
+    let elapsed = started.duration(to: .now)
+
+    XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
   }
 
   func testMaximumCurvedPathCompletesWithinInteractiveDeadline() {

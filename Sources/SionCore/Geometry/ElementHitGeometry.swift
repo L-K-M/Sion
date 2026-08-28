@@ -935,7 +935,7 @@ private struct StrokeHitGeometry {
         secondOrigin: outgoingOuter,
         secondDirection: outgoing
       ),
-      vertex.distance(to: intersection) <= HitGeometryDefaults.miterLimit * radius
+      vertex.distance(to: intersection) <= StrokeGeometryDefaults.miterLimit * radius
     {
       polygon = [vertex, incomingOuter, intersection, outgoingOuter]
     }
@@ -1718,7 +1718,7 @@ extension StrokeStyle {
     let capExpansion = lineCap == .square ? hypot(radius, radius) : radius
     let joinExpansion =
       lineJoin == .miter
-      ? radius * HitGeometryDefaults.miterLimit
+      ? radius * StrokeGeometryDefaults.miterLimit
       : radius
 
     return max(capExpansion, joinExpansion) + tolerance
@@ -1762,9 +1762,6 @@ private enum HitGeometryDefaults {
   // Four-curve built-ins use at most 1,024 curve segments.
   static let maximumBuiltInCurveSubdivisionDepth = 8
   static let maximumCurveSubdivisionDepth = 12
-  // StrokeStyle has no override, so mirror NSBezierPath's default.
-  static let miterLimit = 10.0
-
   static func subdivisionDepth(curveCount: Int) -> Int {
     guard curveCount > 0 else { return maximumCurveSubdivisionDepth }
 

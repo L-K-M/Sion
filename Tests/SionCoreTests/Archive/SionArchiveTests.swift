@@ -200,6 +200,31 @@ final class SionArchiveTests: XCTestCase {
     XCTAssertFalse(svg.contains("d=\"M10 45A100 25"))
   }
 
+  func testSVGUsesCanvasMiterLimit() throws {
+    let path = VectorPath(commands: [
+      .move(to: SionPoint(x: 0, y: 1)),
+      .line(to: SionPoint(x: 0.5, y: 0)),
+      .line(to: SionPoint(x: 1, y: 1)),
+    ])
+    var element = SceneElement.path(
+      frame: SionRect(x: 10, y: 20, width: 200, height: 100),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 4, lineJoin: .miter)
+    )
+
+    let svg = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [element])),
+      assets: [:]
+    )
+
+    XCTAssertTrue(
+      svg.contains("stroke-linejoin=\"miter\" stroke-miterlimit=\"10\"")
+    )
+  }
+
   func testSVGTilesImagesAndHandlesExtremeShapeValues() throws {
     let fixture = try makeFixture()
     let tiledImage = SceneElement(

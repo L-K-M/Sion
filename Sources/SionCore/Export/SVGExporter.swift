@@ -318,7 +318,7 @@ public enum SVGExporter {
         ? ""
         : " stroke-dasharray=\"\(value.dashPattern.map(number).joined(separator: " "))\""
       return
-        "stroke=\"\(value.color.hex)\" stroke-width=\"\(number(value.width))\" stroke-linecap=\"\(value.lineCap.rawValue)\" stroke-linejoin=\"\(value.lineJoin.rawValue)\"\(dash)"
+        "stroke=\"\(value.color.hex)\" stroke-width=\"\(number(value.width))\" stroke-linecap=\"\(value.lineCap.rawValue)\" stroke-linejoin=\"\(value.lineJoin.rawValue)\" stroke-miterlimit=\"\(number(StrokeGeometryDefaults.miterLimit))\"\(dash)"
     }
 
     return "stroke=\"none\""

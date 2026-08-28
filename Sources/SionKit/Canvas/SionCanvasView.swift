@@ -1685,6 +1685,7 @@
         path.setLineDash(dashPattern, count: dashPattern.count, phase: 0)
         path.lineCapStyle = lineCap(stroke.lineCap)
         path.lineJoinStyle = lineJoin(stroke.lineJoin)
+        path.miterLimit = CGFloat(StrokeGeometryDefaults.miterLimit)
         path.stroke()
       }
 

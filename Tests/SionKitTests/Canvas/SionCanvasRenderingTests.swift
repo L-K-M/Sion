@@ -606,13 +606,17 @@ final class SionCanvasRenderingTests: XCTestCase {
   }
 
   private func pixel(in image: CGImage, at point: SionPoint) throws -> NSColor {
-    guard point.isFinite else { throw TestPixelError.outOfBounds }
+    guard point.isFinite,
+      point.x >= 0,
+      point.y >= 0,
+      point.x < Double(image.width),
+      point.y < Double(image.height)
+    else {
+      throw TestPixelError.outOfBounds
+    }
 
     let pixelX = Int(point.x)
     let pixelY = Int(point.y)
-    guard (0..<image.width).contains(pixelX), (0..<image.height).contains(pixelY) else {
-      throw TestPixelError.outOfBounds
-    }
 
     guard image.bitsPerComponent == TestBitmap.bitsPerComponent,
       image.bitsPerPixel == TestBitmap.bitsPerPixel,

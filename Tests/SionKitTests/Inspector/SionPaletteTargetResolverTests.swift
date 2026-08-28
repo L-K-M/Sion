@@ -140,15 +140,20 @@ final class InspectorPaletteTests: XCTestCase {
     try editor.beginMove()
     defer { editor.cancelActiveGesture() }
 
-    routePopup.selectItem(withTitle: ConnectorRoutingStyle.straight.displayName)
+    let straightItem = try XCTUnwrap(
+      routePopup.itemArray.first {
+        $0.representedObject as? String == ConnectorRoutingStyle.straight.rawValue
+      }
+    )
+    routePopup.select(straightItem)
     let action = try XCTUnwrap(routePopup.action)
 
     XCTAssertTrue(NSApp.sendAction(action, to: routePopup.target, from: routePopup))
     XCTAssertEqual(editor.document, documentBefore)
     XCTAssertTrue(editor.hasPendingEditorGesture)
     XCTAssertEqual(
-      routePopup.titleOfSelectedItem,
-      ConnectorRoutingStyle.orthogonal.displayName
+      routePopup.selectedItem?.representedObject as? String,
+      ConnectorRoutingStyle.orthogonal.rawValue
     )
   }
 

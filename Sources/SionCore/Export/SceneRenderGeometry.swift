@@ -184,10 +184,12 @@ public enum SceneRenderGeometry {
     // Each shadow is cast from the source artwork, not preceding shadows.
     for shadow in shadows {
       let blurExtent = shadow.blurRadius * PaintedBounds.shadowBlurExtentMultiplier
+      // Negative spread contracts the caster and cannot enlarge conservative bounds.
+      let spreadExtent = max(shadow.spread, 0)
       let shadowBounds =
         sourceBounds
         .translated(by: shadow.offset)
-        .expanded(by: blurExtent)
+        .expanded(by: blurExtent + spreadExtent)
       bounds = bounds.union(shadowBounds)
     }
 

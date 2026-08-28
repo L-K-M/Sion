@@ -1364,13 +1364,11 @@
           continue
         }
 
-        let frame = element.geometry.frame.standardized
-        let localPoint = InteractionGeometry.unrotated(
+        if ElementHitGeometry.contains(
           point,
-          around: frame.center,
-          by: element.geometry.rotationRadians
-        )
-        if frame.expanded(by: EditorDefaults.elementHitSlop).contains(localPoint) {
+          in: element,
+          tolerance: EditorDefaults.elementHitSlop
+        ) {
           return element
         }
       }
@@ -1384,13 +1382,11 @@
           return false
         }
 
-        let frame = element.geometry.frame.standardized
-        let localPoint = InteractionGeometry.unrotated(
+        return ElementHitGeometry.contains(
           point,
-          around: frame.center,
-          by: element.geometry.rotationRadians
+          in: element,
+          tolerance: EditorDefaults.elementHitSlop
         )
-        return frame.expanded(by: EditorDefaults.elementHitSlop).contains(localPoint)
       }
     }
 

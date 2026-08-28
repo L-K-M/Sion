@@ -152,6 +152,18 @@
       XCTAssertEqual(controller.elementIDsIntersecting(reversedBand), [connector.id])
     }
 
+    func testPointHitSkipsTransparentEllipseCornerForElementBelow() throws {
+      let frame = SionRect(x: 100, y: 70, width: 160, height: 100)
+      let backdrop = SceneElement.shape(frame: frame, kind: .rectangle)
+      var ellipse = SceneElement.shape(frame: frame, kind: .ellipse)
+      ellipse.style = ElementStyle(fill: .solid(.black))
+      let controller = try makeController(elements: [backdrop, ellipse])
+
+      XCTAssertEqual(controller.element(at: frame.origin)?.id, backdrop.id)
+      XCTAssertEqual(controller.connectableElement(at: frame.origin)?.id, backdrop.id)
+      XCTAssertEqual(controller.element(at: frame.center)?.id, ellipse.id)
+    }
+
     private func makeController(elements: [SceneElement]) throws -> SionEditorController {
       try SionEditorController(
         package: SionPackage(

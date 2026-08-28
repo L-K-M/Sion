@@ -36,7 +36,7 @@ final class SionRevertMenuTests: XCTestCase {
 
 private enum TestMenu {
   static let file = "File"
-  static let revertToSaved = "Revert to Saved"
+  static let revertToSaved = "Revert to Saved…"
 }
 
 private enum TestAction {

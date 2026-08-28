@@ -176,12 +176,13 @@ fixture.
 ### P1.3 Complete shadow semantics
 
 **Evidence.** Canvas and SVG render only the first `ShadowStyle`; later shadows
-and spread are ignored during painting. Rotated Canvas shadows use base-space
-offsets while SVG rotates offsets with the element. Shared bounds conservatively
-cover both offset interpretations and positive spread, but the pictures disagree.
+and spread are ignored during painting. Shadow offsets now remain in canvas
+space across Canvas, SVG, and shared painted bounds. Format v1 does not define
+array compositing direction or spread geometry.
 
-**Scope.** Define one shadow coordinate rule, then implement all shadows in
-array order and spread in Canvas, SVG, and
+**Scope.** Define array compositing direction and signed spread geometry without
+changing the canvas-space offset rule. Then implement all shadows and spread in
+Canvas, SVG, and
 `SceneRenderGeometry.paintedBounds`. If faithful support is not viable, add a
 format decision and explicit export warning instead of substitution.
 

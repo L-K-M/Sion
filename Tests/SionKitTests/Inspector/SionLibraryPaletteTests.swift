@@ -60,9 +60,10 @@ final class SionLibraryPaletteTests: XCTestCase {
 
     let lastButton = try XCTUnwrap(buttons.last)
     _ = stack.scrollToVisible(lastButton.frame)
+    let visibleRect = scrollView.documentVisibleRect
 
-    XCTAssertLessThanOrEqual(stack.visibleRect.minY, lastButton.frame.minY)
-    XCTAssertGreaterThanOrEqual(stack.visibleRect.maxY, lastButton.frame.maxY)
+    XCTAssertLessThanOrEqual(visibleRect.minY, lastButton.frame.minY)
+    XCTAssertGreaterThanOrEqual(visibleRect.maxY, lastButton.frame.maxY)
 
     for expected in expectedShapes {
       let button = try XCTUnwrap(buttons.first { $0.title == expected.title })

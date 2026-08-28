@@ -620,6 +620,11 @@ private struct StrokeHitGeometry {
     in subpath: FlattenedSubpath,
     dashPattern: DashPattern
   ) -> Bool {
+    let run = StrokeRun(subpath: subpath)
+    if let containsPoint = degenerateCapContains(point, in: run) {
+      return containsPoint
+    }
+
     let segments = measuredSegments(in: subpath)
     guard let pathLength = segments.last?.endDistance else { return false }
 
@@ -690,6 +695,10 @@ private struct StrokeHitGeometry {
   }
 
   private func contains(_ point: SionPoint, in run: StrokeRun) -> Bool {
+    if let containsPoint = degenerateCapContains(point, in: run) {
+      return containsPoint
+    }
+
     let segments = run.segments
     for (index, flattenedSegment) in segments.enumerated() {
       let startsRun = run.closure == .open && index == segments.startIndex
@@ -724,6 +733,33 @@ private struct StrokeHitGeometry {
 
     return joinPoints(in: run).contains { join in
       joinContains(point, previous: join.previous, vertex: join.vertex, next: join.next)
+    }
+  }
+
+  private func degenerateCapContains(
+    _ point: SionPoint,
+    in run: StrokeRun
+  ) -> Bool? {
+    guard run.segments.allSatisfy({ $0.segment.length <= HitGeometryDefaults.epsilon }) else {
+      return nil
+    }
+
+    // A moveto paints nothing; an explicit zero-length subpath paints its cap.
+    guard run.hasStrokeCommand, let origin = run.points.first else { return false }
+
+    switch stroke.lineCap {
+    case .butt:
+      return false
+    case .round:
+      return point.distance(to: origin) <= radius + tolerance
+    case .square:
+      let square = [
+        SionPoint(x: origin.x - radius, y: origin.y - radius),
+        SionPoint(x: origin.x + radius, y: origin.y - radius),
+        SionPoint(x: origin.x + radius, y: origin.y + radius),
+        SionPoint(x: origin.x - radius, y: origin.y + radius),
+      ]
+      return polygonContains(point, polygon: square, tolerance: tolerance)
     }
   }
 
@@ -1008,6 +1044,10 @@ private struct StrokeRun {
     }
 
     return Array(points.dropLast())
+  }
+
+  var hasStrokeCommand: Bool {
+    points.count > 1 || closure == .closed
   }
 
 }

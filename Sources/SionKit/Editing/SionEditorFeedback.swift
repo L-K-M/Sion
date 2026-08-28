@@ -2,6 +2,10 @@
   import SionCore
 
   enum SionEditorFeedback: Equatable {
+    enum Context: Equatable {
+      case mermaidPaste
+    }
+
     enum MermaidSourcePreservation: Equatable {
       case noSupportedElements
       case omissions(firstLine: Int, count: Int)
@@ -13,6 +17,13 @@
 
     case mermaidSourcePreserved(MermaidSourcePreservation)
     case commandFailed(Command)
+
+    var context: Context {
+      switch self {
+      case .mermaidSourcePreserved, .commandFailed(.pasteMermaid):
+        .mermaidPaste
+      }
+    }
 
     var message: String {
       switch self {
@@ -41,5 +52,10 @@
         .omissions(firstLine: firstOmission.line, count: omissions.count)
       )
     }
+  }
+
+  enum SionEditorFeedbackRequest: Equatable {
+    case show(SionEditorFeedback)
+    case clear(SionEditorFeedback.Context)
   }
 #endif

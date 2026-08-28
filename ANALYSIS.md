@@ -266,9 +266,10 @@ and documented pixel tolerances.
 
 **Evidence.** Inspector controls restore model values after a rejected semantic
 edit. Lossy Mermaid paste returns a typed result, preserves the exact source,
-and shows a dismissible nonmodal banner with a VoiceOver announcement. Canvas
-and other palette paths still often use `try?` plus `NSSound.beep()`. Arrange
-logs and beeps, but most failures have no stable user-facing explanation.
+and shows a dismissible nonmodal banner with a VoiceOver announcement; a
+successful retry clears that scoped warning. Canvas and other palette paths
+still often use `try?` plus `NSSound.beep()`. Arrange logs and beeps, but most
+failures have no stable user-facing explanation.
 
 **Scope.** Add one typed editor-result/feedback channel. Roll controls back to
 model values and show a compact nonmodal banner with details or retry when

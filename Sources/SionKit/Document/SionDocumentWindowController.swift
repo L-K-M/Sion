@@ -43,7 +43,7 @@
       self.feedbackPresenter = feedbackPresenter
       canvasView = SionCanvasView(
         editorController: editorController,
-        editorFeedback: { feedbackPresenter.present($0) }
+        editorFeedback: { feedbackPresenter.handle($0) }
       )
 
       let window = NSWindow(

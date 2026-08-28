@@ -8,6 +8,7 @@
     private weak var hostView: NSView?
     private var banner: NSView?
     private var pendingFeedback: SionEditorFeedback?
+    private var presentedContext: SionEditorFeedback.Context?
     private let announcementHandler: AnnouncementHandler
 
     init() {
@@ -27,13 +28,32 @@
       show(pendingFeedback, in: hostView)
     }
 
-    func present(_ feedback: SionEditorFeedback) {
+    func handle(_ request: SionEditorFeedbackRequest) {
+      switch request {
+      case .show(let feedback):
+        present(feedback)
+      case .clear(let context):
+        clear(context)
+      }
+    }
+
+    private func present(_ feedback: SionEditorFeedback) {
       guard let hostView else {
         pendingFeedback = feedback
         return
       }
 
       show(feedback, in: hostView)
+    }
+
+    private func clear(_ context: SionEditorFeedback.Context) {
+      if pendingFeedback?.context == context {
+        pendingFeedback = nil
+      }
+
+      guard presentedContext == context else { return }
+
+      dismissFeedback()
     }
 
     func invalidate() {
@@ -114,6 +134,7 @@
         ),
       ])
       self.banner = banner
+      presentedContext = feedback.context
 
       announcementHandler(messageLabel, feedback.message)
     }
@@ -121,6 +142,7 @@
     @objc private func dismissFeedback() {
       banner?.removeFromSuperview()
       banner = nil
+      presentedContext = nil
     }
 
     private static func postAnnouncement(on element: NSView, message: String) {

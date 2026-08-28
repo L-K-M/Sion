@@ -35,7 +35,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testUndoGroupClosureDoesNotDirtySavedDocumentAgain() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     let undoManager = try XCTUnwrap(document.undoManager)
     undoManager.groupsByEvent = false
     undoManager.beginUndoGrouping()
@@ -52,7 +52,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testOneUndoReturnsDocumentToCleanState() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     let undoManager = try XCTUnwrap(document.undoManager)
     undoManager.groupsByEvent = false
     undoManager.beginUndoGrouping()
@@ -68,7 +68,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testSerializationKeepsInlineTextEditorActive() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     let id = try document.editingController.insertText("Draft", at: SionPoint(x: 100, y: 100))
     document.makeWindowControllers()
     let windowController = try XCTUnwrap(
@@ -84,7 +84,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testSerializationPersistsPNGPreview() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     _ = try document.editingController.insertShape(at: SionPoint(x: 100, y: 100))
     document.makeWindowControllers()
     let windowController = try XCTUnwrap(
@@ -128,7 +128,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testSaveAsUpdatesWindowAndArchiveTitles() async throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     document.makeWindowControllers()
     let windowController = try XCTUnwrap(
       document.windowControllers.first as? SionDocumentWindowController
@@ -165,7 +165,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testAutosaveElsewhereKeepsAuthoredTitle() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     let authoredTitle = "Recovery Source"
     try document.editingController.load(
       SionPackage(document: SionDocument(title: authoredTitle))
@@ -199,8 +199,12 @@ final class SionDrawingDocumentTests: XCTestCase {
     let savedPackage = SionPackage(
       document: SionDocument(scene: SionScene(elements: [savedElement]))
     )
-    let savedArchive = try SionArchive.encode(package: savedPackage, intent: .manual)
-    let document = SionDrawingDocument()
+    let savedArchive = try SionArchive.encode(
+      package: savedPackage,
+      intent: .manual,
+      generator: DocumentArchiveFixture.generator
+    )
+    let document = makeDocument()
     try document.editingController.load(savedPackage)
     document.makeWindowControllers()
     let windowController = try XCTUnwrap(
@@ -240,6 +244,10 @@ final class SionDrawingDocumentTests: XCTestCase {
     XCTAssertFalse(document.undoManager?.canUndo ?? true)
     XCTAssertNil(textView.window)
     XCTAssertTrue(window.firstResponder === canvas)
+  }
+
+  private func makeDocument() -> SionDrawingDocument {
+    SionDrawingDocument(archiveGenerator: DocumentArchiveFixture.generator)
   }
 }
 

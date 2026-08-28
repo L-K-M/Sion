@@ -4,7 +4,7 @@ import XCTest
 @testable import SionCore
 @testable import SionKit
 
-final class ApplicationArchiveGeneratorTests: XCTestCase {
+final class ApplicationArchiveMetadataTests: XCTestCase {
   func testUsesBundleShortVersion() throws {
     try withTemporaryBundle(shortVersion: BundleFixture.version) { bundle in
       XCTAssertEqual(
@@ -44,14 +44,14 @@ final class ApplicationArchiveGeneratorTests: XCTestCase {
     let contents =
       root
       .appendingPathComponent(BundleFixture.bundleName, isDirectory: true)
-      .appendingPathComponent("Contents", isDirectory: true)
+      .appendingPathComponent(BundleFixture.contentsName, isDirectory: true)
     try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
 
     var info: [String: Any] = [
-      "CFBundleIdentifier": "ch.lkmc.sion.tests.archive-generator",
-      "CFBundleName": "ArchiveGeneratorFixture",
-      "CFBundlePackageType": "BNDL",
-      "CFBundleVersion": "1",
+      BundleFixture.identifierKey: BundleFixture.identifier,
+      BundleFixture.nameKey: BundleFixture.name,
+      BundleFixture.packageTypeKey: BundleFixture.packageType,
+      BundleFixture.versionKey: BundleFixture.bundleVersion,
     ]
     info[BundleFixture.shortVersionKey] = shortVersion
     let data = try PropertyListSerialization.data(
@@ -59,7 +59,7 @@ final class ApplicationArchiveGeneratorTests: XCTestCase {
       format: .xml,
       options: 0
     )
-    try data.write(to: contents.appendingPathComponent("Info.plist"))
+    try data.write(to: contents.appendingPathComponent(BundleFixture.infoPlistName))
 
     let bundleURL = contents.deletingLastPathComponent()
     let bundle = try XCTUnwrap(Bundle(url: bundleURL))
@@ -69,8 +69,18 @@ final class ApplicationArchiveGeneratorTests: XCTestCase {
 
 private enum BundleFixture {
   static let applicationName = "Sion"
+  static let bundleVersion = "1"
   static let bundleName = "ArchiveGenerator.bundle"
+  static let contentsName = "Contents"
+  static let identifier = "ch.lkmc.sion.tests.archive-generator"
+  static let identifierKey = "CFBundleIdentifier"
+  static let infoPlistName = "Info.plist"
+  static let name = "ArchiveGeneratorFixture"
+  static let nameKey = "CFBundleName"
+  static let packageType = "BNDL"
+  static let packageTypeKey = "CFBundlePackageType"
   static let shortVersionKey = "CFBundleShortVersionString"
   static let unknownVersion = "unknown"
   static let version = "9.8.7"
+  static let versionKey = "CFBundleVersion"
 }

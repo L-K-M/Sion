@@ -72,7 +72,12 @@ final class SionArchiveTests: XCTestCase {
     let fixture = try makeFixture()
     let date = Date(timeIntervalSince1970: 1_787_830_522.875)
 
-    let encoded = try SionArchive.encode(package: fixture.package, intent: .manual, at: date)
+    let encoded = try SionArchive.encode(
+      package: fixture.package,
+      intent: .manual,
+      at: date,
+      generator: testArchiveGenerator
+    )
     let entries = try StoredZIPArchive.decode(encoded.data)
     let decoded = try SionArchive.decode(encoded.data)
 
@@ -87,11 +92,12 @@ final class SionArchiveTests: XCTestCase {
     XCTAssertEqual(decoded, expected)
   }
 
-  func testArchiveWritesDeterministicGenerator() throws {
+  func testArchiveWritesProvidedGenerator() throws {
     let encoded = try SionArchive.encode(
       package: SionPackage(),
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_830_522)
+      at: Date(timeIntervalSince1970: 1_787_830_522),
+      generator: testArchiveGenerator
     )
     let entries = Dictionary(
       uniqueKeysWithValues: try StoredZIPArchive.decode(encoded.data).map { ($0.path, $0.data) }
@@ -128,7 +134,8 @@ final class SionArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_831_000)
+      at: Date(timeIntervalSince1970: 1_787_831_000),
+      generator: testArchiveGenerator
     )
     let decoded = try SionArchive.decode(encoded.data)
 
@@ -144,7 +151,8 @@ final class SionArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: fixture.package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_830_522)
+      at: Date(timeIntervalSince1970: 1_787_830_522),
+      generator: testArchiveGenerator
     )
     let entries = Dictionary(
       uniqueKeysWithValues: try StoredZIPArchive.decode(encoded.data).map { ($0.path, $0.data) }
@@ -437,7 +445,8 @@ final class SionArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: fixture.package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_830_522)
+      at: Date(timeIntervalSince1970: 1_787_830_522),
+      generator: testArchiveGenerator
     )
 
     let wrongLength = try modifyingScene(in: encoded.data) { object in
@@ -468,7 +477,8 @@ final class SionArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: fixture.package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_830_522)
+      at: Date(timeIntervalSince1970: 1_787_830_522),
+      generator: testArchiveGenerator
     )
     let withoutIndex = try removingEntry(
       from: encoded.data,
@@ -581,7 +591,8 @@ final class SionArchiveTests: XCTestCase {
     let first = try SionArchive.encode(
       package: fixture.package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_830_000)
+      at: Date(timeIntervalSince1970: 1_787_830_000),
+      generator: testArchiveGenerator
     )
     let currentDocument = SionDocument(
       id: fixture.package.document.id,
@@ -596,7 +607,8 @@ final class SionArchiveTests: XCTestCase {
     let second = try SionArchive.encode(
       package: currentPackage,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_831_000)
+      at: Date(timeIntervalSince1970: 1_787_831_000),
+      generator: testArchiveGenerator
     )
     let entries = Dictionary(
       uniqueKeysWithValues: try StoredZIPArchive.decode(second.data).map { ($0.path, $0.data) }
@@ -654,7 +666,8 @@ final class SionArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_831_000)
+      at: Date(timeIntervalSince1970: 1_787_831_000),
+      generator: testArchiveGenerator
     )
     let decoded = try SionArchive.decode(encoded.data)
 
@@ -693,7 +706,8 @@ final class SionArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_830_522)
+      at: Date(timeIntervalSince1970: 1_787_830_522),
+      generator: testArchiveGenerator
     )
     let archive = try replacingHistoricalAssetDescriptor(
       in: encoded.data,
@@ -738,7 +752,8 @@ final class SionArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 3_000)
+      at: Date(timeIntervalSince1970: 3_000),
+      generator: testArchiveGenerator
     )
     let decoded = try SionArchive.decode(encoded.data)
 
@@ -780,7 +795,8 @@ final class SionArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: fixture.package,
       intent: .autosave,
-      at: Date(timeIntervalSince1970: 1_787_830_522)
+      at: Date(timeIntervalSince1970: 1_787_830_522),
+      generator: testArchiveGenerator
     )
     let oversizedIndex = try modifyingJSONEntry(
       in: encoded.data,
@@ -870,7 +886,8 @@ final class SionArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 2_000)
+      at: Date(timeIntervalSince1970: 2_000),
+      generator: testArchiveGenerator
     )
     let decoded = try SionArchive.decode(encoded.data)
 
@@ -885,7 +902,8 @@ final class SionArchiveTests: XCTestCase {
     return try SionArchive.encode(
       package: fixture.package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_830_522)
+      at: Date(timeIntervalSince1970: 1_787_830_522),
+      generator: testArchiveGenerator
     )
   }
 

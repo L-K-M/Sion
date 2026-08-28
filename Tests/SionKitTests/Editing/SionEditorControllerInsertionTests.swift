@@ -114,6 +114,24 @@ final class SionEditorControllerInsertionTests: XCTestCase {
     XCTAssertEqual(controller.tool, .rectangle)
   }
 
+  func testLossyMermaidImportPreservesSourceAsText() throws {
+    let controller = try makeController()
+    let center = SionPoint(x: 320, y: 240)
+    let source = """
+      flowchart LR
+        A --> B
+        style A fill:#fff
+      """
+
+    let insertedIDs = try controller.insertMermaid(source, at: center)
+    let insertedID = try XCTUnwrap(insertedIDs.first)
+    let inserted = try XCTUnwrap(controller.document.scene.element(withID: insertedID))
+
+    XCTAssertEqual(insertedIDs, [insertedID])
+    XCTAssertEqual(inserted.editableText, source)
+    XCTAssertEqual(inserted.geometry.frame.center, center)
+  }
+
   private func makeController() throws -> SionEditorController {
     try SionEditorController(
       package: SionPackage(document: SionDocument()),

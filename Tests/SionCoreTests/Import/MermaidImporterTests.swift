@@ -162,6 +162,49 @@ final class MermaidImporterTests: XCTestCase {
     }
   }
 
+  func testRejectsLossyPartialImports() {
+    let fixtures = [
+      LossyImportFixture(
+        name: "style",
+        source: """
+          flowchart LR
+            A --> B
+            style A fill:#fff
+          """
+      ),
+      LossyImportFixture(
+        name: "arrow",
+        source: """
+          flowchart LR
+            A ==> B
+          """
+      ),
+      LossyImportFixture(
+        name: "trailing syntax",
+        source: """
+          flowchart LR
+            A[Start] trailing
+          """
+      ),
+      LossyImportFixture(
+        name: "subgraph",
+        source: """
+          flowchart LR
+            subgraph Cluster
+              A
+            end
+          """
+      ),
+    ]
+
+    for fixture in fixtures {
+      XCTAssertTrue(
+        MermaidImporter.elements(from: fixture.source, centeredAt: .zero).isEmpty,
+        fixture.name
+      )
+    }
+  }
+
   func testGeneratedMermaidCanBeImportedAgain() throws {
     let first = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 160, height: 80),
@@ -194,6 +237,11 @@ final class MermaidImporterTests: XCTestCase {
     let second = try XCTUnwrap(nodes.dropFirst().first)
     return (second.geometry.frame.center - first.geometry.frame.center).normalized
   }
+}
+
+private struct LossyImportFixture {
+  let name: String
+  let source: String
 }
 
 private enum ImportedHeader: String, CaseIterable {

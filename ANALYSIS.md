@@ -368,17 +368,16 @@ are covered.
 
 **Evidence.** Adaptive subdivision rendering and marquee selection exist, but
 move/resize does not snap to grid, edges, centers, or equal spacing. There are
-no visible snap toggles, lasso, spacebar hand tool, or drag autoscroll. There
-is no Show Grid command.
+no visible snap toggles, lasso, spacebar hand tool, or drag autoscroll.
 
 **Scope.** Land three focused PRs. First compute snap/guide candidates from
 sibling painted bounds through the shared spatial index, apply model-space
 tolerances derived from screen points, render transient guides, and add Snap to
 Grid/Smart Guides toggles plus modifier bypass. Second add polygon lasso using
 shape/path geometry. Third add spacebar pan and edge-triggered autoscroll.
-Persist Show Grid through `scene.canvas`; keep Snap to Grid as a validated
-session toggle. Snap from the drag origin or cumulative delta so sub-cell
-samples are not lost, and reuse the placement policy in every insert path.
+Keep Snap to Grid as a validated session toggle. Snap from the drag origin or
+cumulative delta so sub-cell samples are not lost, and reuse the placement
+policy in every insert path.
 
 **Accept.** Snapping is zoom-independent, deterministic under ties, disabled
 when requested, and does not enter undo separately. Tests cover rotated/wide

@@ -163,15 +163,125 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     XCTAssertEqual(sendBackward.keyEquivalentModifierMask, [.command])
   }
 
+  func testShowGridMenuTogglesCanvasAndTracksUndoState() throws {
+    let application = NSApplication.shared
+    let previousMainMenu = application.mainMenu
+    let previousWindowsMenu = application.windowsMenu
+    defer {
+      application.mainMenu = previousMainMenu
+      application.windowsMenu = previousWindowsMenu
+    }
+
+    let delegate = SionApplicationDelegate()
+    let documentController = try XCTUnwrap(
+      Mirror(reflecting: delegate).children.first {
+        $0.label == TestApplicationDelegate.documentController
+      }?.value as? NSDocumentController
+    )
+    let sentinelDocument = SionDrawingDocument()
+    documentController.addDocument(sentinelDocument)
+    defer { documentController.removeDocument(sentinelDocument) }
+
+    delegate.applicationDidFinishLaunching(
+      Notification(name: NSApplication.didFinishLaunchingNotification)
+    )
+
+    let originalCanvas = SionCanvas(
+      extent: .fixed(SionSize(width: 640, height: 480)),
+      background: SionColor(red: 0.2, green: 0.3, blue: 0.4),
+      grid: CanvasGrid(visibility: .hidden, spacing: 37, subdivisions: 7)
+    )
+    let undoManager = UndoManager()
+    undoManager.groupsByEvent = false
+    var changes: [SionEditorController.DocumentChange] = []
+    let controller = try makeController(
+      elements: [],
+      canvas: originalCanvas,
+      undoManager: undoManager,
+      didChange: { changes.append($0) }
+    )
+    let canvas = SionCanvasView(editorController: controller)
+    let viewMenu = try XCTUnwrap(
+      application.mainMenu?.item(withTitle: TestMenu.view)?.submenu
+    )
+    let showGrid = try XCTUnwrap(viewMenu.item(withTitle: TestMenu.showGrid))
+
+    XCTAssertEqual(showGrid.action, TestAction.toggleGridVisibility)
+    XCTAssertTrue(canvas.validateMenuItem(showGrid))
+    XCTAssertEqual(showGrid.state, .off)
+
+    undoManager.beginUndoGrouping()
+    XCTAssertTrue(
+      application.sendAction(
+        TestAction.toggleGridVisibility,
+        to: canvas,
+        from: showGrid
+      )
+    )
+    undoManager.endUndoGrouping()
+
+    var visibleCanvas = originalCanvas
+    visibleCanvas.grid.visibility = .visible
+    XCTAssertEqual(controller.document.scene.canvas, visibleCanvas)
+    XCTAssertEqual(changes.count, 1)
+    guard case .done? = changes.last else {
+      return XCTFail("Show Grid must report a completed document change")
+    }
+    XCTAssertEqual(undoManager.undoActionName, TestAction.showGridUndoName)
+    XCTAssertTrue(canvas.validateMenuItem(showGrid))
+    XCTAssertEqual(showGrid.state, .on)
+
+    undoManager.undo()
+
+    XCTAssertEqual(controller.document.scene.canvas, originalCanvas)
+    XCTAssertEqual(changes.count, 2)
+    guard case .undone? = changes.last else {
+      return XCTFail("Undo must report an undone document change")
+    }
+    XCTAssertTrue(canvas.validateMenuItem(showGrid))
+    XCTAssertEqual(showGrid.state, .off)
+
+    undoManager.redo()
+
+    XCTAssertEqual(controller.document.scene.canvas, visibleCanvas)
+    XCTAssertEqual(changes.count, 3)
+    guard case .redone? = changes.last else {
+      return XCTFail("Redo must report a redone document change")
+    }
+    XCTAssertTrue(canvas.validateMenuItem(showGrid))
+    XCTAssertEqual(showGrid.state, .on)
+
+    undoManager.beginUndoGrouping()
+    XCTAssertTrue(
+      application.sendAction(
+        TestAction.toggleGridVisibility,
+        to: canvas,
+        from: showGrid
+      )
+    )
+    undoManager.endUndoGrouping()
+
+    XCTAssertEqual(controller.document.scene.canvas, originalCanvas)
+    XCTAssertEqual(changes.count, 4)
+    guard case .done? = changes.last else {
+      return XCTFail("Hide Grid must report a completed document change")
+    }
+    XCTAssertEqual(undoManager.undoActionName, TestAction.hideGridUndoName)
+    XCTAssertTrue(canvas.validateMenuItem(showGrid))
+    XCTAssertEqual(showGrid.state, .off)
+  }
+
   private func makeController(
     elements: [SceneElement],
+    canvas: SionCanvas = SionCanvas(),
+    undoManager: UndoManager? = nil,
     didChange: @escaping (SionEditorController.DocumentChange) -> Void = { _ in }
   ) throws -> SionEditorController {
     try SionEditorController(
       package: SionPackage(
-        document: SionDocument(scene: SionScene(elements: elements))
+        document: SionDocument(scene: SionScene(canvas: canvas, elements: elements))
       ),
-      undoManagerProvider: { nil },
+      undoManagerProvider: { undoManager },
       didChange: didChange
     )
   }
@@ -198,6 +308,14 @@ private enum TestMenu {
   static let bringForward = "Bring Forward"
   static let sendBackward = "Send Backward"
   static let sendToBack = "Send to Back"
+  static let showGrid = "Show Grid"
+  static let view = "View"
+}
+
+private enum TestAction {
+  static let hideGridUndoName = "Hide Grid"
+  static let showGridUndoName = "Show Grid"
+  static let toggleGridVisibility = NSSelectorFromString("toggleGridVisibility:")
 }
 
 private enum TestApplicationDelegate {

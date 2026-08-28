@@ -66,8 +66,9 @@ public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 private enum SionMainMenu {
   static func install(recentDocumentsMenuController: SionRecentDocumentsMenuController) {
+    let applicationMenu = applicationMenu()
     let menu = NSMenu()
-    menu.addItem(applicationMenu())
+    menu.addItem(applicationMenu.item)
     menu.addItem(fileMenu(recentDocumentsMenuController: recentDocumentsMenuController))
     menu.addItem(editMenu())
     menu.addItem(arrangeMenu())
@@ -75,20 +76,36 @@ private enum SionMainMenu {
     menu.addItem(windowMenu())
     menu.addItem(helpMenu())
     NSApp.mainMenu = menu
+
+    // Attaching the main menu can install AppKit's shared Services submenu,
+    // leaving the application role and the visible item pointing at different
+    // menus. Whatever menu the role names becomes the item's submenu; release
+    // its previous owner first so no attached menu is re-parented.
+    var servicesMenu = applicationMenu.servicesMenu
+    if let attached = NSApp.servicesMenu, attached !== servicesMenu {
+      // Release the role's menu from any previous owner item before adopting
+      // it; assigning an attached menu to our item would throw.
+      if let ownerMenu = attached.supermenu {
+        ownerMenu.items.first { $0.submenu === attached }?.submenu = nil
+      }
+      servicesMenu = attached
+    }
+    if applicationMenu.servicesItem.submenu !== servicesMenu {
+      applicationMenu.servicesItem.submenu = servicesMenu
+    }
+    NSApp.servicesMenu = servicesMenu
   }
 
-  private static func applicationMenu() -> NSMenuItem {
+  private static func applicationMenu() -> ApplicationMenu {
     let submenu = NSMenu(title: "Sion")
     submenu.addItem(
       item("About Sion", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
     submenu.addItem(.separator())
 
-    let servicesMenu = NSMenu(title: "Services")
-    submenu.addItem(parentItem(title: servicesMenu.title, submenu: servicesMenu))
+    let servicesMenu = NSMenu(title: ApplicationMenuCopy.servicesTitle)
+    let servicesItem = parentItem(title: servicesMenu.title, submenu: servicesMenu)
+    submenu.addItem(servicesItem)
     submenu.addItem(.separator())
-
-    // AppKit populates the registered submenu from available services.
-    NSApp.servicesMenu = servicesMenu
 
     submenu.addItem(item("Hide Sion", action: #selector(NSApplication.hide(_:)), key: "h"))
     submenu.addItem(
@@ -98,7 +115,21 @@ private enum SionMainMenu {
     submenu.addItem(item("Show All", action: #selector(NSApplication.unhideAllApplications(_:))))
     submenu.addItem(.separator())
     submenu.addItem(item("Quit Sion", action: #selector(NSApplication.terminate(_:)), key: "q"))
-    return parentItem(title: "Sion", submenu: submenu)
+    return ApplicationMenu(
+      item: parentItem(title: "Sion", submenu: submenu),
+      servicesItem: servicesItem,
+      servicesMenu: servicesMenu
+    )
+  }
+
+  private struct ApplicationMenu {
+    let item: NSMenuItem
+    let servicesItem: NSMenuItem
+    let servicesMenu: NSMenu
+  }
+
+  private enum ApplicationMenuCopy {
+    static let servicesTitle = "Services"
   }
 
   private static func fileMenu(

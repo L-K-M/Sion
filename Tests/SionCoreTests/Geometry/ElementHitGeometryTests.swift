@@ -227,6 +227,33 @@ final class ElementHitGeometryTests: XCTestCase {
     }
   }
 
+  func testZeroLengthGapDoesNotJoinDistinctDashes() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 20, y: 0)),
+        .line(to: SionPoint(x: 20, y: 20)),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 10,
+        dashPattern: [20, 0],
+        lineCap: .butt,
+        lineJoin: .miter
+      )
+    )
+
+    XCTAssertFalse(ElementHitGeometry.contains(SionPoint(x: 24, y: -4), in: element))
+  }
+
   func testTinyDashPatternCompletesWithinInteractiveDeadline() {
     let frame = SionRect(x: 100, y: 200, width: 100, height: 100)
     let path = VectorPath(commands: [

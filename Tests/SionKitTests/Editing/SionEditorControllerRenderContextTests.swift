@@ -66,12 +66,14 @@
       let duplicate = try XCTUnwrap(
         controller.document.scene.element(withID: duplicateID)
       )
-      let query = controller.elementsForRendering(
-        intersecting: duplicate.geometry.frame
-      )
       try controller.endMove()
 
       XCTAssertEqual(controller.selection, [duplicateID])
+      controller.select(original.id)
+      let query = controller.elementsForRendering(
+        intersecting: duplicate.geometry.frame
+      )
+
       XCTAssertTrue(query.contains { $0.id == duplicateID })
       XCTAssertEqual(buildCount, buildCountAfterDuplication)
     }

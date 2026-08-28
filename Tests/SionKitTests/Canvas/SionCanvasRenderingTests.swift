@@ -58,8 +58,8 @@ final class SionCanvasRenderingTests: XCTestCase {
   }
 
   func testEveryBlendModeMatchesCoreGraphicsReference() throws {
-    let backdropColor = SionColor(red: 0.25, green: 0.25, blue: 0.25)
-    let foregroundColor = SionColor(red: 0.8, green: 0.8, blue: 0.8)
+    let backdropColor = SionColor(red: 0.9, green: 0.5, blue: 0.2)
+    let foregroundColor = SionColor(red: 0.3, green: 0.6, blue: 0.8)
     var backdrop = SceneElement.shape(
       frame: SionRect(x: 60, y: 40, width: 200, height: 160),
       kind: .rectangle

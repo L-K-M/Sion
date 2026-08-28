@@ -123,6 +123,24 @@ final class MermaidImporterTests: XCTestCase {
     XCTAssertTrue(MermaidImporter.elements(from: source, centeredAt: .zero).isEmpty)
   }
 
+  func testRejectsUnsupportedSameLineHeaderStatements() {
+    let sources = [
+      """
+      flowchart LR; A --> B
+        C
+      """,
+      """
+      flowchart LR;A --> B
+        C
+      """,
+    ]
+
+    for source in sources {
+      XCTAssertTrue(MermaidImporter.looksLikeMermaid(source))
+      XCTAssertTrue(MermaidImporter.elements(from: source, centeredAt: .zero).isEmpty)
+    }
+  }
+
   func testGeneratedMermaidCanBeImportedAgain() throws {
     let first = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 160, height: 80),

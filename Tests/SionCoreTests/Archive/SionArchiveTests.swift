@@ -272,6 +272,8 @@ final class SionArchiveTests: XCTestCase {
     )
 
     XCTAssertTrue(svg.contains("fill-rule=\"evenodd\""))
+  }
+
   func testSVGCylinderPaintsFrontRimFromSharedGeometry() throws {
     var cylinder = SceneElement.shape(
       frame: SionRect(x: 60, y: 40, width: 200, height: 80),

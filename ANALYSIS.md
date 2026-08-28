@@ -261,9 +261,10 @@ and documented pixel tolerances.
 
 ### P1.8 Replace silent command failures with coherent feedback
 
-**Evidence.** Canvas and palettes often use `try?` plus `NSSound.beep()`.
-Rejected edits can leave controls showing values the model refused. Arrange
-logs and beeps, but most failures have no stable user-facing explanation.
+**Evidence.** Inspector controls now restore model values after a rejected
+semantic edit. Canvas and other palette paths still often use `try?` plus
+`NSSound.beep()`. Arrange logs and beeps, but most failures have no stable
+user-facing explanation.
 
 **Scope.** Add one typed editor-result/feedback channel. Roll controls back to
 model values and show a compact nonmodal banner with details or retry when
@@ -295,12 +296,17 @@ rotation and thick strokes.
 
 ### P1.11 Define connector decoration appearance once
 
-**Evidence.** Circle and diamond decorations are stroked on Canvas but filled
-in SVG. Arrow bounds are now conservative, but appearance still diverges.
+**Evidence.** Canvas and SVG now share the same paint rule: open arrows are
+stroked, closed decorations are filled with the connector stroke color, and a
+nil or zero-width stroke paints no decoration. Scale and anchoring still
+diverge: Canvas uses fixed point geometry while SVG markers scale with stroke
+width, and the two renderers place diamonds differently. Connector hit testing
+also excludes decoration lobes.
 
-**Scope.** Specify fill/stroke behavior and scaling with connector stroke for
-every `ConnectorDecoration`; implement one geometry description consumed by
-Canvas, SVG, hit testing, and bounds.
+**Scope.** Unify fixed Canvas geometry with stroke-scaled SVG markers, including
+diamond anchoring, and include decoration lobes in connector hit testing.
+Implement one geometry description consumed by Canvas, SVG, hit testing, and
+bounds.
 
 **Accept.** A matrix covers none/open arrow/filled arrow/circle/diamond at each
 endpoint, short segments, diagonals, opacity, thick strokes, and all line caps.

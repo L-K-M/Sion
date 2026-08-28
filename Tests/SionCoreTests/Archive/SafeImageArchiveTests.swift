@@ -26,7 +26,8 @@ final class SafeImageArchiveTests: XCTestCase {
     let encoded = try SionArchive.encode(
       package: package,
       intent: .manual,
-      at: Date(timeIntervalSince1970: 1_787_830_522)
+      at: Date(timeIntervalSince1970: 1_787_830_522),
+      generator: testArchiveGenerator
     )
     let decoded = try SionArchive.decode(encoded.data)
     let entries = Dictionary(

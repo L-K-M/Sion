@@ -11,17 +11,6 @@ public struct EncodedSionArchive: Equatable, Sendable {
 }
 
 public struct SionArchiveGenerator: Equatable, Sendable {
-  public static let current: SionArchiveGenerator = {
-    let bundledVersion =
-      Bundle.main.object(
-        forInfoDictionaryKey: GeneratorDefaults.bundleVersionKey
-      ) as? String
-    let version =
-      bundledVersion.flatMap { $0.isEmpty ? nil : $0 }
-      ?? GeneratorDefaults.fallbackVersion
-    return SionArchiveGenerator(name: GeneratorDefaults.name, version: version)
-  }()
-
   public let name: String
   public let version: String
 
@@ -51,19 +40,13 @@ public enum SionArchiveError: Error, Equatable {
   case unexpectedEntry(String)
 }
 
-private enum GeneratorDefaults {
-  static let name = "Sion"
-  static let fallbackVersion = "0.1.0"
-  static let bundleVersionKey = "CFBundleShortVersionString"
-}
-
 /// Encodes and validates the `.sion` recovery container.
 public enum SionArchive {
   public static func encode(
     package: SionPackage,
     intent: SaveIntent,
     at date: Date = Date(),
-    generator: SionArchiveGenerator = .current
+    generator: SionArchiveGenerator
   ) throws -> EncodedSionArchive {
     try package.validate()
 

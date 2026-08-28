@@ -52,6 +52,7 @@
     private var pendingSaveIntent = SaveIntent.manual
     private var pendingSavedTitle: String?
     private var stagedHistory: DocumentHistory?
+    private let archiveGenerator: SionArchiveGenerator
 
     var editingController: SionEditorController {
       if let editingControllerStorage {
@@ -74,6 +75,14 @@
     }
 
     public override init() {
+      archiveGenerator = ApplicationArchiveMetadata(bundle: .main).archiveGenerator
+      super.init()
+
+      hasUndoManager = true
+    }
+
+    package init(archiveGenerator: SionArchiveGenerator) {
+      self.archiveGenerator = archiveGenerator
       super.init()
 
       hasUndoManager = true
@@ -128,7 +137,11 @@
         package.document.title = pendingSavedTitle
       }
 
-      let archive = try SionArchive.encode(package: package, intent: pendingSaveIntent)
+      let archive = try SionArchive.encode(
+        package: package,
+        intent: pendingSaveIntent,
+        generator: archiveGenerator
+      )
       stagedHistory = archive.committedHistory
       return archive.data
     }

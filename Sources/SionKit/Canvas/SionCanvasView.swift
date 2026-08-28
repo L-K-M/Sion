@@ -736,8 +736,11 @@
         return editorController.canHideSelection
       case #selector(revealHiddenElements(_:)):
         return editorController.canRevealHiddenElements
-      case #selector(NSResponder.performTextFinderAction(_:)):
-        // The active NSTextView validates Find; a bare canvas must not claim it.
+      case #selector(NSResponder.performTextFinderAction(_:)),
+        #selector(NSTextView.centerSelectionInVisibleArea(_:)),
+        #selector(NSText.showGuessPanel(_:)),
+        #selector(NSText.checkSpelling(_:)):
+        // The active NSTextView owns text commands; a bare canvas must not claim them.
         return false
       case #selector(toggleGridVisibility(_:)):
         menuItem.state = editorController.gridVisibility == .visible ? .on : .off

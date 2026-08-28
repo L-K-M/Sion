@@ -90,6 +90,7 @@ final class SionDrawingDocumentTests: XCTestCase {
     let windowController = try XCTUnwrap(
       document.windowControllers.first as? SionDocumentWindowController
     )
+    // LIFO runs responder cleanup before closing the window.
     defer { windowController.close() }
 
     let data = try document.data(ofType: SionDrawingDocument.typeIdentifier)

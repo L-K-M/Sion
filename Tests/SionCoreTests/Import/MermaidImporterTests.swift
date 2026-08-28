@@ -205,6 +205,105 @@ final class MermaidImporterTests: XCTestCase {
     }
   }
 
+  func testReportsEveryLossyStatementInSourceOrder() {
+    let report = MermaidImporter.importReport(
+      from: """
+        flowchart LR
+          A --> B
+          style A fill:#fff
+          C ==> D
+          E[Label] trailing
+          subgraph Cluster
+            F
+          end
+        """,
+      centeredAt: .zero
+    )
+
+    XCTAssertEqual(
+      report.omissions,
+      [
+        MermaidImportOmission(
+          line: 3,
+          statement: "style A fill:#fff",
+          reason: .unsupportedStatement("style")
+        ),
+        MermaidImportOmission(
+          line: 4,
+          statement: "C ==> D",
+          reason: .unsupportedArrow("==>")
+        ),
+        MermaidImportOmission(
+          line: 5,
+          statement: "E[Label] trailing",
+          reason: .unrecognizedStatement
+        ),
+        MermaidImportOmission(
+          line: 6,
+          statement: "subgraph Cluster",
+          reason: .unsupportedStatement("subgraph")
+        ),
+        MermaidImportOmission(
+          line: 8,
+          statement: "end",
+          reason: .unsupportedStatement("end")
+        ),
+      ]
+    )
+    XCTAssertEqual(
+      report.elements.filter { $0.content.connector == nil }.map(\.name),
+      ["A", "B", "C", "D", "F"]
+    )
+  }
+
+  func testReportsInvalidHeaderLocation() {
+    let report = MermaidImporter.importReport(
+      from: """
+        ---
+        title: Example
+        ---
+        flowchart XY
+          A
+        """,
+      centeredAt: .zero
+    )
+
+    XCTAssertEqual(
+      report.omissions,
+      [
+        MermaidImportOmission(
+          line: 4,
+          statement: "flowchart XY",
+          reason: .invalidHeader
+        )
+      ]
+    )
+    XCTAssertTrue(report.elements.isEmpty)
+  }
+
+  func testReportsEachUnsupportedArrowVariant() {
+    for importedArrow in UnsupportedImportedArrow.allCases {
+      let arrow = importedArrow.rawValue
+      let statement = "A \(arrow) B"
+      let report = MermaidImporter.importReport(
+        from: "flowchart LR\n  \(statement)",
+        centeredAt: .zero
+      )
+
+      XCTAssertEqual(
+        report.omissions,
+        [
+          MermaidImportOmission(
+            line: 2,
+            statement: statement,
+            reason: .unsupportedArrow(arrow)
+          )
+        ],
+        arrow
+      )
+    }
+  }
+
   func testGeneratedMermaidCanBeImportedAgain() throws {
     let first = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 160, height: 80),
@@ -247,6 +346,12 @@ private struct LossyImportFixture {
 private enum ImportedHeader: String, CaseIterable {
   case flowchart
   case graph
+}
+
+private enum UnsupportedImportedArrow: String, CaseIterable {
+  case dotted = "-.->"
+  case thick = "==>"
+  case line = "---"
 }
 
 private enum ImportedDirection: String, CaseIterable {

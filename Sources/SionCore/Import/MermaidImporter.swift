@@ -1,48 +1,135 @@
 import Foundation
 
+package struct MermaidImportResult: Sendable {
+  package let elements: [SceneElement]
+  package let omissions: [MermaidImportOmission]
+
+  package init(elements: [SceneElement], omissions: [MermaidImportOmission]) {
+    self.elements = elements
+    self.omissions = omissions
+  }
+}
+
+package struct MermaidImportOmission: Equatable, Sendable {
+  package enum Reason: Equatable, Sendable {
+    case invalidHeader
+    case unsupportedArrow(String)
+    case unsupportedStatement(String)
+    case unrecognizedStatement
+  }
+
+  package let line: Int
+  package let statement: String
+  package let reason: Reason
+
+  package init(line: Int, statement: String, reason: Reason) {
+    self.line = line
+    self.statement = statement
+    self.reason = reason
+  }
+}
+
 /// Converts Mermaid flowcharts into editable Sion elements.
 public enum MermaidImporter {
   public static func looksLikeMermaid(_ source: String) -> Bool {
     diagram(in: source) != nil
   }
 
-  /// Returns no elements for invalid directions or unsupported same-line statements.
+  /// Returns elements only when every statement can be preserved.
   public static func elements(from source: String, centeredAt origin: SionPoint) -> [SceneElement] {
-    guard let diagram = diagram(in: source), let direction = diagram.direction else {
-      return []
+    let report = importReport(from: source, centeredAt: origin)
+    guard report.omissions.isEmpty else { return [] }
+
+    return report.elements
+  }
+
+  /// Builds the supported projection and records every statement it cannot preserve.
+  package static func importReport(
+    from source: String,
+    centeredAt origin: SionPoint
+  ) -> MermaidImportResult {
+    guard let diagram = diagram(in: source) else {
+      return MermaidImportResult(elements: [], omissions: [])
+    }
+    guard let direction = diagram.direction else {
+      return MermaidImportResult(
+        elements: [],
+        omissions: [
+          MermaidImportOmission(
+            line: diagram.headerLine,
+            statement: diagram.header,
+            reason: .invalidHeader
+          )
+        ]
+      )
     }
 
     var nodes: [String: Node] = [:]
     var nodeOrder: [String] = []
     var links: [Link] = []
+    var omissions: [MermaidImportOmission] = []
 
     // Import the graph projection; Mermaid remains a recovery format.
-    for rawLine in diagram.lines {
+    for index in diagram.lines.indices {
+      let rawLine = diagram.lines[index]
       let line = rawLine.trimmingCharacters(in: .whitespaces)
-      guard shouldParse(line) else {
+      guard !line.isEmpty, !line.hasPrefix(MermaidSyntax.commentPrefix) else {
         continue
       }
 
-      guard let parsedLink = parseLink(line) else {
-        if let node = parseNode(line) {
-          merge(node, into: &nodes, order: &nodeOrder)
+      let firstToken =
+        line.split(whereSeparator: \Character.isWhitespace).first?
+        .lowercased() ?? ""
+      if MermaidSyntax.ignoredStatements.contains(firstToken) {
+        omissions.append(
+          MermaidImportOmission(
+            line: index + 1,
+            statement: line,
+            reason: .unsupportedStatement(firstToken)
+          )
+        )
+        continue
+      }
+
+      if let parsedLink = parseLink(line) {
+        merge(parsedLink.source, into: &nodes, order: &nodeOrder)
+        merge(parsedLink.target, into: &nodes, order: &nodeOrder)
+        links.append(
+          Link(
+            source: parsedLink.source.identifier,
+            target: parsedLink.target.identifier,
+            label: parsedLink.label
+          )
+        )
+
+        if parsedLink.arrow != MermaidSyntax.supportedArrow {
+          omissions.append(
+            MermaidImportOmission(
+              line: index + 1,
+              statement: line,
+              reason: .unsupportedArrow(parsedLink.arrow)
+            )
+          )
         }
         continue
       }
 
-      merge(parsedLink.source, into: &nodes, order: &nodeOrder)
-      merge(parsedLink.target, into: &nodes, order: &nodeOrder)
-      links.append(
-        Link(
-          source: parsedLink.source.identifier,
-          target: parsedLink.target.identifier,
-          label: parsedLink.label
+      if let node = parseNode(line) {
+        merge(node, into: &nodes, order: &nodeOrder)
+        continue
+      }
+
+      omissions.append(
+        MermaidImportOmission(
+          line: index + 1,
+          statement: line,
+          reason: .unrecognizedStatement
         )
       )
     }
 
     guard !nodeOrder.isEmpty else {
-      return []
+      return MermaidImportResult(elements: [], omissions: omissions)
     }
 
     let layout = MermaidLayout(
@@ -101,7 +188,7 @@ public enum MermaidImporter {
       elements.append(connector)
     }
 
-    return elements
+    return MermaidImportResult(elements: elements, omissions: omissions)
   }
 
   private static func diagram(in source: String) -> MermaidDiagram? {
@@ -124,6 +211,8 @@ public enum MermaidImporter {
       }
       return MermaidDiagram(
         direction: MermaidDirection(declarationTokens: tokens.dropFirst()),
+        header: line,
+        headerLine: index + 1,
         lines: lines[lines.index(after: index)...]
       )
     }
@@ -131,21 +220,10 @@ public enum MermaidImporter {
     return nil
   }
 
-  private static func shouldParse(_ line: String) -> Bool {
-    guard !line.isEmpty, !line.hasPrefix(MermaidSyntax.commentPrefix) else {
-      return false
-    }
-
-    let firstToken =
-      line.split(whereSeparator: \Character.isWhitespace).first?
-      .lowercased() ?? ""
-    return !MermaidSyntax.ignoredStatements.contains(firstToken)
-  }
-
   private static func parseLink(_ line: String) -> ParsedLink? {
     guard let arrow = MermaidSyntax.arrows.first(where: line.contains),
       let range = line.range(of: arrow),
-      let source = parseNode(String(line[..<range.lowerBound]))
+      let source = parseLinkSource(String(line[..<range.lowerBound]))
     else {
       return nil
     }
@@ -156,7 +234,31 @@ public enum MermaidImporter {
       return nil
     }
 
-    return ParsedLink(source: source, target: target, label: parsedTarget.label)
+    return ParsedLink(
+      source: source,
+      target: target,
+      label: parsedTarget.label,
+      arrow: arrow
+    )
+  }
+
+  private static func parseLinkSource(_ fragment: String) -> Node? {
+    let value = fragment.trimmingCharacters(in: .whitespaces)
+    guard let separator = value.lastIndex(where: \Character.isWhitespace) else {
+      return parseNode(value)
+    }
+
+    let edgeIdentifier = value[value.index(after: separator)...]
+    guard edgeIdentifier.last == MermaidSyntax.edgeIdentifierSuffix else {
+      return parseNode(value)
+    }
+
+    let identifier = edgeIdentifier.dropLast()
+    guard !identifier.isEmpty, identifier.allSatisfy(\.isMermaidIdentifierCharacter) else {
+      return nil
+    }
+
+    return parseNode(String(value[..<separator]))
   }
 
   private static func targetAndLabel(from fragment: String) -> (target: String, label: String?) {
@@ -180,9 +282,7 @@ public enum MermaidImporter {
       return nil
     }
 
-    let identifierEnd = value.firstIndex { character in
-      !character.isLetter && !character.isNumber && character != "_" && character != "-"
-    }
+    let identifierEnd = value.firstIndex { !$0.isMermaidIdentifierCharacter }
     guard let identifierEnd else {
       return Node(
         identifier: value,
@@ -197,16 +297,24 @@ public enum MermaidImporter {
     }
 
     let decoration = String(value[identifierEnd...]).trimmingCharacters(in: .whitespaces)
-    guard let delimiters = delimiters(for: decoration.first) else {
+    guard !decoration.isEmpty else {
       return Node(
         identifier: identifier,
         label: identifier,
         kind: .roundedRectangle(radius: MermaidLayout.cornerRadius)
       )
     }
+    guard let delimiters = delimiters(for: decoration.first) else {
+      return nil
+    }
 
     guard let closingIndex = decoration.lastIndex(of: delimiters.close) else {
-      return Node(identifier: identifier, label: identifier, kind: delimiters.kind)
+      return nil
+    }
+    let trailing = decoration[decoration.index(after: closingIndex)...]
+      .trimmingCharacters(in: .whitespaces)
+    guard trailing.isEmpty else {
+      return nil
     }
 
     let labelStart = decoration.index(after: decoration.startIndex)
@@ -268,6 +376,7 @@ private struct ParsedLink {
   let source: Node
   let target: Node
   let label: String?
+  let arrow: String
 }
 
 private struct Link {
@@ -278,6 +387,8 @@ private struct Link {
 
 private struct MermaidDiagram {
   let direction: MermaidDirection?
+  let header: String
+  let headerLine: Int
   let lines: ArraySlice<Substring>
 }
 
@@ -343,13 +454,28 @@ private enum MermaidLayoutAxis {
 
 private enum MermaidSyntax {
   static let headers = Set(["flowchart", "graph"])
-  static let arrows = ["-.->", "-->", "==>", "---"]
+  static let arrows = MermaidArrow.allCases.map(\.rawValue)
+  static let edgeIdentifierSuffix: Character = "@"
+  static let supportedArrow = MermaidArrow.solid.rawValue
   static let commentPrefix = "%%"
   static let frontMatterDelimiter = "---"
   static let statementSeparator: Character = ";"
   static let ignoredStatements = Set([
     "classdef", "class", "click", "direction", "end", "linkstyle", "style", "subgraph",
   ])
+}
+
+private enum MermaidArrow: String, CaseIterable {
+  case dotted = "-.->"
+  case solid = "-->"
+  case thick = "==>"
+  case line = "---"
+}
+
+extension Character {
+  fileprivate var isMermaidIdentifierCharacter: Bool {
+    isLetter || isNumber || self == "_" || self == "-"
+  }
 }
 
 private struct MermaidLayout {

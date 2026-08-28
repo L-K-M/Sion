@@ -6,6 +6,98 @@ import XCTest
 
 @MainActor
 final class SionCanvasMenuValidationTests: XCTestCase {
+  func testTextCommandValidationRequiresInlineTextEditor() throws {
+    _ = NSApplication.shared
+    let controller = try makeController(elements: [])
+    let canvas = SionCanvasView(editorController: controller)
+    let find = NSMenuItem(
+      title: "Find…",
+      action: #selector(NSResponder.performTextFinderAction(_:)),
+      keyEquivalent: "f"
+    )
+    find.tag = NSTextFinder.Action.showFindInterface.rawValue
+
+    let textItems = [
+      find,
+      NSMenuItem(
+        title: "Jump to Selection",
+        action: #selector(NSTextView.centerSelectionInVisibleArea(_:)),
+        keyEquivalent: "j"
+      ),
+      NSMenuItem(
+        title: "Show Spelling and Grammar",
+        action: #selector(NSText.showGuessPanel(_:)),
+        keyEquivalent: ":"
+      ),
+      NSMenuItem(
+        title: "Check Document Now",
+        action: #selector(NSText.checkSpelling(_:)),
+        keyEquivalent: ";"
+      ),
+    ]
+
+    for item in textItems {
+      XCTAssertFalse(canvas.validateMenuItem(item), item.title)
+    }
+  }
+
+  func testInlineEditorHandlesFindAndSpellingCommands() throws {
+    let application = NSApplication.shared
+    let previousMainMenu = application.mainMenu
+    let previousServicesMenu = application.servicesMenu
+    let previousWindowsMenu = application.windowsMenu
+    let text = SceneElement.text(
+      frame: SionRect(x: 40, y: 40, width: 220, height: 80),
+      text: "alpha beta alpha"
+    )
+    let controller = try makeController(elements: [text])
+    let canvas = SionCanvasView(editorController: controller)
+
+    defer {
+      canvas.discardPendingEdits()
+      application.mainMenu = previousMainMenu
+      application.servicesMenu = previousServicesMenu
+      application.windowsMenu = previousWindowsMenu
+    }
+
+    let delegate: NSApplicationDelegate = SionApplicationDelegate()
+    delegate.applicationWillFinishLaunching?(
+      Notification(name: NSApplication.willFinishLaunchingNotification, object: application)
+    )
+    canvas.beginTextEditing(text.id)
+
+    let textView = try XCTUnwrap(
+      canvas.subviews
+        .compactMap { $0 as? NSScrollView }
+        .compactMap { $0.documentView as? NSTextView }
+        .first
+    )
+    XCTAssertTrue(textView.usesFindPanel)
+
+    let editMenu = try XCTUnwrap(application.mainMenu?.item(withTitle: "Edit")?.submenu)
+    let findMenu = try XCTUnwrap(editMenu.item(withTitle: "Find")?.submenu)
+    for item in findMenu.items where !item.isSeparatorItem {
+      XCTAssertTrue(textView.validateMenuItem(item), item.title)
+    }
+
+    let spellingMenu = try XCTUnwrap(
+      editMenu.item(withTitle: "Spelling and Grammar")?.submenu
+    )
+    let showSpelling = try XCTUnwrap(
+      spellingMenu.item(withTitle: "Show Spelling and Grammar")
+    )
+    let checkSpelling = try XCTUnwrap(spellingMenu.item(withTitle: "Check Document Now"))
+    XCTAssertTrue(textView.validateMenuItem(showSpelling))
+    XCTAssertTrue(textView.validateMenuItem(checkSpelling))
+
+    canvas.discardPendingEdits()
+    for item in findMenu.items where !item.isSeparatorItem {
+      XCTAssertFalse(canvas.validateMenuItem(item), item.title)
+    }
+    XCTAssertFalse(canvas.validateMenuItem(showSpelling))
+    XCTAssertFalse(canvas.validateMenuItem(checkSpelling))
+  }
+
   func testEditValidationMatchesExecutableSelection() throws {
     _ = NSApplication.shared
     let editable = shape(id: "00000000-0000-0000-0000-000000000001")

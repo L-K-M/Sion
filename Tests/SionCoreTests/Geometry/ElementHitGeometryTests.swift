@@ -539,6 +539,81 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testPathCommandSizedDashPatternUsesBoundedFallbackWithinDeadline() {
+    let pairCount = SceneLimits.maximumPathCommandCount / 2
+    let dashPattern = Array(repeating: [1.0, 1_000.0], count: pairCount).flatMap { $0 }
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 1_000, y: 0)),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 2,
+        dashPattern: dashPattern,
+        lineCap: .butt
+      )
+    )
+
+    let gapPoint = SionPoint(x: 500, y: 0)
+    let started = ContinuousClock.now
+    var containsPoint = false
+    for _ in 0..<Self.largeSceneElementCount {
+      if ElementHitGeometry.contains(gapPoint, in: element) {
+        containsPoint = true
+      }
+    }
+    let elapsed = started.duration(to: .now)
+
+    XCTAssertTrue(containsPoint)
+    XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
+  }
+
+  func testInteractiveDashPatternBudgetCompletesWithinDeadline() {
+    let dashPattern = Array(repeating: [1.0, 1_000.0], count: 16).flatMap { $0 }
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 1_000, y: 0)),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 2,
+        dashPattern: dashPattern,
+        lineCap: .butt
+      )
+    )
+
+    let gapPoint = SionPoint(x: 500, y: 0)
+    let started = ContinuousClock.now
+    var containsPoint = false
+    for _ in 0..<Self.largeSceneElementCount {
+      if ElementHitGeometry.contains(gapPoint, in: element) {
+        containsPoint = true
+      }
+    }
+    let elapsed = started.duration(to: .now)
+
+    XCTAssertFalse(containsPoint)
+    XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
+  }
+
   func testCurvedButtDashKeepsVisibleGapClear() {
     let path = VectorPath(
       coordinateSpace: .localPoints,
@@ -1301,6 +1376,29 @@ final class ElementHitGeometryTests: XCTestCase {
     var containsPoint = false
     for _ in 0..<Self.largeSceneElementCount {
       if ElementHitGeometry.contains(gapPoint, in: element, tolerance: 2) {
+        containsPoint = true
+      }
+    }
+    let elapsed = started.duration(to: .now)
+
+    XCTAssertFalse(containsPoint)
+    XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
+  }
+
+  func testLargeEllipseBoundaryMissesStayWithinInteractiveDeadline() {
+    let frame = SionRect(x: 0, y: 0, width: 1_000, height: 1_000)
+    var element = SceneElement.shape(frame: frame, kind: .ellipse)
+    element.style = ElementStyle(fill: .solid(.black))
+    let angle = Double.pi / 8
+    let miss = SionPoint(
+      x: frame.center.x + (500.5 * cos(angle)),
+      y: frame.center.y + (500.5 * sin(angle))
+    )
+
+    let started = ContinuousClock.now
+    var containsPoint = false
+    for _ in 0..<Self.largeSceneElementCount {
+      if ElementHitGeometry.contains(miss, in: element, tolerance: 0) {
         containsPoint = true
       }
     }

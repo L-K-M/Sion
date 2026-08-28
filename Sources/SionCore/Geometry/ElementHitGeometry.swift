@@ -2099,14 +2099,16 @@ extension TextContent {
 
 private enum HitGeometryDefaults {
   static let arcControlFactor = 0.552_284_749_8
-  static let maximumCubicArcEnvelopeScale = 1.001
+  // The kappa cubic's maximum radial overshoot is below this scale.
+  static let maximumCubicArcEnvelopeScale = 1.000_273
   static let curveFlatness = 0.25
   static let epsilon = 1e-9
   // Share a fixed traversal budget across every curve in one valid path.
   static let flattenedSegmentsPerPathCommand = 16
   static let maximumFlattenedCurveSegmentCount =
     SceneLimits.maximumPathCommandCount * flattenedSegmentsPerPathCommand
-  static let maximumInteractiveDashPatternCount = SceneLimits.maximumPathCommandCount
+  // Cap per-hit parsing so a maximum-sized scene remains interactive.
+  static let maximumInteractiveDashPatternCount = 32
   // An eight-segment conservative preflight rejects curved-shape misses.
   static let maximumBuiltInBroadPhaseSubdivisionDepth = 1
   // Four-curve built-ins use at most 1,024 curve segments.

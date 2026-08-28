@@ -66,6 +66,12 @@
       }
     }
 
+    private enum RenderContextChange {
+      case rebuild
+      case update(Set<ElementID>)
+      case unchanged
+    }
+
     enum Tool: Int, CaseIterable {
       case select
       case rectangle
@@ -125,9 +131,10 @@
     private var pendingTextEdit: PendingTextEdit?
     private var lastDuplicate: DuplicateState?
     private var pendingDuplicateMove: SionVector?
-    private var routeCache: [ElementID: ConnectorRoute]
+    private var renderContext: SceneRenderContext
     private let imageCache: NSCache<NSString, NSImage>
 
+    private let renderContextBuilder: (SionScene) -> SceneRenderContext
     private let undoManagerProvider: () -> UndoManager?
     private let didChange: (DocumentChange) -> Void
     private var observers: [UUID: () -> Void] = [:]
@@ -135,7 +142,10 @@
     init(
       package: SionPackage,
       undoManagerProvider: @escaping () -> UndoManager?,
-      didChange: @escaping (DocumentChange) -> Void
+      didChange: @escaping (DocumentChange) -> Void,
+      renderContextBuilder: @escaping (SionScene) -> SceneRenderContext = {
+        SceneRenderContext(scene: $0)
+      }
     ) throws {
       editor = try SceneEditor(document: package.document)
       assets = package.assets
@@ -143,10 +153,11 @@
       previewPNG = package.previewPNG
       pendingTextEdit = nil
       pendingDuplicateMove = nil
-      routeCache = [:]
+      renderContext = renderContextBuilder(package.document.scene)
       imageCache = NSCache()
       imageCache.countLimit = EditorDefaults.imageCacheLimit
       imageCache.totalCostLimit = EditorDefaults.imageCacheTotalCostLimit
+      self.renderContextBuilder = renderContextBuilder
       self.undoManagerProvider = undoManagerProvider
       self.didChange = didChange
 
@@ -575,7 +586,7 @@
       lastDuplicate = nil
       pendingDuplicateMove = nil
       anchorEditingState = .inactive
-      routeCache.removeAll()
+      renderContext = renderContextBuilder(package.document.scene)
       imageCache.removeAllObjects()
       selection.removeAll()
       undoManagerProvider()?.removeAllActions(withTarget: self)
@@ -610,21 +621,14 @@
     }
 
     func connectorRoute(for element: SceneElement) -> ConnectorRoute? {
-      if let cached = routeCache[element.id] {
-        return cached
-      }
+      renderContext.connectorRoute(for: element)
+    }
 
-      guard
-        let route = SceneRenderGeometry.connectorRoute(
-          for: element,
-          in: editor.document.scene
-        )
-      else {
-        return nil
-      }
-
-      routeCache[element.id] = route
-      return route
+    func elementsForRendering(intersecting bounds: SionRect) -> [SceneElement] {
+      renderContext.elements(
+        intersecting: bounds,
+        including: selection
+      ).elements
     }
 
     /// Routes once per scene state; bounds, drawing, and hit testing share it.
@@ -1039,7 +1043,10 @@
         didChange(.done)
       }
 
-      notifyModelChange(notification: .skip)
+      notifyModelChange(
+        notification: .skip,
+        renderContextChange: .update([id])
+      )
     }
 
     func endTextEdit() throws {
@@ -1104,7 +1111,10 @@
       }
       guard result == .applied else { return }
 
-      notifyModelChange(notification: .skip)
+      notifyModelChange(
+        notification: .skip,
+        renderContextChange: .update([pendingTextEdit.elementID])
+      )
     }
 
     private func beginPendingTextEdit(on id: ElementID) throws {
@@ -1132,7 +1142,10 @@
         didChange(.undone)
       }
       if result == .applied {
-        notifyModelChange(notification: .skip)
+        notifyModelChange(
+          notification: .skip,
+          renderContextChange: .update([pendingTextEdit.elementID])
+        )
       }
 
       return true
@@ -1256,7 +1269,10 @@
       if let movement = pendingDuplicateMove {
         pendingDuplicateMove = movement + offset
       }
-      notifyModelChange(notification: .skip)
+      notifyModelChange(
+        notification: .skip,
+        renderContextChange: .update(translatedElementIDs())
+      )
     }
 
     func endMove() throws {
@@ -1269,7 +1285,7 @@
         recordDuplicateMovement(movement)
       }
       registerUndo(actionName: "Move")
-      notifyModelChange(notification: .done)
+      notifyModelChange(notification: .done, renderContextChange: .unchanged)
     }
 
     func beginResize() throws {
@@ -1280,7 +1296,7 @@
 
     func resize(_ id: ElementID, to frame: SionRect) throws {
       _ = try editor.updateGesture(with: .setFrame(elementID: id, frame: frame))
-      notifyModelChange(notification: .skip)
+      notifyModelChange(notification: .skip, renderContextChange: .update([id]))
     }
 
     func endResize() throws {
@@ -1297,7 +1313,7 @@
       _ = try editor.updateGesture(
         with: .setRotation(elementID: id, radians: radians)
       )
-      notifyModelChange(notification: .skip)
+      notifyModelChange(notification: .skip, renderContextChange: .update([id]))
     }
 
     func endRotation() throws {
@@ -1317,7 +1333,7 @@
           kind: .roundedRectangle(radius: max(0, radius))
         )
       )
-      notifyModelChange(notification: .skip)
+      notifyModelChange(notification: .skip, renderContextChange: .update([id]))
     }
 
     func endCornerRadiusChange() throws {
@@ -1333,7 +1349,7 @@
       guard result == .applied else { return }
 
       registerUndo(actionName: transform.actionName)
-      notifyModelChange(notification: .done)
+      notifyModelChange(notification: .done, renderContextChange: .unchanged)
     }
 
     /// Restores the pre-gesture scene; used when a drag is cancelled.
@@ -1341,7 +1357,16 @@
       pendingDuplicateMove = nil
       guard (try? editor.cancelGesture()) == .applied else { return }
 
-      notifyModelChange(notification: .skip)
+      notifyModelChange(
+        notification: .skip,
+        renderContextChange: .update(translatedElementIDs())
+      )
+    }
+
+    private func translatedElementIDs() -> Set<ElementID> {
+      var ids = selection
+      ids.formUnion(editor.document.scene.descendantIDs(of: selection))
+      return ids
     }
 
     /// Mirrors core gesture lifetime for view-state recovery.
@@ -1465,12 +1490,25 @@
       }
     }
 
-    private func notifyModelChange(notification: DocumentChangeNotification) {
+    private func notifyModelChange(
+      notification: DocumentChangeNotification,
+      renderContextChange: RenderContextChange = .rebuild
+    ) {
       // Every notification reaching this funnel mutates the document, so the
-      // rendered preview and cached routes are stale. Selection-only changes
-      // notify observers directly and keep both caches.
+      // rendered preview is stale. Selection-only changes bypass this funnel.
       previewPNG = nil
-      routeCache.removeAll()
+
+      switch renderContextChange {
+      case .rebuild:
+        renderContext = renderContextBuilder(editor.document.scene)
+      case .update(let changedElementIDs):
+        renderContext.update(
+          scene: editor.document.scene,
+          changedElementIDs: changedElementIDs
+        )
+      case .unchanged:
+        break
+      }
 
       switch notification {
       case .done:

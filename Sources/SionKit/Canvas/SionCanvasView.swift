@@ -1673,45 +1673,22 @@
         return
       }
 
-      let components = drawing.stops.flatMap { stop in
-        [
-          clampedUnit(stop.color.red),
-          clampedUnit(stop.color.green),
-          clampedUnit(stop.color.blue),
-          clampedUnit(stop.color.alpha),
-        ]
-      }
+      let colors = drawing.stops.map { nsColor($0.color) }
       let locations = drawing.stops.map { CGFloat($0.location) }
-      guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return }
-      let renderedGradient: CGGradient? = components.withUnsafeBufferPointer {
-        componentBuffer in
-        guard let componentAddress = componentBuffer.baseAddress else { return nil }
-
-        return locations.withUnsafeBufferPointer { locationBuffer in
-          CGGradient(
-            colorSpace: colorSpace,
-            colorComponents: componentAddress,
-            locations: locationBuffer.baseAddress,
-            count: drawing.stops.count
-          )
-        }
+      let renderedGradient = locations.withUnsafeBufferPointer { buffer in
+        NSGradient(
+          colors: colors,
+          atLocations: buffer.baseAddress,
+          colorSpace: NSColorSpace.sRGB
+        )
       }
-      guard let renderedGradient,
-        let context = NSGraphicsContext.current?.cgContext
-      else {
-        return
-      }
+      guard let renderedGradient else { return }
 
       NSGraphicsContext.saveGraphicsState()
       defer { NSGraphicsContext.restoreGraphicsState() }
 
       path.addClip()
-      context.drawLinearGradient(
-        renderedGradient,
-        start: drawing.start,
-        end: drawing.end,
-        options: []
-      )
+      renderedGradient.draw(from: drawing.start, to: drawing.end, options: [])
     }
 
     private func gradientPoint(_ point: SionPoint, in bounds: NSRect) -> NSPoint {

@@ -87,11 +87,17 @@ private enum DecodeOutcome: Equatable {
 }
 
 private enum MutationCorpus {
+  private static let baseSeed: UInt64 = 0x5A10_2026_0000_0000
+  private static let mutationCount = 256
+
   static let date = Date(timeIntervalSince1970: 1_787_830_522)
-  static let seeds = (0..<256).map { 0x5A10_2026_0000_0000 | UInt64($0) }
+  static let seeds = (0..<mutationCount).map { baseSeed | UInt64($0) }
 }
 
 private struct FixedGenerator {
+  private static let multiplier: UInt64 = 6_364_136_223_846_793_005
+  private static let increment: UInt64 = 1_442_695_040_888_963_407
+
   private var state: UInt64
 
   init(seed: UInt64) {
@@ -100,7 +106,7 @@ private struct FixedGenerator {
 
   mutating func next() -> UInt64 {
     // This fixed LCG keeps mutation cases stable across Swift versions.
-    state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+    state = state &* Self.multiplier &+ Self.increment
     return state
   }
 }

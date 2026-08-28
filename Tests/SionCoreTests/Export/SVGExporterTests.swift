@@ -165,7 +165,9 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertFalse(element.text.contains("transform="))
     XCTAssertTrue(element.text.contains("filter=\"url(#shadow-\(id))\""))
     XCTAssertTrue(elementMarkup.contains("<g transform=\"rotate(90 120 120)\">"))
-    XCTAssertTrue(filter.text.contains("primitiveUnits=\"userSpaceOnUse\""))
+    XCTAssertTrue(
+      filter.text.contains("primitiveUnits=\"\(SVGFilterSpec.userSpaceUnits)\"")
+    )
   }
 
   func testConnectorResolutionUsesRotatedMagnets() throws {
@@ -558,4 +560,8 @@ final class SVGExporterTests: XCTestCase {
     let valueStart = attribute.index(attribute.startIndex, offsetBy: prefix.count)
     return Double(attribute[valueStart..<valueEnd])
   }
+}
+
+private enum SVGFilterSpec {
+  static let userSpaceUnits = "userSpaceOnUse"
 }

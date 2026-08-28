@@ -5,7 +5,7 @@ import XCTest
 final class SceneRenderGeometryTests: XCTestCase {
   private let canvasArrowLength = 12.0
   private let contentPadding = SceneRenderGeometry.exportPadding
-  private let contentBoundsTolerance = 1.0
+  private let rotatedBoundsAccuracy = 1e-9
   private let svgMarkerViewportScale = 7.0 / 10.0
   private let svgFilledArrowFarCorners = [
     SionVector(dx: -9, dy: -5),
@@ -226,10 +226,10 @@ final class SceneRenderGeometryTests: XCTestCase {
 
     let bounds = SceneRenderGeometry.paintedBounds(of: shape)
 
-    XCTAssertEqual(bounds.minX, 80, accuracy: contentBoundsTolerance)
-    XCTAssertEqual(bounds.minY, 100, accuracy: contentBoundsTolerance)
-    XCTAssertEqual(bounds.maxX, 240, accuracy: contentBoundsTolerance)
-    XCTAssertEqual(bounds.maxY, 140, accuracy: contentBoundsTolerance)
+    XCTAssertEqual(bounds.minX, 80, accuracy: rotatedBoundsAccuracy)
+    XCTAssertEqual(bounds.minY, 100, accuracy: rotatedBoundsAccuracy)
+    XCTAssertEqual(bounds.maxX, 240, accuracy: rotatedBoundsAccuracy)
+    XCTAssertEqual(bounds.maxY, 140, accuracy: rotatedBoundsAccuracy)
   }
 
   func testContentBoundsIncludeLocalPathCommandsOutsideFrame() {

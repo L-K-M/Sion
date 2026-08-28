@@ -290,7 +290,7 @@ final class SVGExporterTests: XCTestCase {
 
       XCTAssertTrue(
         group.text.contains(
-          "style=\"\(SVGCompositingSpec.blendModeProperty):\(SVGCompositingSpec.value(for: blendMode))\""
+          "style=\"\(SVGCompositingSpec.blendModeProperty):\(SVGCompositingSpec.value(for: blendMode).rawValue)\""
         ),
         blendMode.rawValue
       )
@@ -600,17 +600,19 @@ private enum SVGFilterSpec {
 private enum SVGCompositingSpec {
   static let blendModeProperty = "mix-blend-mode"
 
-  static func value(for blendMode: BlendMode) -> String {
+  static func value(for blendMode: BlendMode) -> SVGBlendModeSpec {
     switch blendMode {
-    case .normal: normalValue
-    case .multiply: multiplyValue
-    case .screen: screenValue
-    case .overlay: overlayValue
+    case .normal: .normal
+    case .multiply: .multiply
+    case .screen: .screen
+    case .overlay: .overlay
     }
   }
+}
 
-  private static let multiplyValue = "multiply"
-  private static let normalValue = "normal"
-  private static let overlayValue = "overlay"
-  private static let screenValue = "screen"
+private enum SVGBlendModeSpec: String {
+  case multiply = "multiply"
+  case normal = "normal"
+  case overlay = "overlay"
+  case screen = "screen"
 }

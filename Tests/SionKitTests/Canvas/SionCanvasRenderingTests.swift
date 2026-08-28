@@ -58,21 +58,19 @@ final class SionCanvasRenderingTests: XCTestCase {
   }
 
   func testEveryBlendModeMatchesCoreGraphicsReference() throws {
+    let backdropColor = SionColor(red: 0.25, green: 0.25, blue: 0.25)
+    let foregroundColor = SionColor(red: 0.8, green: 0.8, blue: 0.8)
     var backdrop = SceneElement.shape(
       frame: SionRect(x: 60, y: 40, width: 200, height: 160),
       kind: .rectangle
     )
-    backdrop.style = ElementStyle(
-      fill: .solid(SionColor(red: 0.25, green: 0.25, blue: 0.25))
-    )
+    backdrop.style = ElementStyle(fill: .solid(backdropColor))
 
     var foreground = SceneElement.shape(
       frame: SionRect(x: 90, y: 70, width: 140, height: 100),
       kind: .rectangle
     )
-    foreground.style = ElementStyle(
-      fill: .solid(SionColor(red: 0.8, green: 0.8, blue: 0.8))
-    )
+    foreground.style = ElementStyle(fill: .solid(foregroundColor))
 
     let point = SionPoint(x: 160, y: 120)
 
@@ -83,7 +81,12 @@ final class SionCanvasRenderingTests: XCTestCase {
           in: render(elements: [backdrop, foreground]),
           at: point
         )
-        let expected = try blendReferenceColor(blendMode, at: point)
+        let expected = try blendReferenceColor(
+          blendMode,
+          backdrop: backdropColor,
+          foreground: foregroundColor,
+          at: point
+        )
 
         assertEqual(actual, expected, file: #filePath, line: #line)
       }
@@ -770,6 +773,8 @@ final class SionCanvasRenderingTests: XCTestCase {
 
   private func blendReferenceColor(
     _ blendMode: BlendMode,
+    backdrop: SionColor,
+    foreground: SionColor,
     at point: SionPoint
   ) throws -> NSColor {
     let graphics = try bitmapContext(
@@ -782,13 +787,9 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
     graphics.setFillColor(NSColor.white.cgColor)
     graphics.fill(bounds)
-    graphics.setFillColor(
-      NSColor(srgbRed: 0.25, green: 0.25, blue: 0.25, alpha: 1).cgColor
-    )
+    graphics.setFillColor(nsColor(backdrop).cgColor)
     graphics.fill(bounds)
-    graphics.setFillColor(
-      NSColor(srgbRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).cgColor
-    )
+    graphics.setFillColor(nsColor(foreground).cgColor)
     graphics.setBlendMode(coreGraphicsBlendMode(blendMode))
     graphics.fill(bounds)
 
@@ -802,6 +803,15 @@ final class SionCanvasRenderingTests: XCTestCase {
     case .screen: .screen
     case .overlay: .overlay
     }
+  }
+
+  private func nsColor(_ color: SionColor) -> NSColor {
+    NSColor(
+      srgbRed: CGFloat(color.red),
+      green: CGFloat(color.green),
+      blue: CGFloat(color.blue),
+      alpha: CGFloat(color.alpha)
+    )
   }
 
   private func pixel(in image: CGImage, at point: SionPoint) throws -> NSColor {

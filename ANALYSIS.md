@@ -244,7 +244,8 @@ established deterministic offscreen Canvas pixel tests plus focused SVG
 structure tests. A complete `BlendMode` matrix now pins portable SVG properties
 and fixed-sRGB Canvas pixels against Core Graphics. Focused Canvas coverage also
 verifies quadratic continuation after a closed subpath. Other renderer enums,
-direct Canvas/SVG comparison, XCUITest, and performance threshold gates remain.
+direct Canvas/SVG comparison, an XCUITest suite, and performance threshold gates
+remain untested.
 
 **Scope.** Extend those harnesses with compact portable SVG and deterministic
 offscreen macOS pixel fixtures for every shape, path, fill, stroke, shadow,

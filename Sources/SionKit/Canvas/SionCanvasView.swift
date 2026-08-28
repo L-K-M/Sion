@@ -2462,6 +2462,9 @@
         case .close:
           if hasCurrent {
             path.close()
+
+            // Keep converter state at the closed subpath's origin.
+            current = path.currentPoint
           }
         }
       }

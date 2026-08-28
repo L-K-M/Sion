@@ -319,6 +319,74 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
   }
 
+  func testVectorQuadraticAfterCloseStartsAtSubpathOrigin() throws {
+    let frame = SionRect(x: 40, y: 40, width: 240, height: 160)
+    let subpathStart = SionPoint(x: 0.1, y: 0.2)
+    let control = SionPoint(x: 0.1, y: 0.8)
+    let end = SionPoint(x: 0.5, y: 0.8)
+    let priorEndpoint = SionPoint(x: 0.9, y: 0.8)
+    let quadraticToCubicControlFraction = 2.0 / 3.0
+    let closedSubpath: [PathCommand] = [
+      .move(to: subpathStart),
+      .line(to: SionPoint(x: 0.9, y: 0.2)),
+      .line(to: priorEndpoint),
+      .close,
+    ]
+    let style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 5)
+    )
+    var implicitReset = SceneElement.path(
+      frame: frame,
+      path: VectorPath(
+        commands: closedSubpath + [.quadratic(control: control, to: end)]
+      )
+    )
+    implicitReset.style = style
+    var explicitReset = SceneElement.path(
+      frame: frame,
+      path: VectorPath(
+        commands: closedSubpath + [
+          .move(to: subpathStart),
+          .quadratic(control: control, to: end),
+        ]
+      )
+    )
+    explicitReset.style = style
+
+    // This cubic preserves the stale quadratic control points from before the fix.
+    var staleControl = SceneElement.path(
+      frame: frame,
+      path: VectorPath(
+        commands: closedSubpath + [
+          .cubic(
+            control1: priorEndpoint.interpolated(
+              to: control,
+              fraction: quadraticToCubicControlFraction
+            ),
+            control2: end.interpolated(
+              to: control,
+              fraction: quadraticToCubicControlFraction
+            ),
+            to: end
+          )
+        ]
+      )
+    )
+    staleControl.style = style
+
+    let implicitPixels = try renderedPixels(render(elements: [implicitReset]))
+
+    XCTAssertEqual(
+      implicitPixels,
+      try renderedPixels(render(elements: [explicitReset]))
+    )
+    XCTAssertNotEqual(
+      implicitPixels,
+      try renderedPixels(render(elements: [staleControl]))
+    )
+  }
+
   func testColorsRemainSRGBInDisplayP3Context() throws {
     let authored = SionColor(red: 0.25, green: 0.5, blue: 0.75)
     let terminal = SionColor(red: 0.75, green: 0.25, blue: 0.5)

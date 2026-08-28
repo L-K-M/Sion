@@ -240,8 +240,9 @@ clearance around rotated diamond, ellipse, and custom-path fixtures.
 
 **Evidence.** Core coverage is broad, and recent compositing/bounds work
 established deterministic offscreen Canvas pixel tests plus focused SVG
-structure tests. There is still no complete enum matrix, direct Canvas/SVG
-comparison, XCUITest suite, or performance threshold gate.
+structure tests. Focused Canvas coverage now verifies quadratic continuation
+after a closed subpath. There is still no complete enum matrix, direct
+Canvas/SVG comparison, XCUITest suite, or performance threshold gate.
 
 **Scope.** Extend those harnesses with compact portable SVG and deterministic
 offscreen macOS pixel fixtures for every shape, path, fill, stroke, shadow,
@@ -635,12 +636,13 @@ The same engine can seed X1.
 
 ### P2.17 Complete native app integration
 
-**Evidence.** Standard Settings, Services, Open Recent, Help, Find/Spelling,
-Page Setup, and Print flows are incomplete. Window minimum size,
-localization hooks, signing/notarization/update strategy, sandbox/file access,
-and strict-concurrency migration remain open; `Package.swift` uses Swift 5
-language mode under a Swift 6.3.3 toolchain. Save As now keeps the native
-display name and archived title synchronized without dirtying the document.
+**Evidence.** Standard Settings, Open Recent, Help, Find/Spelling, Page
+Setup, and Print flows are incomplete. The Services submenu is registered for
+AppKit-managed providers. Window minimum size, localization hooks,
+signing/notarization/update strategy, sandbox/file access, and
+strict-concurrency migration remain open; `Package.swift` uses Swift 5 language
+mode under a Swift 6.3.3 toolchain. Save As now keeps the native display name
+and archived title synchronized without dirtying the document.
 Revert to Saved now routes through `NSDocument`; archive reads discard pending
 inline edits and restore canvas focus.
 

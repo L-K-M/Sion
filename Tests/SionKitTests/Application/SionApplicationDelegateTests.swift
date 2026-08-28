@@ -4,8 +4,8 @@ import XCTest
 @testable import SionKit
 
 @MainActor
-final class SionRevertMenuTests: XCTestCase {
-  func testLaunchInstallsNativeRevertCommand() throws {
+final class SionApplicationDelegateTests: XCTestCase {
+  func testWillFinishLaunchingRegistersServicesSubmenu() throws {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
@@ -18,27 +18,21 @@ final class SionRevertMenuTests: XCTestCase {
     }
 
     application.mainMenu = nil
+    application.servicesMenu = nil
     let delegate: NSApplicationDelegate = SionApplicationDelegate()
     delegate.applicationWillFinishLaunching?(
       Notification(name: NSApplication.willFinishLaunchingNotification, object: application)
     )
 
-    let fileMenu = try XCTUnwrap(
-      application.mainMenu?.item(withTitle: TestMenu.file)?.submenu
+    let applicationMenu = try XCTUnwrap(application.mainMenu?.item(at: 0)?.submenu)
+    let servicesItem = try XCTUnwrap(applicationMenu.item(withTitle: "Services"))
+    let servicesMenu = try XCTUnwrap(servicesItem.submenu)
+
+    XCTAssertTrue(application.servicesMenu === servicesMenu)
+    let hideItem = try XCTUnwrap(applicationMenu.item(withTitle: "Hide Sion"))
+    XCTAssertLessThan(
+      applicationMenu.index(of: servicesItem),
+      applicationMenu.index(of: hideItem)
     )
-    let revert = try XCTUnwrap(fileMenu.item(withTitle: TestMenu.revertToSaved))
-
-    XCTAssertEqual(revert.action, TestAction.revertToSaved)
-    XCTAssertNil(revert.target)
-    XCTAssertTrue(revert.keyEquivalent.isEmpty)
   }
-}
-
-private enum TestMenu {
-  static let file = "File"
-  static let revertToSaved = "Revert to Saved"
-}
-
-private enum TestAction {
-  static let revertToSaved = #selector(NSDocument.revertToSaved(_:))
 }

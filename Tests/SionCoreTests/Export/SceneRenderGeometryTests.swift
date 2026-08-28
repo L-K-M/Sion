@@ -126,6 +126,29 @@ final class SceneRenderGeometryTests: XCTestCase {
     )
   }
 
+  func testPaintedBoundsIncludePositiveShadowSpread() {
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 40, y: 60, width: 100, height: 80),
+      kind: .rectangle
+    )
+    shape.style = ElementStyle(
+      fill: .solid(.black),
+      shadows: [
+        ShadowStyle(
+          color: .black,
+          offset: .zero,
+          blurRadius: 0,
+          spread: 20
+        )
+      ]
+    )
+
+    XCTAssertEqual(
+      SceneRenderGeometry.paintedBounds(of: shape),
+      shape.geometry.frame.expanded(by: 20)
+    )
+  }
+
   func testRotatedShadowBoundsCoverCanvasAndSVGOffsets() {
     var shape = SceneElement.shape(
       frame: SionRect(x: 100, y: 80, width: 40, height: 80),

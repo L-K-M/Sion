@@ -350,8 +350,9 @@ final class SionCanvasRenderingTests: XCTestCase {
       elements: [solid, gradient],
       colorSpace: displayP3
     )
-    XCTAssertTrue(
-      CGColorSpaceEqualToColorSpace(image.image.colorSpace, displayP3)
+    XCTAssertEqual(
+      try XCTUnwrap(image.image.colorSpace?.name) as String,
+      CGColorSpace.displayP3 as String
     )
 
     assertEqual(

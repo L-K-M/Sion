@@ -129,7 +129,7 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     defer {
       for window in application.windows
       where !existingWindows.contains(ObjectIdentifier(window)) {
-        window.windowController?.document?.close()
+        (window.windowController?.document as? NSDocument)?.close()
         window.close()
       }
 

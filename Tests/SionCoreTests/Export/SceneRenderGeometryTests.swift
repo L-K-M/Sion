@@ -478,6 +478,35 @@ final class SceneRenderGeometryTests: XCTestCase {
     XCTAssertEqual(firstLegEnd.y, route.start.y, accuracy: pointAccuracy)
   }
 
+  func testBezierRouteLeavesCylinderTopVertexTowardNorth() throws {
+    var cylinder = SceneElement.shape(
+      frame: SionRect(x: 100, y: 200, width: 200, height: 100),
+      kind: .cylinder
+    )
+    cylinder.magnetConfiguration = .preset(.vertices)
+    let connector = SceneElement.connector(
+      source: .element(
+        cylinder.id,
+        attachment: .magnet("vertex-4"),
+        fallbackPoint: .zero
+      ),
+      target: .free(SionPoint(x: 400, y: 200)),
+      routingStyle: .bezier
+    )
+    let scene = SionScene(elements: [cylinder, connector])
+
+    let route = try XCTUnwrap(
+      SceneRenderGeometry.connectorRoute(for: connector, in: scene)
+    )
+    let segment = try XCTUnwrap(route.segments.first)
+    guard case .cubic(let sourceControl, _, _) = segment else {
+      return XCTFail("Expected a cubic route")
+    }
+
+    XCTAssertEqual(sourceControl.x, route.start.x, accuracy: pointAccuracy)
+    XCTAssertLessThan(sourceControl.y, route.start.y)
+  }
+
   func testOrthogonalRouteAvoidsRotatedObstacleBounds() throws {
     var obstacle = SceneElement.shape(
       frame: SionRect(x: 140, y: 75, width: 100, height: 20)

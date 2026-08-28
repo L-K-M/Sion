@@ -925,7 +925,7 @@ private struct StrokeHitGeometry {
     guard incoming.lengthSquared > 0, outgoing.lengthSquared > 0 else { return false }
 
     let turn = cross(incoming, outgoing)
-    guard abs(turn) > HitGeometryDefaults.epsilon else {
+    guard turn != 0 else {
       return stroke.lineJoin == .round
         && incoming.dot(outgoing) < 0
         && point.distance(to: vertex) <= radius + tolerance
@@ -996,7 +996,7 @@ private struct StrokeHitGeometry {
     secondDirection: SionVector
   ) -> SionPoint? {
     let denominator = cross(firstDirection, secondDirection)
-    guard abs(denominator) > HitGeometryDefaults.epsilon else { return nil }
+    guard denominator != 0 else { return nil }
 
     let distance = cross(secondOrigin - firstOrigin, secondDirection) / denominator
     return firstOrigin + (firstDirection * distance)

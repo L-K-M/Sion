@@ -50,6 +50,7 @@
     private var initialPackage = SionPackage()
     private var editingControllerStorage: SionEditorController?
     private var pendingSaveIntent = SaveIntent.manual
+    private var pendingSavedTitle: String?
     private var stagedHistory: DocumentHistory?
 
     var editingController: SionEditorController {
@@ -122,10 +123,12 @@
         editingController.setPreviewPNG(preview)
       }
 
-      let archive = try SionArchive.encode(
-        package: editingController.packageForArchiving(),
-        intent: pendingSaveIntent
-      )
+      var package = editingController.packageForArchiving()
+      if let pendingSavedTitle {
+        package.document.title = pendingSavedTitle
+      }
+
+      let archive = try SionArchive.encode(package: package, intent: pendingSaveIntent)
       stagedHistory = archive.committedHistory
       return archive.data
     }
@@ -154,6 +157,7 @@
     ) throws {
       MainActor.assumeIsolated {
         pendingSaveIntent = saveIntent(for: saveOperation)
+        pendingSavedTitle = savedTitle(for: url, operation: saveOperation)
         stagedHistory = nil
       }
 
@@ -167,6 +171,7 @@
       } catch {
         MainActor.assumeIsolated {
           pendingSaveIntent = .manual
+          pendingSavedTitle = nil
           stagedHistory = nil
         }
         throw error
@@ -174,6 +179,7 @@
 
       MainActor.assumeIsolated {
         pendingSaveIntent = .manual
+        pendingSavedTitle = nil
         if let stagedHistory {
           editingController.commitArchivedHistory(stagedHistory)
         }
@@ -287,6 +293,17 @@
       default:
         return .manual
       }
+    }
+
+    private func savedTitle(
+      for url: URL,
+      operation: NSDocument.SaveOperationType
+    ) -> String? {
+      // Autosave-elsewhere URLs are recovery locations, not user filenames.
+      guard operation != .autosaveElsewhereOperation else { return nil }
+
+      let title = url.deletingPathExtension().lastPathComponent
+      return title.isEmpty ? nil : title
     }
   }
 

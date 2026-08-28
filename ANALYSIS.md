@@ -639,17 +639,14 @@ The same engine can seed X1.
 Find/Spelling, Page Setup, and Print flows are incomplete. Window minimum size,
 localization hooks, signing/notarization/update strategy, sandbox/file access,
 and strict-concurrency migration remain open; `Package.swift` uses Swift 5
-language mode under a Swift 6.3.3 toolchain. The window controller assigns
-`document.title` once; verify that Save As updates the native display name and
-archived title.
+language mode under a Swift 6.3.3 toolchain. Save As now keeps the native
+display name and archived title synchronized without dirtying the document.
 
 **Scope.** Add responder-chain menus and native panels in small PRs. Decide the
 sandbox/security-scoped bookmark model, then configure Developer ID signing,
 hardened runtime, notarization, and updates. Introduce localization keys. Enable
 strict concurrency incrementally per target with actor/sendability fixes. Set a
-tested minimum window size before the toolbar and palettes overlap. If file
-title synchronization fails, let `NSDocument` own the window title and derive
-saved metadata from `fileURL`.
+tested minimum window size before the toolbar and palettes overlap.
 
 **Accept.** Launch/menu/document smoke tests pass on supported macOS versions;
 recent/revert/file-access behavior survives relaunch; release artifacts are

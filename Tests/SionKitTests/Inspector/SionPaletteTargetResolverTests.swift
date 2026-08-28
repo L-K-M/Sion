@@ -244,7 +244,8 @@ final class InspectorPaletteTests: XCTestCase {
 
     // Typing marks the edit as changed before Escape cancels it.
     let delegate = try XCTUnwrap(nameField.delegate as? NSTextFieldDelegate)
-    delegate.controlTextDidChange?(Notification(object: nameField))
+    delegate.controlTextDidChange?(
+      Notification(name: NSControl.textDidChangeNotification, object: nameField))
 
     // Escape cancels the edit: the field reverts and editing ends.
     fieldEditor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))

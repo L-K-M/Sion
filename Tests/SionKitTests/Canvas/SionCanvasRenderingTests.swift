@@ -171,6 +171,8 @@ final class SionCanvasRenderingTests: XCTestCase {
     let frame = SionRect(x: 80, y: 60, width: 160, height: 120)
     let start = SionPoint(x: 0.25, y: 0.5)
     let end = SionPoint(x: 0.75, y: 0.5)
+    let beforeStart = SionPoint(x: 0.1, y: 0.5)
+    let afterEnd = SionPoint(x: 0.9, y: 0.5)
     var shape = SceneElement.shape(frame: frame, kind: .rectangle)
     shape.style = ElementStyle(
       fill: .linearGradient(
@@ -188,11 +190,11 @@ final class SionCanvasRenderingTests: XCTestCase {
     let image = try render(elements: [shape])
 
     assertEqual(
-      try pixel(in: image, at: frame.point(atNormalized: start)),
+      try pixel(in: image, at: frame.point(atNormalized: beforeStart)),
       NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
     )
     assertEqual(
-      try pixel(in: image, at: frame.point(atNormalized: end)),
+      try pixel(in: image, at: frame.point(atNormalized: afterEnd)),
       NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
     )
   }
@@ -239,11 +241,21 @@ final class SionCanvasRenderingTests: XCTestCase {
     let rotation = Double.pi / 2
     let start = SionPoint(x: 0.25, y: 0.5)
     let end = SionPoint(x: 0.75, y: 0.5)
+    let beforeStart = SionPoint(x: 0.1, y: 0.5)
+    let afterEnd = SionPoint(x: 0.9, y: 0.5)
+    let pathMinimum = SionPoint(x: 0.2, y: 0.2)
+    let pathMaximum = SionPoint(x: 0.8, y: 0.8)
+    let pathBounds = SionRect(
+      x: frame.minX + (frame.width * pathMinimum.x),
+      y: frame.minY + (frame.height * pathMinimum.y),
+      width: frame.width * (pathMaximum.x - pathMinimum.x),
+      height: frame.height * (pathMaximum.y - pathMinimum.y)
+    )
     let path = VectorPath(commands: [
-      .move(to: .zero),
-      .line(to: SionPoint(x: 1, y: 0)),
-      .line(to: SionPoint(x: 1, y: 1)),
-      .line(to: SionPoint(x: 0, y: 1)),
+      .move(to: pathMinimum),
+      .line(to: SionPoint(x: pathMaximum.x, y: pathMinimum.y)),
+      .line(to: pathMaximum),
+      .line(to: SionPoint(x: pathMinimum.x, y: pathMaximum.y)),
       .close,
     ])
     var element = SceneElement.path(frame: frame, path: path)
@@ -262,23 +274,23 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
 
     let image = try render(elements: [element])
-    let rotatedStart = InteractionGeometry.rotated(
-      frame.point(atNormalized: start),
+    let rotatedBeforeStart = InteractionGeometry.rotated(
+      pathBounds.point(atNormalized: beforeStart),
       around: frame.center,
       by: rotation
     )
-    let rotatedEnd = InteractionGeometry.rotated(
-      frame.point(atNormalized: end),
+    let rotatedAfterEnd = InteractionGeometry.rotated(
+      pathBounds.point(atNormalized: afterEnd),
       around: frame.center,
       by: rotation
     )
 
     assertEqual(
-      try pixel(in: image, at: rotatedStart),
+      try pixel(in: image, at: rotatedBeforeStart),
       NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
     )
     assertEqual(
-      try pixel(in: image, at: rotatedEnd),
+      try pixel(in: image, at: rotatedAfterEnd),
       NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
     )
   }
@@ -529,10 +541,15 @@ final class SionCanvasRenderingTests: XCTestCase {
   private func bitmapRepresentation(from context: CGContext) throws -> NSBitmapImageRep {
     let image = try XCTUnwrap(context.makeImage())
     let bitmap = NSBitmapImageRep(cgImage: image)
-    guard let colorSpace = image.colorSpace else { return bitmap }
+    guard
+      let colorSpace = image.colorSpace,
+      let appKitColorSpace = NSColorSpace(cgColorSpace: colorSpace)
+    else {
+      return bitmap
+    }
 
     // The AppKit initializer otherwise retags CG pixels as generic RGB.
-    return bitmap.retagging(with: NSColorSpace(cgColorSpace: colorSpace)) ?? bitmap
+    return bitmap.retagging(with: appKitColorSpace) ?? bitmap
   }
 
   private func overlayReferenceColor(at point: SionPoint) throws -> NSColor {

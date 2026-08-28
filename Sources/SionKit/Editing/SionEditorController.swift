@@ -66,6 +66,11 @@
       }
     }
 
+    enum MermaidInsertionResult: Equatable {
+      case diagram(elementIDs: [ElementID])
+      case sourceText(elementID: ElementID, omissions: [MermaidImportOmission])
+    }
+
     enum Tool: Int, CaseIterable {
       case select
       case rectangle
@@ -1002,17 +1007,18 @@
       return element.id
     }
 
-    func insertMermaid(_ source: String, at point: SionPoint) throws -> [ElementID] {
-      let elements = MermaidImporter.elements(from: source, centeredAt: point)
-      guard !elements.isEmpty else {
-        _ = try insertText(source, centeredAt: point)
-        return Array(selection)
+    func insertMermaid(_ source: String, at point: SionPoint) throws -> MermaidInsertionResult {
+      let report = MermaidImporter.importReport(from: source, centeredAt: point)
+      guard report.omissions.isEmpty, !report.elements.isEmpty else {
+        let elementID = try insertText(source, centeredAt: point)
+        return .sourceText(elementID: elementID, omissions: report.omissions)
       }
 
-      try perform(name: "Paste Mermaid", command: .insert(elements: elements, at: nil))
-      selection = Set(elements.map(\.id))
+      try perform(name: "Paste Mermaid", command: .insert(elements: report.elements, at: nil))
+      let elementIDs = report.elements.map(\.id)
+      selection = Set(elementIDs)
       notifyObservers()
-      return elements.map(\.id)
+      return .diagram(elementIDs: elementIDs)
     }
 
     func beginTextEdit(on id: ElementID) throws {

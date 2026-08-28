@@ -8,6 +8,7 @@
   {
     private let editorController: SionEditorController
     private let canvasView: SionCanvasView
+    private let feedbackPresenter: SionEditorFeedbackPresenter
     private let scrollView = NSScrollView()
     private var toolControl: NSSegmentedControl?
     private var observerID: UUID?
@@ -38,7 +39,12 @@
 
     init(editorController: SionEditorController) {
       self.editorController = editorController
-      canvasView = SionCanvasView(editorController: editorController)
+      let feedbackPresenter = SionEditorFeedbackPresenter()
+      self.feedbackPresenter = feedbackPresenter
+      canvasView = SionCanvasView(
+        editorController: editorController,
+        editorFeedback: { feedbackPresenter.present($0) }
+      )
 
       let window = NSWindow(
         contentRect: NSRect(origin: .zero, size: WindowMetrics.initialSize),
@@ -97,6 +103,7 @@
         editorController.removeObserver(observerID)
         self.observerID = nil
       }
+      feedbackPresenter.invalidate()
       canvasView.invalidate()
       super.close()
     }
@@ -204,6 +211,7 @@
       scrollView.backgroundColor = .windowBackgroundColor
       scrollView.drawsBackground = true
       window?.contentView = scrollView
+      feedbackPresenter.attach(to: scrollView)
     }
 
     private func configureToolbar() {

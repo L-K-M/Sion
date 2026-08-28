@@ -85,6 +85,11 @@ public struct StrokeStyle: Codable, Equatable, Sendable {
   }
 }
 
+/// The format omits miter limits, so each renderer uses this shared value.
+package enum StrokeGeometryDefaults {
+  package static let miterLimit = 10.0
+}
+
 public struct ShadowStyle: Codable, Equatable, Sendable {
   public var color: SionColor
   public var offset: SionVector

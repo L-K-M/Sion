@@ -248,6 +248,42 @@ final class SionCanvasRenderingTests: XCTestCase {
     XCTAssertGreaterThan(lower.redComponent, 0.8)
   }
 
+  func testZeroLengthDashPreservesPatternParity() throws {
+    let path = VectorPath(commands: [
+      .move(to: SionPoint(x: 0, y: 0.5)),
+      .line(to: SionPoint(x: 1, y: 0.5)),
+    ])
+    var element = SceneElement.path(
+      frame: SionRect(x: 40, y: 40, width: 240, height: 160),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 8,
+        dashPattern: [0, 40],
+        lineCap: .butt
+      )
+    )
+
+    XCTAssertEqual(
+      try renderedPixels(render(elements: [element])),
+      try renderedPixels(render(elements: []))
+    )
+
+    // Positive control: an equivalent solid pattern renders, so the equality
+    // above measures dash parity rather than strokes never painting.
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 8, dashPattern: [40], lineCap: .butt)
+    )
+    XCTAssertNotEqual(
+      try renderedPixels(render(elements: [element])),
+      try renderedPixels(render(elements: []))
+    )
+  }
+
   func testPixelSamplerUsesExactCoordinatesAndChannels() throws {
     let graphics = try bitmapContext(width: 3, height: 2)
     graphics.setFillColor(NSColor.white.cgColor)

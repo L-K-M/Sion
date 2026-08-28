@@ -196,8 +196,82 @@ final class SionArchiveTests: XCTestCase {
 
     XCTAssertTrue(svg.contains("viewBox=\"0 0 640 480\""))
     XCTAssertTrue(svg.contains("x=\"0\" y=\"0\" width=\"640\" height=\"480\""))
-    XCTAssertTrue(svg.contains("d=\"M35 20H185"))
+    XCTAssertTrue(svg.contains("d=\"M35 20H185A25 25 0 0 1 210 45"))
+    XCTAssertFalse(svg.contains("Q210 20 210 45"))
     XCTAssertFalse(svg.contains("d=\"M10 45A100 25"))
+  }
+
+  func testSVGUsesCanvasMiterLimit() throws {
+    let path = VectorPath(commands: [
+      .move(to: SionPoint(x: 0, y: 1)),
+      .line(to: SionPoint(x: 0.5, y: 0)),
+      .line(to: SionPoint(x: 1, y: 1)),
+    ])
+    var element = SceneElement.path(
+      frame: SionRect(x: 10, y: 20, width: 200, height: 100),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 4, lineJoin: .miter)
+    )
+
+    let svg = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [element])),
+      assets: [:]
+    )
+
+    XCTAssertTrue(svg.contains("stroke-linejoin=\"miter\""))
+    XCTAssertTrue(svg.contains("stroke-miterlimit=\"10\""))
+  }
+
+  func testSVGRoundJoinOmitsMiterLimit() throws {
+    let path = VectorPath(
+      commands: [
+        .move(to: SionPoint(x: 0, y: 0)),
+        .line(to: SionPoint(x: 1, y: 0)),
+        .line(to: SionPoint(x: 1, y: 1)),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 10, y: 20, width: 200, height: 100),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 4, lineJoin: .round)
+    )
+
+    let svg = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [element])),
+      assets: [:]
+    )
+
+    XCTAssertFalse(svg.contains("stroke-miterlimit"))
+  }
+
+  func testSVGCustomShapeHonorsFillRule() throws {
+    let path = VectorPath(
+      fillRule: .evenOdd,
+      commands: [
+        .move(to: SionPoint(x: 0, y: 0)),
+        .line(to: SionPoint(x: 1, y: 0)),
+        .line(to: SionPoint(x: 1, y: 1)),
+        .line(to: SionPoint(x: 0, y: 1)),
+        .close,
+      ]
+    )
+    let shape = SceneElement.shape(
+      frame: SionRect(x: 10, y: 20, width: 200, height: 100),
+      kind: .custom(path)
+    )
+
+    let svg = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [shape])),
+      assets: [:]
+    )
+
+    XCTAssertTrue(svg.contains("fill-rule=\"evenodd\""))
   }
 
   func testSVGTilesImagesAndHandlesExtremeShapeValues() throws {

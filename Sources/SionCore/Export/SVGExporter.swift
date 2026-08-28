@@ -156,8 +156,14 @@ public enum SVGExporter {
   ) -> String {
     let frame = element.geometry.frame.standardized
     let path = shapePath(shape.kind, frame: frame)
+    let fillRule: String
+    if case .custom(let customPath) = shape.kind {
+      fillRule = " \(fillRuleAttribute(customPath.fillRule))"
+    } else {
+      fillRule = ""
+    }
     var content =
-      "<path d=\"\(path)\" \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
+      "<path d=\"\(path)\"\(fillRule) \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
     if let label = shape.label {
       content += renderText(label, in: frame)
@@ -172,9 +178,8 @@ public enum SVGExporter {
     definitions: inout [String]
   ) -> String {
     let path = vectorPath(content.path, frame: element.geometry.frame.standardized)
-    let fillRule = content.path.fillRule == .evenOdd ? "evenodd" : "nonzero"
     let rendered =
-      "<path d=\"\(path)\" fill-rule=\"\(fillRule)\" \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
+      "<path d=\"\(path)\" \(fillRuleAttribute(content.path.fillRule)) \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
     return wrapped(rendered, element: element, definitions: &definitions)
   }
@@ -324,11 +329,20 @@ public enum SVGExporter {
         value.dashPattern.isEmpty
         ? ""
         : " stroke-dasharray=\"\(value.dashPattern.map(number).joined(separator: " "))\""
+      // SVG honors the miter limit only for miter joins.
+      let miterLimit =
+        value.lineJoin == .miter
+        ? " stroke-miterlimit=\"\(number(StrokeGeometryDefaults.miterLimit))\"" : ""
       return
-        "stroke=\"\(value.color.hex)\" stroke-width=\"\(number(value.width))\" stroke-linecap=\"\(value.lineCap.rawValue)\" stroke-linejoin=\"\(value.lineJoin.rawValue)\"\(dash)"
+        "stroke=\"\(value.color.hex)\" stroke-width=\"\(number(value.width))\" stroke-linecap=\"\(value.lineCap.rawValue)\" stroke-linejoin=\"\(value.lineJoin.rawValue)\"\(miterLimit)\(dash)"
     }
 
     return "stroke=\"none\""
+  }
+
+  private static func fillRuleAttribute(_ fillRule: PathFillRule) -> String {
+    let value = fillRule == .evenOdd ? "evenodd" : "nonzero"
+    return "fill-rule=\"\(value)\""
   }
 
   private static func effectAttributes(
@@ -567,8 +581,13 @@ public enum SVGExporter {
 
   private static func roundedRectanglePath(frame: SionRect, radius: Double) -> String {
     let r = min(max(0, radius), min(frame.width, frame.height) / 2)
+    guard r > 0 else {
+      return
+        "M\(number(frame.minX)) \(number(frame.minY))H\(number(frame.maxX))V\(number(frame.maxY))H\(number(frame.minX))Z"
+    }
+
     return
-      "M\(number(frame.minX + r)) \(number(frame.minY))H\(number(frame.maxX - r))Q\(number(frame.maxX)) \(number(frame.minY)) \(number(frame.maxX)) \(number(frame.minY + r))V\(number(frame.maxY - r))Q\(number(frame.maxX)) \(number(frame.maxY)) \(number(frame.maxX - r)) \(number(frame.maxY))H\(number(frame.minX + r))Q\(number(frame.minX)) \(number(frame.maxY)) \(number(frame.minX)) \(number(frame.maxY - r))V\(number(frame.minY + r))Q\(number(frame.minX)) \(number(frame.minY)) \(number(frame.minX + r)) \(number(frame.minY))Z"
+      "M\(number(frame.minX + r)) \(number(frame.minY))H\(number(frame.maxX - r))A\(number(r)) \(number(r)) 0 0 1 \(number(frame.maxX)) \(number(frame.minY + r))V\(number(frame.maxY - r))A\(number(r)) \(number(r)) 0 0 1 \(number(frame.maxX - r)) \(number(frame.maxY))H\(number(frame.minX + r))A\(number(r)) \(number(r)) 0 0 1 \(number(frame.minX)) \(number(frame.maxY - r))V\(number(frame.minY + r))A\(number(r)) \(number(r)) 0 0 1 \(number(frame.minX + r)) \(number(frame.minY))Z"
   }
 
   private static func vectorPath(_ path: VectorPath, frame: SionRect) -> String {

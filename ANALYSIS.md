@@ -226,13 +226,17 @@ labels, rotations, and Canvas/SVG/bounds parity.
 
 ### P1.5 Use shape-aware hit testing and obstacle geometry
 
-**Evidence.** Rotation-aware local-frame hit testing exists, but ellipses,
-diamonds, triangles, cylinders, and custom paths still claim transparent frame
-corners. Routing protects painted protrusions with conservative rotated bounds,
-but over-avoids transparent corners of nonrectangular shapes.
+**Evidence.** Point selection now uses platform-neutral `ElementHitGeometry`
+after rotation, with path bounds, fill rules, budgeted adaptive curves, fill
+tolerance, and bounded dashed stroke cap/join geometry. Conservative label
+content bounds keep unpainted labeled shapes selectable. Portable fixtures
+cover transparent nonrectangular corners, visible fills, stroke-only and open
+paths, nonzero origins, and rotation. Click selection still has no overlap
+cycling. Routing
+protects painted protrusions with conservative rotated bounds, but over-avoids
+transparent corners of nonrectangular shapes.
 
-**Scope.** Put reusable shape/path geometry in SionCore. Use bounds for broad
-phase, then fill-rule and stroked-path tests in local coordinates. Add
+**Scope.** Point-hit geometry and controller integration are complete. Add
 click-cycling for intentional overlap selection. Feed the same painted outline
 or a conservative rotated hull to routing.
 

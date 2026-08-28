@@ -202,6 +202,41 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     )
   }
 
+  func testEmptyInitialShowDoesNotDeferFitUntilLaterContent() throws {
+    _ = NSApplication.shared
+    let editorController = try SionEditorController(
+      package: SionPackage(document: SionDocument()),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    let window = try XCTUnwrap(windowController.window)
+    let autosaveName = isolateFrameAutosave(for: window)
+    defer {
+      windowController.close()
+      NSWindow.removeFrame(usingName: autosaveName)
+    }
+    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+
+    windowController.showWindow(nil)
+    let magnificationAfterEmptyShow = scrollView.magnification
+
+    _ = try editorController.insertShape(
+      in: InitialFitTestGeometry.lateElementFrame,
+      kind: .rectangle
+    )
+    window.setContentSize(InitialFitTestGeometry.resizedWindowContentSize)
+    windowController.windowDidResize(
+      Notification(name: NSWindow.didResizeNotification, object: window)
+    )
+
+    XCTAssertEqual(
+      scrollView.magnification,
+      magnificationAfterEmptyShow,
+      accuracy: InitialFitTestGeometry.magnificationAccuracy
+    )
+  }
+
   private func makeInitialFitWindowController() throws -> SionDocumentWindowController {
     let element = SceneElement.shape(frame: InitialFitTestGeometry.elementFrame)
     let scene = SionScene(
@@ -241,7 +276,9 @@ private enum ZoomTestCommand {
 private enum InitialFitTestGeometry {
   static let canvasSize = SionSize(width: 2_400, height: 1_600)
   static let elementFrame = SionRect(x: 80, y: 80, width: 160, height: 90)
+  static let lateElementFrame = SionRect(x: 80, y: 80, width: 2_400, height: 1_600)
   static let windowContentSize = NSSize(width: 800, height: 600)
+  static let resizedWindowContentSize = NSSize(width: 900, height: 700)
   static let magnificationAccuracy = 0.000_001
   static let queueDrainTimeout = 1.0
 }

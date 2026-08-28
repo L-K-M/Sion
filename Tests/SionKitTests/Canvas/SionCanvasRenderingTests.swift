@@ -527,7 +527,12 @@ final class SionCanvasRenderingTests: XCTestCase {
   }
 
   private func bitmapRepresentation(from context: CGContext) throws -> NSBitmapImageRep {
-    NSBitmapImageRep(cgImage: try XCTUnwrap(context.makeImage()))
+    let image = try XCTUnwrap(context.makeImage())
+    let bitmap = NSBitmapImageRep(cgImage: image)
+    guard let colorSpace = image.colorSpace else { return bitmap }
+
+    // The AppKit initializer otherwise retags CG pixels as generic RGB.
+    return bitmap.retagging(with: NSColorSpace(cgColorSpace: colorSpace)) ?? bitmap
   }
 
   private func overlayReferenceColor(at point: SionPoint) throws -> NSColor {
@@ -542,11 +547,11 @@ final class SionCanvasRenderingTests: XCTestCase {
     graphics.setFillColor(NSColor.white.cgColor)
     graphics.fill(bounds)
     graphics.setFillColor(
-      NSColor(calibratedRed: 0.25, green: 0.25, blue: 0.25, alpha: 1).cgColor
+      NSColor(srgbRed: 0.25, green: 0.25, blue: 0.25, alpha: 1).cgColor
     )
     graphics.fill(bounds)
     graphics.setFillColor(
-      NSColor(calibratedRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).cgColor
+      NSColor(srgbRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).cgColor
     )
     graphics.setBlendMode(.overlay)
     graphics.fill(bounds)

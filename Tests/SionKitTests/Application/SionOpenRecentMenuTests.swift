@@ -31,9 +31,15 @@ final class SionOpenRecentMenuTests: XCTestCase {
     let fileMenu = try XCTUnwrap(
       application.mainMenu?.item(withTitle: TestMenu.file)?.submenu
     )
+    let openRecentItems = fileMenu.items.filter { $0.title == TestMenu.openRecent }
+    let openRecent = try XCTUnwrap(openRecentItems.first)
+    let recentMenu = try XCTUnwrap(openRecent.submenu)
+    let clear = try XCTUnwrap(recentMenu.item(withTitle: TestMenu.clear))
+
+    XCTAssertEqual(openRecentItems.count, 1)
     XCTAssertEqual(
-      fileMenu.items.filter { $0.title == TestMenu.openRecent }.count,
-      1
+      clear.action,
+      #selector(NSDocumentController.clearRecentDocuments(_:))
     )
   }
 
@@ -76,7 +82,9 @@ final class SionOpenRecentMenuTests: XCTestCase {
     let recentItems = Array(menu.items.prefix(urls.count))
     XCTAssertEqual(recentItems.map(\.title), urls.map(\.lastPathComponent))
     XCTAssertEqual(recentItems.compactMap { $0.representedObject as? URL }, urls)
-    XCTAssertTrue(menu.items[urls.count].isSeparatorItem)
+    XCTAssertTrue(
+      menu.items.indices.contains(urls.count) && menu.items[urls.count].isSeparatorItem
+    )
 
     let clear = try XCTUnwrap(menu.items.last)
     XCTAssertEqual(clear.title, TestMenu.clear)

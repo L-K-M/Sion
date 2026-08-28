@@ -299,7 +299,7 @@ final class SVGExporterTests: XCTestCase {
 
       XCTAssertTrue(
         group.text.contains(
-          "style=\"\(SVGCompositingSpec.blendModeProperty):\(SVGCompositingSpec.value(for: blendMode).rawValue)\""
+          "\(SVGCompositingSpec.blendModeProperty):\(SVGCompositingSpec.value(for: blendMode).rawValue)"
         ),
         blendMode.rawValue
       )

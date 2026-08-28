@@ -28,9 +28,9 @@ final class SionLibraryPaletteTests: XCTestCase {
     defer { library.close() }
     library.showPanel()
 
-    let panel = try XCTUnwrap(
-      NSApp.windows.first { $0.title == "Library" && $0.isVisible }
-    )
+    let libraryPanels = NSApp.windows.filter { $0.title == "Library" && $0.isVisible }
+    XCTAssertEqual(libraryPanels.count, 1)
+    let panel = try XCTUnwrap(libraryPanels.first)
     let descendants = try XCTUnwrap(panel.contentView).libraryTestDescendants
     let scrollView = try XCTUnwrap(
       descendants.compactMap { $0 as? NSScrollView }.first
@@ -57,7 +57,6 @@ final class SionLibraryPaletteTests: XCTestCase {
 
     panel.contentView?.layoutSubtreeIfNeeded()
 
-    XCTAssertTrue(stack.isFlipped)
     XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
     XCTAssertGreaterThan(stack.fittingSize.height, libraryViewportHeight)
 

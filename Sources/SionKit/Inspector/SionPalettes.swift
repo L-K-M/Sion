@@ -425,11 +425,6 @@
   private final class LibraryPaletteController: NSViewController, PaletteContent {
     typealias Target = SionDocumentWindowController
 
-    private final class LibraryStackView: NSStackView {
-      // A top-down document view keeps the first row first and the last row reachable.
-      override var isFlipped: Bool { true }
-    }
-
     private enum LibraryShape: Int, CaseIterable {
       case rectangle
       case roundedRectangle
@@ -484,7 +479,7 @@
     private weak var target: SionDocumentWindowController?
 
     override func loadView() {
-      let stack = LibraryStackView()
+      let stack = NSStackView()
       stack.orientation = .vertical
       stack.alignment = .leading
       stack.spacing = InspectorMetrics.spacing

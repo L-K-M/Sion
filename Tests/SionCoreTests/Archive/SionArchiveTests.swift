@@ -225,6 +225,30 @@ final class SionArchiveTests: XCTestCase {
     )
   }
 
+  func testSVGCustomShapeHonorsFillRule() throws {
+    let path = VectorPath(
+      fillRule: .evenOdd,
+      commands: [
+        .move(to: SionPoint(x: 0, y: 0)),
+        .line(to: SionPoint(x: 1, y: 0)),
+        .line(to: SionPoint(x: 1, y: 1)),
+        .line(to: SionPoint(x: 0, y: 1)),
+        .close,
+      ]
+    )
+    let shape = SceneElement.shape(
+      frame: SionRect(x: 10, y: 20, width: 200, height: 100),
+      kind: .custom(path)
+    )
+
+    let svg = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [shape])),
+      assets: [:]
+    )
+
+    XCTAssertTrue(svg.contains("fill-rule=\"evenodd\""))
+  }
+
   func testSVGTilesImagesAndHandlesExtremeShapeValues() throws {
     let fixture = try makeFixture()
     let tiledImage = SceneElement(

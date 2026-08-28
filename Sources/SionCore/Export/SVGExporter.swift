@@ -156,8 +156,14 @@ public enum SVGExporter {
   ) -> String {
     let frame = element.geometry.frame.standardized
     let path = shapePath(shape.kind, frame: frame)
+    let fillRule: String
+    if case .custom(let customPath) = shape.kind {
+      fillRule = " \(fillRuleAttribute(customPath.fillRule))"
+    } else {
+      fillRule = ""
+    }
     var content =
-      "<path d=\"\(path)\" \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
+      "<path d=\"\(path)\"\(fillRule) \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
     if let label = shape.label {
       content += renderText(label, in: frame)
@@ -172,9 +178,8 @@ public enum SVGExporter {
     definitions: inout [String]
   ) -> String {
     let path = vectorPath(content.path, frame: element.geometry.frame.standardized)
-    let fillRule = content.path.fillRule == .evenOdd ? "evenodd" : "nonzero"
     let rendered =
-      "<path d=\"\(path)\" fill-rule=\"\(fillRule)\" \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
+      "<path d=\"\(path)\" \(fillRuleAttribute(content.path.fillRule)) \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
     return wrapped(rendered, element: element, definitions: &definitions)
   }
@@ -329,6 +334,11 @@ public enum SVGExporter {
     }
 
     return "stroke=\"none\""
+  }
+
+  private static func fillRuleAttribute(_ fillRule: PathFillRule) -> String {
+    let value = fillRule == .evenOdd ? "evenodd" : "nonzero"
+    return "fill-rule=\"\(value)\""
   }
 
   private static func effectAttributes(

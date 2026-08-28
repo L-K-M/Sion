@@ -321,18 +321,20 @@
 
     private func applyInitialZoomIfNeeded() {
       guard isInitialZoomPending else { return }
-      guard !editorController.document.scene.elements.isEmpty else { return }
 
       // Fit only after AppKit exposes a usable viewport; a later show can retry.
       window?.contentView?.layoutSubtreeIfNeeded()
       let available = scrollView.contentSize
       guard available.width > 0, available.height > 0 else { return }
 
+      resolveInitialZoom()
+      guard !editorController.document.scene.elements.isEmpty else { return }
+
       zoomToFit(nil)
     }
 
     private func resolveInitialZoom() {
-      // A later resize must not replace an automatic or explicit zoom choice.
+      // A later resize must not replace the first usable layout or explicit zoom.
       isInitialZoomPending = false
     }
 

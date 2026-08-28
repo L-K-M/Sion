@@ -620,15 +620,15 @@ final class SionCanvasRenderingTests: XCTestCase {
 
     guard image.bitsPerComponent == TestBitmap.bitsPerComponent,
       image.bitsPerPixel == TestBitmap.bitsPerPixel,
-      image.alphaInfo == .premultipliedLast,
-      image.bitmapInfo.contains(.byteOrder32Big)
+      image.alphaInfo == TestBitmap.alphaInfo,
+      image.bitmapInfo.contains(.byteOrder32Little)
     else {
       throw TestPixelError.unsupportedFormat
     }
     let data = try XCTUnwrap(image.dataProvider?.data)
     let bytes = try XCTUnwrap(CFDataGetBytePtr(data))
     let offset = (pixelY * image.bytesPerRow) + (pixelX * TestBitmap.componentsPerPixel)
-    let alpha = CGFloat(bytes[offset + 3]) / 255
+    let alpha = CGFloat(bytes[offset + TestBitmap.alphaIndex]) / 255
     guard alpha > 0 else {
       return NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0)
     }
@@ -636,9 +636,9 @@ final class SionCanvasRenderingTests: XCTestCase {
     let sourceSpace = try XCTUnwrap(image.colorSpace)
     let appKitColorSpace = try XCTUnwrap(NSColorSpace(cgColorSpace: sourceSpace))
     let components = [
-      (CGFloat(bytes[offset]) / 255) / alpha,
-      (CGFloat(bytes[offset + 1]) / 255) / alpha,
-      (CGFloat(bytes[offset + 2]) / 255) / alpha,
+      (CGFloat(bytes[offset + TestBitmap.redIndex]) / 255) / alpha,
+      (CGFloat(bytes[offset + TestBitmap.greenIndex]) / 255) / alpha,
+      (CGFloat(bytes[offset + TestBitmap.blueIndex]) / 255) / alpha,
       alpha,
     ]
     let sourceColor = try components.withUnsafeBufferPointer { buffer in
@@ -733,9 +733,14 @@ private enum TestBitmap {
   static let bitsPerComponent = 8
   static let componentsPerPixel = 4
   static let bitsPerPixel = bitsPerComponent * componentsPerPixel
+  static let blueIndex = 0
+  static let greenIndex = 1
+  static let redIndex = 2
+  static let alphaIndex = 3
+  static let alphaInfo = CGImageAlphaInfo.premultipliedFirst
   static let bitmapInfo = CGBitmapInfo(
-    rawValue: CGImageAlphaInfo.premultipliedLast.rawValue
-  ).union(.byteOrder32Big)
+    rawValue: alphaInfo.rawValue
+  ).union(.byteOrder32Little)
 }
 
 private enum TestPixelError: Error {

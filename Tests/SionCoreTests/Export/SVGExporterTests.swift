@@ -161,6 +161,7 @@ final class SVGExporterTests: XCTestCase {
     let element = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
     let elementMarkup = try elementGroup(id: id, in: svg)
     let filter = try openingTag(startingWith: "<filter id=\"shadow-\(id)\"", in: svg)
+    let dropShadow = try openingTag(startingWith: "<feDropShadow ", in: svg)
 
     XCTAssertFalse(element.text.contains("transform="))
     XCTAssertTrue(element.text.contains("filter=\"url(#shadow-\(id))\""))
@@ -172,6 +173,14 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertEqual(numberAttribute(SVGFilterSpec.yAttribute, in: filter.text), 100)
     XCTAssertEqual(numberAttribute(SVGFilterSpec.widthAttribute, in: filter.text), 160)
     XCTAssertEqual(numberAttribute(SVGFilterSpec.heightAttribute, in: filter.text), 40)
+    XCTAssertEqual(
+      numberAttribute(SVGFilterSpec.horizontalOffsetAttribute, in: dropShadow.text),
+      80
+    )
+    XCTAssertEqual(
+      numberAttribute(SVGFilterSpec.verticalOffsetAttribute, in: dropShadow.text),
+      0
+    )
   }
 
   func testConnectorResolutionUsesRotatedMagnets() throws {
@@ -272,6 +281,32 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertTrue(path.text.contains("fill=\"#ff000080\""))
     XCTAssertTrue(path.text.contains("stroke=\"#0000ff40\""))
     XCTAssertTrue(groupMarkup.contains("<text "))
+  }
+
+  func testEveryBlendModeUsesItsSVGCompositingValue() throws {
+    let id = try XCTUnwrap(ElementID("00000000-0000-0000-0000-000000000011"))
+
+    for blendMode in BlendMode.allCases {
+      var shape = SceneElement.shape(
+        id: id,
+        frame: SionRect(x: 20, y: 20, width: 120, height: 80),
+        kind: .rectangle
+      )
+      shape.style = ElementStyle(fill: .solid(.black), blendMode: blendMode)
+
+      let svg = try export([shape])
+      let group = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: svg)
+      let style = try XCTUnwrap(
+        stringAttribute(SVGCompositingSpec.styleAttribute, in: group.text)
+      )
+
+      XCTAssertTrue(
+        style.contains(
+          "\(SVGCompositingSpec.blendModeProperty):\(SVGCompositingSpec.value(for: blendMode).rawValue)"
+        ),
+        blendMode.rawValue
+      )
+    }
   }
 
   func testLinearGradientPreservesAuthoredSRGBDefinition() throws {
@@ -564,12 +599,47 @@ final class SVGExporterTests: XCTestCase {
     let valueStart = attribute.index(attribute.startIndex, offsetBy: prefix.count)
     return Double(attribute[valueStart..<valueEnd])
   }
+
+  private func stringAttribute(_ name: String, in tag: Substring) -> Substring? {
+    let prefix = " \(name)=\""
+    guard
+      let attribute = tag.range(of: prefix),
+      let valueEnd = tag[attribute.upperBound...].firstIndex(of: "\"")
+    else {
+      return nil
+    }
+
+    return tag[attribute.upperBound..<valueEnd]
+  }
 }
 
 private enum SVGFilterSpec {
   static let heightAttribute = "height"
+  static let horizontalOffsetAttribute = "dx"
   static let userSpaceUnits = "userSpaceOnUse"
+  static let verticalOffsetAttribute = "dy"
   static let widthAttribute = "width"
   static let xAttribute = "x"
   static let yAttribute = "y"
+}
+
+private enum SVGCompositingSpec {
+  static let blendModeProperty = "mix-blend-mode"
+  static let styleAttribute = "style"
+
+  static func value(for blendMode: BlendMode) -> SVGBlendModeSpec {
+    switch blendMode {
+    case .normal: .normal
+    case .multiply: .multiply
+    case .screen: .screen
+    case .overlay: .overlay
+    }
+  }
+}
+
+private enum SVGBlendModeSpec: String {
+  case multiply = "multiply"
+  case normal = "normal"
+  case overlay = "overlay"
+  case screen = "screen"
 }

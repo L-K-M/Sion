@@ -196,7 +196,8 @@ final class SionArchiveTests: XCTestCase {
 
     XCTAssertTrue(svg.contains("viewBox=\"0 0 640 480\""))
     XCTAssertTrue(svg.contains("x=\"0\" y=\"0\" width=\"640\" height=\"480\""))
-    XCTAssertTrue(svg.contains("d=\"M35 20H185"))
+    XCTAssertTrue(svg.contains("d=\"M35 20H185A25 25 0 0 1 210 45"))
+    XCTAssertFalse(svg.contains("Q210 20 210 45"))
     XCTAssertFalse(svg.contains("d=\"M10 45A100 25"))
   }
 

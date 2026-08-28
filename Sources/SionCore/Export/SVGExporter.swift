@@ -577,8 +577,13 @@ public enum SVGExporter {
 
   private static func roundedRectanglePath(frame: SionRect, radius: Double) -> String {
     let r = min(max(0, radius), min(frame.width, frame.height) / 2)
+    guard r > 0 else {
+      return
+        "M\(number(frame.minX)) \(number(frame.minY))H\(number(frame.maxX))V\(number(frame.maxY))H\(number(frame.minX))Z"
+    }
+
     return
-      "M\(number(frame.minX + r)) \(number(frame.minY))H\(number(frame.maxX - r))Q\(number(frame.maxX)) \(number(frame.minY)) \(number(frame.maxX)) \(number(frame.minY + r))V\(number(frame.maxY - r))Q\(number(frame.maxX)) \(number(frame.maxY)) \(number(frame.maxX - r)) \(number(frame.maxY))H\(number(frame.minX + r))Q\(number(frame.minX)) \(number(frame.maxY)) \(number(frame.minX)) \(number(frame.maxY - r))V\(number(frame.minY + r))Q\(number(frame.minX)) \(number(frame.minY)) \(number(frame.minX + r)) \(number(frame.minY))Z"
+      "M\(number(frame.minX + r)) \(number(frame.minY))H\(number(frame.maxX - r))A\(number(r)) \(number(r)) 0 0 1 \(number(frame.maxX)) \(number(frame.minY + r))V\(number(frame.maxY - r))A\(number(r)) \(number(r)) 0 0 1 \(number(frame.maxX - r)) \(number(frame.maxY))H\(number(frame.minX + r))A\(number(r)) \(number(r)) 0 0 1 \(number(frame.minX)) \(number(frame.maxY - r))V\(number(frame.minY + r))A\(number(r)) \(number(r)) 0 0 1 \(number(frame.minX + r)) \(number(frame.minY))Z"
   }
 
   private static func vectorPath(_ path: VectorPath, frame: SionRect) -> String {

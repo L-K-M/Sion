@@ -5,16 +5,30 @@ import XCTest
 
 @MainActor
 final class SionOpenRecentMenuTests: XCTestCase {
-  func testFinishedLaunchHasOneOpenRecentMenu() throws {
+  func testFinishedLaunchRoutesRecentDocumentActions() throws {
     let application = NSApplication.shared
     let previousDelegate = application.delegate
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
+    var urls = [TestDocument.diagram]
+    var openedURLs: [URL] = []
+    var clearCount = 0
+    let recentDocumentsMenuController = makeController(
+      recentDocumentURLs: { urls },
+      openDocument: { openedURLs.append($0) },
+      clearRecentDocuments: {
+        urls.removeAll()
+        clearCount += 1
+      }
+    )
     let documentController = SionDocumentController()
     let sentinel = SionDrawingDocument()
     documentController.addDocument(sentinel)
-    let delegate = LaunchProbeDelegate(documentController: documentController)
+    let delegate = LaunchProbeDelegate(
+      documentController: documentController,
+      recentDocumentsMenuController: recentDocumentsMenuController
+    )
 
     defer {
       documentController.removeDocument(sentinel)
@@ -34,13 +48,28 @@ final class SionOpenRecentMenuTests: XCTestCase {
     let openRecentItems = fileMenu.items.filter { $0.title == TestMenu.openRecent }
     let openRecent = try XCTUnwrap(openRecentItems.first)
     let recentMenu = try XCTUnwrap(openRecent.submenu)
-    let clear = try XCTUnwrap(recentMenu.item(withTitle: TestMenu.clear))
 
     XCTAssertEqual(openRecentItems.count, 1)
-    XCTAssertEqual(
-      clear.action,
-      #selector(NSDocumentController.clearRecentDocuments(_:))
+    XCTAssertTrue(recentMenu.delegate === recentDocumentsMenuController)
+
+    recentMenu.delegate?.menuNeedsUpdate?(recentMenu)
+
+    let recent = try XCTUnwrap(recentMenu.item(withTitle: TestDocument.diagram.lastPathComponent))
+    XCTAssertTrue(
+      application.sendAction(try XCTUnwrap(recent.action), to: recent.target, from: recent)
     )
+    XCTAssertEqual(openedURLs, [TestDocument.diagram])
+
+    let clear = try XCTUnwrap(recentMenu.item(withTitle: TestMenu.clear))
+    XCTAssertTrue(
+      application.sendAction(try XCTUnwrap(clear.action), to: clear.target, from: clear)
+    )
+    XCTAssertEqual(clearCount, 1)
+
+    recentMenu.delegate?.menuNeedsUpdate?(recentMenu)
+
+    XCTAssertEqual(recentMenu.items.count, 1)
+    XCTAssertFalse(try XCTUnwrap(recentMenu.items.first).isEnabled)
   }
 
   func testWillFinishLaunchingInstallsOpenRecentAfterOpen() throws {
@@ -152,8 +181,14 @@ final class SionOpenRecentMenuTests: XCTestCase {
 private final class LaunchProbeDelegate: NSObject, NSApplicationDelegate {
   private let subject: SionApplicationDelegate
 
-  init(documentController: SionDocumentController) {
-    subject = SionApplicationDelegate(documentController: documentController)
+  init(
+    documentController: SionDocumentController,
+    recentDocumentsMenuController: SionRecentDocumentsMenuController
+  ) {
+    subject = SionApplicationDelegate(
+      documentController: documentController,
+      recentDocumentsMenuController: recentDocumentsMenuController
+    )
   }
 
   func applicationWillFinishLaunching(_ notification: Notification) {

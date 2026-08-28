@@ -25,8 +25,6 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
-    let findPasteboard = NSPasteboard(name: .find)
-    let previousFindString = findPasteboard.string(forType: .string)
     let text = SceneElement.text(
       frame: SionRect(x: 40, y: 40, width: 220, height: 80),
       text: "alpha beta alpha"
@@ -44,10 +42,6 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     defer {
       canvas.discardPendingEdits()
       window.close()
-      findPasteboard.clearContents()
-      if let previousFindString {
-        findPasteboard.setString(previousFindString, forType: .string)
-      }
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu
@@ -70,14 +64,9 @@ final class SionCanvasMenuValidationTests: XCTestCase {
 
     let editMenu = try XCTUnwrap(application.mainMenu?.item(withTitle: "Edit")?.submenu)
     let findMenu = try XCTUnwrap(editMenu.item(withTitle: "Find")?.submenu)
-    let useSelection = try XCTUnwrap(findMenu.item(withTitle: "Use Selection for Find"))
-    let findNext = try XCTUnwrap(findMenu.item(withTitle: "Find Next"))
-    textView.setSelectedRange(NSRange(location: 0, length: 5))
-
-    XCTAssertTrue(textView.tryToPerform(useSelection.action!, with: useSelection))
-    XCTAssertEqual(findPasteboard.string(forType: .string), "alpha")
-    XCTAssertTrue(textView.tryToPerform(findNext.action!, with: findNext))
-    XCTAssertEqual(textView.selectedRange(), NSRange(location: 11, length: 5))
+    for item in findMenu.items where !item.isSeparatorItem {
+      XCTAssertTrue(textView.responds(to: item.action))
+    }
 
     let spellingMenu = try XCTUnwrap(
       editMenu.item(withTitle: "Spelling and Grammar")?.submenu

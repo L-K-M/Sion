@@ -124,6 +124,7 @@
     private var previewPNG: Data?
     private var pendingTextEdit: PendingTextEdit?
     private var lastDuplicate: DuplicateState?
+    private var pendingDuplicateMove: SionVector?
     private var routeCache: [ElementID: ConnectorRoute]
     private let imageCache: NSCache<NSString, NSImage>
 
@@ -141,6 +142,7 @@
       history = package.history
       previewPNG = package.previewPNG
       pendingTextEdit = nil
+      pendingDuplicateMove = nil
       routeCache = [:]
       imageCache = NSCache()
       imageCache.countLimit = EditorDefaults.imageCacheLimit
@@ -206,7 +208,7 @@
         selectedElementIDs: selection
       )
       let center = payload.contentBounds.center
-      let delta = duplicateDelta(from: center)
+      let delta = duplicateDelta()
       let insertedIDs = try insertPayload(
         payload,
         centeredAt: center + delta,
@@ -220,8 +222,7 @@
 
       lastDuplicate = DuplicateState(
         ids: Set(insertedIDs),
-        delta: delta,
-        center: center + delta
+        delta: delta
       )
       return insertedIDs
     }
@@ -466,19 +467,16 @@
       return insertedIDs
     }
 
-    private func duplicateDelta(from center: SionPoint) -> SionVector {
+    private func duplicateDelta() -> SionVector {
       if let lastDuplicate, selection == lastDuplicate.ids {
-        let moved = center - lastDuplicate.center
-        // Recomputed bounds drift by floating-point ulp; treat sub-pixel
-        // equality as "not moved" so an untouched copy keeps stepping.
+        let movement = lastDuplicate.manualTranslation
+        // Ignore sub-pixel drift and preserve the established repeat spacing.
         let stayedPut =
-          abs(moved.dx) < EditorDefaults.duplicateMoveTolerance
-          && abs(moved.dy) < EditorDefaults.duplicateMoveTolerance
+          abs(movement.dx) < EditorDefaults.duplicateMoveTolerance
+          && abs(movement.dy) < EditorDefaults.duplicateMoveTolerance
 
-        // A manual move of the last copy becomes the new repeat offset;
-        // without one, the copies keep stepping by the previous delta.
         if !stayedPut {
-          return moved
+          return movement
         }
 
         return lastDuplicate.delta
@@ -493,6 +491,20 @@
         )
       )
       return SionVector(dx: step, dy: step)
+    }
+
+    /// Only explicit translations influence power duplicate; resizes and
+    /// rotations may shift bounds without representing user movement.
+    private func recordDuplicateMovement(_ offset: SionVector) {
+      guard offset != .zero,
+        var lastDuplicate,
+        selection == lastDuplicate.ids
+      else {
+        return
+      }
+
+      lastDuplicate.manualTranslation = lastDuplicate.manualTranslation + offset
+      self.lastDuplicate = lastDuplicate
     }
 
     func packageForArchiving() -> SionPackage {
@@ -524,6 +536,8 @@
       history = package.history
       previewPNG = package.previewPNG
       pendingTextEdit = nil
+      lastDuplicate = nil
+      pendingDuplicateMove = nil
       anchorEditingState = .inactive
       routeCache.removeAll()
       imageCache.removeAllObjects()
@@ -797,9 +811,10 @@
     }
 
     func nudgeSelection(by offset: SionVector) throws {
-      guard canMoveSelection else { return }
+      guard canMoveSelection, offset != .zero else { return }
 
       try perform(name: "Move", command: .translate(elementIDs: selection, by: offset))
+      recordDuplicateMovement(offset)
     }
 
     @discardableResult
@@ -1187,22 +1202,36 @@
     }
 
     func beginMove() throws {
+      pendingDuplicateMove = nil
       guard canMoveSelection else { return }
 
       try editor.beginGesture(named: "Move")
+      if let lastDuplicate, selection == lastDuplicate.ids {
+        pendingDuplicateMove = .zero
+      }
     }
 
     func moveSelection(by offset: SionVector) throws {
       guard !selection.isEmpty, offset != .zero else { return }
 
-      _ = try editor.updateGesture(with: .translate(elementIDs: selection, by: offset))
+      let result = try editor.updateGesture(with: .translate(elementIDs: selection, by: offset))
+      guard result == .applied else { return }
+
+      if let movement = pendingDuplicateMove {
+        pendingDuplicateMove = movement + offset
+      }
       notifyModelChange(notification: .skip)
     }
 
     func endMove() throws {
+      let movement = pendingDuplicateMove
+      pendingDuplicateMove = nil
       let result = try editor.endGesture()
       guard result == .applied else { return }
 
+      if let movement {
+        recordDuplicateMovement(movement)
+      }
       registerUndo(actionName: "Move")
       notifyModelChange(notification: .done)
     }
@@ -1273,6 +1302,7 @@
 
     /// Restores the pre-gesture scene; used when a drag is cancelled.
     func cancelActiveGesture() {
+      pendingDuplicateMove = nil
       guard (try? editor.cancelGesture()) == .applied else { return }
 
       notifyModelChange(notification: .skip)
@@ -1334,11 +1364,14 @@
         // An untouched gesture changes no document bytes, but its view still
         // needs to discard the corresponding drag.
         if hadPendingGesture {
+          pendingDuplicateMove = nil
           notifyObservers()
         }
         return
       }
 
+      lastDuplicate = nil
+      pendingDuplicateMove = nil
       undoManagerProvider()?.registerUndo(withTarget: self) { target in
         Self.performUndo(.redo, on: target)
       }
@@ -1350,6 +1383,8 @@
     @objc func redoSceneEdit() {
       guard let actionName = editor.redo() else { return }
 
+      lastDuplicate = nil
+      pendingDuplicateMove = nil
       undoManagerProvider()?.registerUndo(withTarget: self) { target in
         Self.performUndo(.undo, on: target)
       }
@@ -1639,7 +1674,7 @@
   private struct DuplicateState {
     let ids: Set<ElementID>
     let delta: SionVector
-    let center: SionPoint
+    var manualTranslation = SionVector.zero
   }
 
   private struct ZOrderPlan {

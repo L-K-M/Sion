@@ -586,6 +586,7 @@
       do {
         try action()
       } catch {
+        NSLog("Arrange action failed: %@", String(describing: error))
         NSSound.beep()
       }
     }
@@ -658,9 +659,7 @@
       attemptEdit { try editorController.revealHiddenElements() }
     }
 
-    /// AppKit discovers menu validation through the Objective-C runtime, so
-    /// this needs @objc (NSMenuItemValidation's formal protocol is macOS 14+,
-    /// newer than the deployment target).
+    /// AppKit discovers menu validation through Objective-C responder dispatch.
     @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
       switch menuItem.action {
       case #selector(duplicate(_:)):

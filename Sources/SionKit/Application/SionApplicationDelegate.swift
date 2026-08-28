@@ -108,11 +108,11 @@ private enum SionMainMenu {
     submenu.addItem(
       item(
         "Bring to Front", action: AppAction.bringToFront, key: "]",
-        modifiers: [.command, .option]))
+        modifiers: [.command, .shift]))
     submenu.addItem(item("Bring Forward", action: AppAction.bringForward, key: "]"))
     submenu.addItem(item("Send Backward", action: AppAction.sendBackward, key: "["))
     submenu.addItem(
-      item("Send to Back", action: AppAction.sendToBack, key: "[", modifiers: [.command, .option]))
+      item("Send to Back", action: AppAction.sendToBack, key: "[", modifiers: [.command, .shift]))
     submenu.addItem(.separator())
     submenu.addItem(item("Align Left", action: AppAction.alignLeading))
     submenu.addItem(

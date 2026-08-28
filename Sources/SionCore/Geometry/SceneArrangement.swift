@@ -15,7 +15,7 @@ package enum SceneDistributionAxis: String, CaseIterable, Equatable, Hashable, S
 }
 
 /// Pure geometry behind the Arrange menu: alignment shares an edge or center,
-/// distribution equalizes the gaps between frames while pinning the extremes.
+/// distribution equalizes gaps across the selection's original span.
 package enum SceneArrangement {
   /// One translation per frame, parallel to the input order.
   package static func alignedOffsets(
@@ -45,9 +45,9 @@ package enum SceneArrangement {
     }
   }
 
-  /// One translation per frame, parallel to the input order. The two extreme
-  /// frames stay put; the rest move so all gaps are equal. Frames wider than
-  /// the span overlap gracefully (gaps go negative uniformly).
+  /// One translation per frame, parallel to the input order. The near union
+  /// edge stays put and the final frame lands on the far union edge. Frames
+  /// wider than the span overlap gracefully (gaps go negative uniformly).
   package static func distributedOffsets(
     _ frames: [SionRect],
     axis: SceneDistributionAxis
@@ -66,13 +66,15 @@ package enum SceneArrangement {
         : leftMinimum < rightMinimum
     }
     let sizes = ordered.map { size(of: $0.element.standardized, axis: axis) }
-    let span =
-      maximum(ordered.last!.element.standardized, axis: axis)
-      - minimum(ordered.first!.element.standardized, axis: axis)
+    let nearEdge = minimum(ordered[0].element.standardized, axis: axis)
+    let farEdge = frames.reduce(nearEdge) { current, frame in
+      max(current, maximum(frame.standardized, axis: axis))
+    }
+    let span = farEdge - nearEdge
     let gap = (span - sizes.reduce(0, +)) / Double(ordered.count - 1)
 
     var offsets = [SionVector](repeating: .zero, count: frames.count)
-    var cursor = minimum(ordered.first!.element.standardized, axis: axis)
+    var cursor = nearEdge
     for (entry, size) in zip(ordered, sizes) {
       let current = minimum(entry.element.standardized, axis: axis)
       let offset = cursor - current

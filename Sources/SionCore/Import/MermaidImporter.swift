@@ -6,6 +6,7 @@ public enum MermaidImporter {
     diagram(in: source) != nil
   }
 
+  /// Returns no elements for invalid directions or unsupported same-line statements.
   public static func elements(from source: String, centeredAt origin: SionPoint) -> [SceneElement] {
     guard let diagram = diagram(in: source), let direction = diagram.direction else {
       return []

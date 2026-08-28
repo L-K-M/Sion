@@ -128,25 +128,17 @@ final class SionCanvasMenuValidationTests: XCTestCase {
   func testArrangeExtremeShortcutsDoNotClaimWindowTabChords() throws {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
+    let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
     defer {
       application.mainMenu = previousMainMenu
+      application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu
     }
 
-    let delegate = SionApplicationDelegate()
-    let documentController = try XCTUnwrap(
-      Mirror(reflecting: delegate).children.first {
-        $0.label == TestApplicationDelegate.documentController
-      }?.value as? NSDocumentController
-    )
-    // Exercise menu installation without triggering launch-only document UI.
-    let sentinelDocument = SionDrawingDocument()
-    documentController.addDocument(sentinelDocument)
-    defer { documentController.removeDocument(sentinelDocument) }
-
-    delegate.applicationDidFinishLaunching(
-      Notification(name: NSApplication.didFinishLaunchingNotification)
+    let delegate: NSApplicationDelegate = SionApplicationDelegate()
+    delegate.applicationWillFinishLaunching?(
+      Notification(name: NSApplication.willFinishLaunchingNotification)
     )
 
     let arrangeMenu = try XCTUnwrap(
@@ -166,24 +158,17 @@ final class SionCanvasMenuValidationTests: XCTestCase {
   func testShowGridMenuTogglesCanvasAndTracksUndoState() throws {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
+    let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
     defer {
       application.mainMenu = previousMainMenu
+      application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu
     }
 
-    let delegate = SionApplicationDelegate()
-    let documentController = try XCTUnwrap(
-      Mirror(reflecting: delegate).children.first {
-        $0.label == TestApplicationDelegate.documentController
-      }?.value as? NSDocumentController
-    )
-    let sentinelDocument = SionDrawingDocument()
-    documentController.addDocument(sentinelDocument)
-    defer { documentController.removeDocument(sentinelDocument) }
-
-    delegate.applicationDidFinishLaunching(
-      Notification(name: NSApplication.didFinishLaunchingNotification)
+    let delegate: NSApplicationDelegate = SionApplicationDelegate()
+    delegate.applicationWillFinishLaunching?(
+      Notification(name: NSApplication.willFinishLaunchingNotification)
     )
 
     let originalCanvas = SionCanvas(
@@ -334,10 +319,6 @@ private enum TestAction {
   static let hideGridUndoName = "Hide Grid"
   static let showGridUndoName = "Show Grid"
   static let toggleGridVisibility = NSSelectorFromString("toggleGridVisibility:")
-}
-
-private enum TestApplicationDelegate {
-  static let documentController = "documentController"
 }
 
 private enum TestPasteboard {

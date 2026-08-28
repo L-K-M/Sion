@@ -7,11 +7,15 @@ var products: [Product] = [
 ]
 
 var targets: [Target] = [
-  .target(name: "SionCore"),
+  .target(
+    name: "SionCore",
+    swiftSettings: [.swiftLanguageMode(.v6)]
+  ),
   .testTarget(
     name: "SionCoreTests",
     dependencies: ["SionCore"],
-    resources: [.copy("Fixtures")]
+    resources: [.copy("Fixtures")],
+    swiftSettings: [.swiftLanguageMode(.v6)]
   ),
 ]
 

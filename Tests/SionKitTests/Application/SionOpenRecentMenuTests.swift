@@ -5,6 +5,38 @@ import XCTest
 
 @MainActor
 final class SionOpenRecentMenuTests: XCTestCase {
+  func testFinishedLaunchHasOneOpenRecentMenu() throws {
+    let application = NSApplication.shared
+    let previousDelegate = application.delegate
+    let previousMainMenu = application.mainMenu
+    let previousServicesMenu = application.servicesMenu
+    let previousWindowsMenu = application.windowsMenu
+    let documentController = SionDocumentController()
+    let sentinel = SionDrawingDocument()
+    documentController.addDocument(sentinel)
+    let delegate = LaunchProbeDelegate(documentController: documentController)
+
+    defer {
+      documentController.removeDocument(sentinel)
+      application.delegate = previousDelegate
+      application.mainMenu = previousMainMenu
+      application.servicesMenu = previousServicesMenu
+      application.windowsMenu = previousWindowsMenu
+    }
+
+    application.delegate = delegate
+    application.mainMenu = nil
+    application.finishLaunching()
+
+    let fileMenu = try XCTUnwrap(
+      application.mainMenu?.item(withTitle: TestMenu.file)?.submenu
+    )
+    XCTAssertEqual(
+      fileMenu.items.filter { $0.title == TestMenu.openRecent }.count,
+      1
+    )
+  }
+
   func testWillFinishLaunchingInstallsOpenRecentAfterOpen() throws {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
@@ -105,6 +137,27 @@ final class SionOpenRecentMenuTests: XCTestCase {
       openDocument: openDocument,
       clearRecentDocuments: clearRecentDocuments
     )
+  }
+}
+
+@MainActor
+private final class LaunchProbeDelegate: NSObject, NSApplicationDelegate {
+  private let subject: SionApplicationDelegate
+
+  init(documentController: SionDocumentController) {
+    subject = SionApplicationDelegate(documentController: documentController)
+  }
+
+  func applicationWillFinishLaunching(_ notification: Notification) {
+    subject.applicationWillFinishLaunching(notification)
+  }
+
+  func applicationDidFinishLaunching(_ notification: Notification) {
+    subject.applicationDidFinishLaunching(notification)
+  }
+
+  func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+    false
   }
 }
 

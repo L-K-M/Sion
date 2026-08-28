@@ -2,11 +2,17 @@ import AppKit
 
 @MainActor
 public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
-  private let documentController = SionDocumentController()
+  private let documentController: SionDocumentController
   private lazy var recentDocumentsMenuController =
     SionRecentDocumentsMenuController(documentController: documentController)
 
   public override init() {
+    documentController = SionDocumentController()
+    super.init()
+  }
+
+  init(documentController: SionDocumentController) {
+    self.documentController = documentController
     super.init()
   }
 

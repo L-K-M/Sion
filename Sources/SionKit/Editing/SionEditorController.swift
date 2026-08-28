@@ -321,9 +321,7 @@
       guard !editor.hasPendingGesture, !selection.isEmpty else { return false }
 
       var removedIDs = selection
-      for id in selection {
-        removedIDs.formUnion(editor.document.scene.descendantIDs(of: id))
-      }
+      removedIDs.formUnion(editor.document.scene.descendantIDs(of: selection))
 
       return editor.document.scene.elements.allSatisfy { element in
         !removedIDs.contains(element.id) || element.lockState == .editable

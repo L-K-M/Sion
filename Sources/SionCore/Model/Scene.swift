@@ -404,16 +404,27 @@ public struct SionScene: Codable, Equatable, Sendable {
   }
 
   public func descendantIDs(of parentID: ElementID) -> Set<ElementID> {
+    descendantIDs(of: [parentID])
+  }
+
+  /// One adjacency pass collects descendants across every requested root.
+  package func descendantIDs(of parentIDs: Set<ElementID>) -> Set<ElementID> {
+    var childrenByParent: [ElementID: [ElementID]] = [:]
+    for element in elements {
+      guard let parentID = element.parentID else { continue }
+
+      childrenByParent[parentID, default: []].append(element.id)
+    }
+
     var descendants = Set<ElementID>()
-    var pending = [parentID]
+    var pending = Array(parentIDs)
 
+    // The insert guard also terminates walks through invalid cyclic input.
     while let candidate = pending.popLast() {
-      for child in elements where child.parentID == candidate {
-        guard descendants.insert(child.id).inserted else {
-          continue
-        }
+      for childID in childrenByParent[candidate] ?? [] {
+        guard descendants.insert(childID).inserted else { continue }
 
-        pending.append(child.id)
+        pending.append(childID)
       }
     }
 

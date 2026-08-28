@@ -142,10 +142,7 @@ public struct SceneSelectionPayload: Equatable, Sendable {
     in scene: SionScene
   ) -> Set<ElementID> {
     var includedIDs = selectedIDs
-
-    for id in selectedIDs {
-      includedIDs.formUnion(scene.descendantIDs(of: id))
-    }
+    includedIDs.formUnion(scene.descendantIDs(of: selectedIDs))
 
     // Preserve connectors wholly owned by the copied subgraph.
     for element in scene.elements {

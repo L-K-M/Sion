@@ -79,10 +79,11 @@ private enum SionMainMenu {
 
     // Attaching the main menu can install AppKit's shared Services submenu,
     // leaving the application role and the visible item pointing at different
-    // menus. Reconcile both to one menu; an AppKit menu still owned by another
-    // item is never re-parented.
+    // menus. Whatever menu the role names becomes the item's submenu; release
+    // its previous owner first so no attached menu is re-parented.
     var servicesMenu = applicationMenu.servicesMenu
-    if let attached = NSApp.servicesMenu, attached.supermenu == nil {
+    if let attached = NSApp.servicesMenu, attached !== servicesMenu {
+      attached.supermenu?.submenu = nil
       servicesMenu = attached
     }
     if applicationMenu.servicesItem.submenu !== servicesMenu {

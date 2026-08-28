@@ -72,9 +72,16 @@ package enum ElementHitGeometry {
 private struct FlattenedPath {
   let subpaths: [FlattenedSubpath]
   let fillRule: PathFillRule
-  let approximationTolerance: Double
-  let truncationTolerance: Double
-  let dashPhaseUncertainty: Double
+
+  var hasTruncatedSubpath: Bool {
+    subpaths.contains { $0.truncationTolerance > 0 }
+  }
+
+  private var maximumApproximationTolerance: Double {
+    subpaths.reduce(0) { maximum, subpath in
+      max(maximum, subpath.approximationTolerance)
+    }
+  }
 
   func contains(
     _ point: SionPoint,
@@ -83,8 +90,8 @@ private struct FlattenedPath {
   ) -> Bool {
     guard let bounds else { return false }
 
-    let fillTolerance = tolerance + approximationTolerance
-    let strokeTolerance = tolerance + approximationTolerance
+    let fillTolerance = tolerance + maximumApproximationTolerance
+    let strokeTolerance = tolerance + maximumApproximationTolerance
     let strokeRadius = style.visibleStroke?.hitExpansion(tolerance: strokeTolerance) ?? 0
     let fillRadius = style.hasVisibleFill ? fillTolerance : 0
     guard bounds.expanded(by: max(fillRadius, strokeRadius)).contains(point) else {
@@ -96,26 +103,23 @@ private struct FlattenedPath {
         return true
       }
 
-      if fillTolerance > 0,
-        subpaths.flatMap(\.fillSegments).contains(where: {
-          distance(from: point, to: $0) <= fillTolerance
-        })
-      {
+      if subpaths.contains(where: { subpath in
+        let boundaryTolerance = tolerance + subpath.approximationTolerance
+        guard boundaryTolerance > 0 else { return false }
+
+        return subpath.fillSegments.contains { segment in
+          distance(from: point, to: segment) <= boundaryTolerance
+        }
+      }) {
         return true
       }
     }
 
-    guard var stroke = style.visibleStroke else { return false }
-
-    // Preserve selection with a conservative margin when the path exhausts its budget.
-    if truncationTolerance > 0 {
-      stroke.dashPattern = []
-    }
+    guard let stroke = style.visibleStroke else { return false }
 
     return StrokeHitGeometry(
       stroke: stroke,
-      tolerance: strokeTolerance,
-      phaseUncertainty: dashPhaseUncertainty
+      tolerance: tolerance
     ).contains(point, in: subpaths)
   }
 
@@ -201,6 +205,9 @@ private struct FlattenedSubpath {
   let points: [SionPoint]
   let segmentTangentDirectionDeltas: [Double]
   let closure: SubpathClosure
+  let approximationTolerance: Double
+  let truncationTolerance: Double
+  let dashPhaseUncertainty: Double
 
   var strokeSegments: [FlattenedStrokeSegment] {
     guard points.count >= 2 else { return [] }
@@ -255,9 +262,9 @@ private struct FlattenedPathBuilder {
   private var activePoints: [SionPoint] = []
   private var activeSegmentTangentDirectionDeltas: [Double] = []
   private var currentPoint: SionPoint?
-  private var approximationTolerance = 0.0
-  private var truncationTolerance = 0.0
-  private var dashPhaseUncertainty = 0.0
+  private var activeApproximationTolerance = 0.0
+  private var activeTruncationTolerance = 0.0
+  private var activeDashPhaseUncertainty = 0.0
   private let maximumCurveSubdivisionDepth: Int
 
   init(
@@ -322,10 +329,7 @@ private struct FlattenedPathBuilder {
 
     return FlattenedPath(
       subpaths: subpaths,
-      fillRule: fillRule,
-      approximationTolerance: approximationTolerance,
-      truncationTolerance: truncationTolerance,
-      dashPhaseUncertainty: dashPhaseUncertainty
+      fillRule: fillRule
     )
   }
 
@@ -336,11 +340,17 @@ private struct FlattenedPathBuilder {
       FlattenedSubpath(
         points: activePoints,
         segmentTangentDirectionDeltas: activeSegmentTangentDirectionDeltas,
-        closure: closure
+        closure: closure,
+        approximationTolerance: activeApproximationTolerance,
+        truncationTolerance: activeTruncationTolerance,
+        dashPhaseUncertainty: activeDashPhaseUncertainty
       )
     )
     activePoints = []
     activeSegmentTangentDirectionDeltas = []
+    activeApproximationTolerance = 0
+    activeTruncationTolerance = 0
+    activeDashPhaseUncertainty = 0
   }
 
   private mutating func startActivePathIfNeeded() -> SionPoint? {
@@ -363,7 +373,9 @@ private struct FlattenedPathBuilder {
   ) {
     // De Casteljau subdivision keeps error stable on large canvases.
     let flatness = distance(from: control, toLineFrom: start, to: end)
-    guard flatness > HitGeometryDefaults.curveFlatness else {
+    // One split preserves an implicitly closed shallow curve's fill area.
+    let needsFillContour = depth == 0 && flatness > HitGeometryDefaults.epsilon
+    guard flatness > HitGeometryDefaults.curveFlatness || needsFillContour else {
       appendQuadraticLeaf(
         start: start,
         control: control,
@@ -373,7 +385,7 @@ private struct FlattenedPathBuilder {
       return
     }
     guard depth < maximumCurveSubdivisionDepth else {
-      truncationTolerance = max(truncationTolerance, flatness)
+      activeTruncationTolerance = max(activeTruncationTolerance, flatness)
       appendQuadraticLeaf(
         start: start,
         control: control,
@@ -411,7 +423,9 @@ private struct FlattenedPathBuilder {
       distance(from: control1, toLineFrom: start, to: end),
       distance(from: control2, toLineFrom: start, to: end)
     )
-    guard flatness > HitGeometryDefaults.curveFlatness else {
+    // One split preserves an implicitly closed shallow curve's fill area.
+    let needsFillContour = depth == 0 && flatness > HitGeometryDefaults.epsilon
+    guard flatness > HitGeometryDefaults.curveFlatness || needsFillContour else {
       appendCubicLeaf(
         start: start,
         control1: control1,
@@ -422,7 +436,7 @@ private struct FlattenedPathBuilder {
       return
     }
     guard depth < maximumCurveSubdivisionDepth else {
-      truncationTolerance = max(truncationTolerance, flatness)
+      activeTruncationTolerance = max(activeTruncationTolerance, flatness)
       appendCubicLeaf(
         start: start,
         control1: control1,
@@ -461,7 +475,10 @@ private struct FlattenedPathBuilder {
     end: SionPoint,
     approximationTolerance: Double
   ) {
-    self.approximationTolerance = max(self.approximationTolerance, approximationTolerance)
+    activeApproximationTolerance = max(
+      activeApproximationTolerance,
+      approximationTolerance
+    )
     recordDashPhaseUncertainty(
       controlPolygonLength: start.distance(to: control) + control.distance(to: end),
       chordLength: start.distance(to: end)
@@ -483,7 +500,10 @@ private struct FlattenedPathBuilder {
     end: SionPoint,
     approximationTolerance: Double
   ) {
-    self.approximationTolerance = max(self.approximationTolerance, approximationTolerance)
+    activeApproximationTolerance = max(
+      activeApproximationTolerance,
+      approximationTolerance
+    )
     recordDashPhaseUncertainty(
       controlPolygonLength: start.distance(to: control1)
         + control1.distance(to: control2)
@@ -541,7 +561,7 @@ private struct FlattenedPathBuilder {
     chordLength: Double
   ) {
     // A Bezier's control polygon bounds how far flattened dash phase can lag.
-    dashPhaseUncertainty += max(0, controlPolygonLength - chordLength)
+    activeDashPhaseUncertainty += max(0, controlPolygonLength - chordLength)
   }
 
   private func distance(
@@ -568,21 +588,30 @@ private enum SubpathClosure {
 private struct StrokeHitGeometry {
   let stroke: StrokeStyle
   let tolerance: Double
-  let phaseUncertainty: Double
 
   private var radius: Double {
     stroke.width / 2
   }
 
   func contains(_ point: SionPoint, in subpaths: [FlattenedSubpath]) -> Bool {
-    guard let dashPattern = DashPattern(stroke.dashPattern) else {
-      return subpaths.contains { subpath in
-        contains(point, in: StrokeRun(subpath: subpath))
-      }
-    }
+    let dashPattern = DashPattern(stroke.dashPattern)
 
     return subpaths.contains { subpath in
-      contains(point, in: subpath, dashPattern: dashPattern)
+      let geometry = StrokeHitGeometry(
+        stroke: stroke,
+        tolerance: tolerance + subpath.approximationTolerance
+      )
+
+      guard let dashPattern else {
+        return geometry.contains(point, in: StrokeRun(subpath: subpath))
+      }
+
+      // A truncated subpath stays selectable without changing exact siblings.
+      if subpath.truncationTolerance > 0 {
+        return geometry.contains(point, in: StrokeRun(subpath: subpath))
+      }
+
+      return geometry.contains(point, in: subpath, dashPattern: dashPattern)
     }
   }
 
@@ -596,8 +625,14 @@ private struct StrokeHitGeometry {
 
     let joinsAtSeam =
       subpath.closure == .closed
-      && dashPattern.mayBePainted(before: pathLength, uncertainty: phaseUncertainty)
-      && dashPattern.mayBePainted(after: 0, uncertainty: phaseUncertainty)
+      && dashPattern.mayBePainted(
+        before: pathLength,
+        uncertainty: subpath.dashPhaseUncertainty
+      )
+      && dashPattern.mayBePainted(
+        after: 0,
+        uncertainty: subpath.dashPhaseUncertainty
+      )
 
     for segment in segments {
       if dashedBodyContains(
@@ -606,7 +641,8 @@ private struct StrokeHitGeometry {
         pathLength: pathLength,
         closure: subpath.closure,
         joinsAtSeam: joinsAtSeam,
-        dashPattern: dashPattern
+        dashPattern: dashPattern,
+        phaseUncertainty: subpath.dashPhaseUncertainty
       ) {
         return true
       }
@@ -617,11 +653,11 @@ private struct StrokeHitGeometry {
       guard
         dashPattern.mayBePainted(
           before: outgoing.startDistance,
-          uncertainty: phaseUncertainty
+          uncertainty: subpath.dashPhaseUncertainty
         ),
         dashPattern.mayBePainted(
           after: outgoing.startDistance,
-          uncertainty: phaseUncertainty
+          uncertainty: subpath.dashPhaseUncertainty
         )
       else {
         continue
@@ -736,7 +772,8 @@ private struct StrokeHitGeometry {
     pathLength: Double,
     closure: SubpathClosure,
     joinsAtSeam: Bool,
-    dashPattern: DashPattern
+    dashPattern: DashPattern,
+    phaseUncertainty: Double
   ) -> Bool {
     let segment = measuredSegment.segment
     let vector = segment.end - segment.start
@@ -1008,6 +1045,11 @@ private struct DashPattern {
   private let period: Double
 
   init?(_ source: [Double]) {
+    // Complex patterns fall back to a solid conservative hit without scanning.
+    guard source.count <= HitGeometryDefaults.maximumInteractiveDashPatternCount else {
+      return nil
+    }
+
     var lengths = source.filter { $0.isFinite && $0 > 0 }
     guard !lengths.isEmpty else { return nil }
 
@@ -1147,16 +1189,51 @@ extension ShapeKind {
     style: ElementStyle,
     tolerance: Double
   ) -> Bool {
+    guard
+      passesAnalyticBroadPhase(
+        point,
+        in: frame,
+        style: style,
+        tolerance: tolerance
+      )
+    else {
+      return false
+    }
+
     if let coarsePath = coarseFlattened(in: frame) {
       guard coarsePath.contains(point, style: style, tolerance: tolerance) else {
         return false
       }
 
       // A completed coarse path is already identical to the full traversal.
-      guard coarsePath.truncationTolerance > 0 else { return true }
+      guard coarsePath.hasTruncatedSubpath else { return true }
     }
 
     return flattened(in: frame).contains(point, style: style, tolerance: tolerance)
+  }
+
+  private func passesAnalyticBroadPhase(
+    _ point: SionPoint,
+    in frame: SionRect,
+    style: ElementStyle,
+    tolerance: Double
+  ) -> Bool {
+    guard case .ellipse = self else { return true }
+
+    let horizontalRadius = frame.width / 2
+    let verticalRadius = frame.height / 2
+    let minimumRadius = min(horizontalRadius, verticalRadius)
+    guard minimumRadius > HitGeometryDefaults.epsilon else { return true }
+
+    // Normalize one conservative ellipse envelope before building its curves.
+    let expansion = style.hitExpansion(tolerance: tolerance)
+    let envelopeScale =
+      HitGeometryDefaults.maximumCubicArcEnvelopeScale
+      + (expansion / minimumRadius)
+    let normalizedX = (point.x - frame.center.x) / horizontalRadius
+    let normalizedY = (point.y - frame.center.y) / verticalRadius
+
+    return hypot(normalizedX, normalizedY) <= envelopeScale
   }
 
   fileprivate func hitBounds(in frame: SionRect) -> SionRect? {
@@ -1533,12 +1610,14 @@ extension TextContent {
 
 private enum HitGeometryDefaults {
   static let arcControlFactor = 0.552_284_749_8
+  static let maximumCubicArcEnvelopeScale = 1.001
   static let curveFlatness = 0.25
   static let epsilon = 1e-9
   // Share a fixed traversal budget across every curve in one valid path.
   static let flattenedSegmentsPerPathCommand = 16
   static let maximumFlattenedCurveSegmentCount =
     SceneLimits.maximumPathCommandCount * flattenedSegmentsPerPathCommand
+  static let maximumInteractiveDashPatternCount = SceneLimits.maximumPathCommandCount
   // A 32-segment conservative preflight rejects distant curved-shape misses.
   static let maximumBuiltInBroadPhaseSubdivisionDepth = 3
   // Four-curve built-ins use at most 1,024 curve segments.

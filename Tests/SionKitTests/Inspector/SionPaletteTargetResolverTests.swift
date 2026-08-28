@@ -164,13 +164,11 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertEqual(nameField.stringValue, "")
     XCTAssertEqual(nameField.placeholderString, "Mixed")
 
-    undoManager.beginUndoGrouping()
     let sentUntouchedAction = NSApp.sendAction(
       try XCTUnwrap(nameField.action),
       to: nameField.target,
       from: nameField
     )
-    undoManager.endUndoGrouping()
 
     XCTAssertTrue(sentUntouchedAction)
     XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")

@@ -5,6 +5,7 @@ import XCTest
 final class ElementHitGeometryTests: XCTestCase {
   private static let interactiveHitDeadline = Duration.seconds(1)
   private static let largeSceneElementCount = 25_000
+  private static let maximumCurvedPathQueryCount = 10
   private static let maximumPathQueryCount = 1_000
 
   func testTransparentFrameCornersMissNonrectangularShapes() {
@@ -1328,6 +1329,44 @@ final class ElementHitGeometryTests: XCTestCase {
     let elapsed = started.duration(to: .now)
 
     XCTAssertFalse(containsPoint)
+    XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
+  }
+
+  func testMoveOnlyOutlierDoesNotForceMaximumCurveTraversal() {
+    let frame = SionRect(
+      x: 0,
+      y: 0,
+      width: SceneLimits.maximumCoordinateMagnitude,
+      height: SceneLimits.maximumCoordinateMagnitude
+    )
+    var commands: [PathCommand] = [.move(to: SionPoint(x: 0, y: 0.1))]
+    for index in 1..<(SceneLimits.maximumPathCommandCount - 1) {
+      let startsAtLeft = index.isMultiple(of: 2) == false
+      commands.append(
+        .cubic(
+          control1: SionPoint(x: startsAtLeft ? 0 : 1, y: 0),
+          control2: SionPoint(x: startsAtLeft ? 1 : 0, y: 0.4),
+          to: SionPoint(x: startsAtLeft ? 1 : 0, y: 0.1)
+        )
+      )
+    }
+    // This unpainted move must not widen the painted path's preflight bounds.
+    commands.append(.move(to: SionPoint(x: 1, y: 1)))
+
+    let path = VectorPath(commands: commands)
+    var element = SceneElement.path(frame: frame, path: path)
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 2)
+    )
+    let miss = frame.point(atNormalized: SionPoint(x: 0.5, y: 0.9))
+
+    let started = ContinuousClock.now
+    for _ in 0..<Self.maximumCurvedPathQueryCount {
+      XCTAssertFalse(ElementHitGeometry.contains(miss, in: element))
+    }
+    let elapsed = started.duration(to: .now)
+
     XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
   }
 

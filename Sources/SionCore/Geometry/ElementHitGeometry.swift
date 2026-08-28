@@ -1736,6 +1736,8 @@ extension VectorPath {
 
   fileprivate func hitBounds(in frame: SionRect) -> SionRect? {
     var result: SionRect?
+    var activeBounds: SionRect?
+    var activeHasGeometry = false
 
     func resolve(_ point: SionPoint) -> SionPoint {
       switch coordinateSpace {
@@ -1746,26 +1748,47 @@ extension VectorPath {
       }
     }
 
-    func include(_ point: SionPoint) {
+    func includeInActiveBounds(_ point: SionPoint) {
       let pointBounds = SionRect(x: point.x, y: point.y, width: 0, height: 0)
-      result = result?.union(pointBounds) ?? pointBounds
+      activeBounds = activeBounds?.union(pointBounds) ?? pointBounds
+    }
+
+    func finishActiveSubpath() {
+      guard activeHasGeometry, let finishedBounds = activeBounds else {
+        activeBounds = nil
+        activeHasGeometry = false
+        return
+      }
+
+      result = result?.union(finishedBounds) ?? finishedBounds
+      activeBounds = nil
+      activeHasGeometry = false
     }
 
     for command in commands {
       switch command {
-      case .move(let point), .line(let point):
-        include(resolve(point))
+      case .move(let point):
+        // A move-only subpath paints nothing and must not widen hit work.
+        finishActiveSubpath()
+        includeInActiveBounds(resolve(point))
+      case .line(let point):
+        includeInActiveBounds(resolve(point))
+        activeHasGeometry = true
       case .quadratic(let control, let point):
-        include(resolve(control))
-        include(resolve(point))
+        includeInActiveBounds(resolve(control))
+        includeInActiveBounds(resolve(point))
+        activeHasGeometry = true
       case .cubic(let control1, let control2, let point):
-        include(resolve(control1))
-        include(resolve(control2))
-        include(resolve(point))
+        includeInActiveBounds(resolve(control1))
+        includeInActiveBounds(resolve(control2))
+        includeInActiveBounds(resolve(point))
+        activeHasGeometry = true
       case .close:
-        continue
+        // A close-only subpath can paint a round or square stroke cap.
+        activeHasGeometry = activeBounds != nil
       }
     }
+    finishActiveSubpath()
 
     return result
   }

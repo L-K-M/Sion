@@ -6,6 +6,7 @@ import XCTest
 final class ArchiveMutationTests: XCTestCase {
   func testEveryTruncatedArchivePrefixIsRejected() throws {
     let archive = try encodedArchive()
+    XCTAssertNoThrow(try SionArchive.decode(archive).validate())
 
     for byteCount in 0..<archive.count {
       XCTAssertThrowsError(
@@ -19,9 +20,15 @@ final class ArchiveMutationTests: XCTestCase {
     let archive = try encodedArchive()
     var acceptedCount = 0
     var rejectedCount = 0
+    var seenMutations = Set<Data>()
 
     for seed in MutationCorpus.seeds {
       let mutated = mutateOneByte(in: archive, seed: seed)
+      guard seenMutations.insert(mutated).inserted else {
+        XCTFail("Duplicate archive mutation for seed \(seed)")
+        continue
+      }
+
       let first = decodeOutcome(mutated)
       let second = decodeOutcome(mutated)
 
@@ -37,8 +44,16 @@ final class ArchiveMutationTests: XCTestCase {
     }
 
     // The archive intentionally recovers from corrupt derived entries.
-    XCTAssertGreaterThan(acceptedCount, 0)
-    XCTAssertGreaterThan(rejectedCount, 0)
+    XCTAssertGreaterThan(
+      acceptedCount,
+      0,
+      "Expected recovery from at least one corrupt derived entry"
+    )
+    XCTAssertGreaterThan(
+      rejectedCount,
+      0,
+      "Expected rejection of at least one unrecoverable mutation"
+    )
   }
 
   private func encodedArchive() throws -> Data {

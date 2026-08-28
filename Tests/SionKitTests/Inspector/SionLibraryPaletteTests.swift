@@ -9,6 +9,7 @@ final class SionLibraryPaletteTests: XCTestCase {
   func testLibraryInsertsEveryBuiltInShapeAtTheViewportCenter() throws {
     _ = NSApplication.shared
     let undoManager = UndoManager()
+    undoManager.groupsByEvent = false
     let editor = try SionEditorController(
       package: SionPackage(document: SionDocument()),
       undoManagerProvider: { undoManager },
@@ -29,7 +30,11 @@ final class SionLibraryPaletteTests: XCTestCase {
       NSApp.windows.first { $0.title == "Library" && $0.isVisible }
     )
     let descendants = try XCTUnwrap(panel.contentView).libraryTestDescendants
-    let buttons = descendants.compactMap { $0 as? NSButton }.filter { !$0.title.isEmpty }
+    let scrollView = try XCTUnwrap(
+      descendants.compactMap { $0 as? NSScrollView }.first
+    )
+    let stack = try XCTUnwrap(scrollView.documentView as? NSStackView)
+    let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }
     let expectedShapes: [(title: String, kind: ShapeKind, size: SionSize)] = [
       ("Rectangle", .rectangle, SionSize(width: 160, height: 96)),
       (
@@ -45,19 +50,25 @@ final class SionLibraryPaletteTests: XCTestCase {
       ("Cylinder", .cylinder, SionSize(width: 160, height: 96)),
     ]
 
-    XCTAssertEqual(
-      Set(buttons.map(\.title)),
-      Set(expectedShapes.map { $0.title } + ["Text"])
-    )
-    XCTAssertTrue(
-      descendants.compactMap { $0 as? NSScrollView }.contains { $0.hasVerticalScroller }
-    )
+    XCTAssertEqual(buttons.map(\.title), expectedShapes.map(\.title) + ["Text"])
+    XCTAssertTrue(scrollView.hasVerticalScroller)
+
+    panel.contentView?.layoutSubtreeIfNeeded()
+
+    XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
+    XCTAssertGreaterThan(stack.frame.height, scrollView.contentView.bounds.height)
+
+    let lastButton = try XCTUnwrap(buttons.last)
+    _ = stack.scrollToVisible(lastButton.frame)
+    XCTAssertTrue(scrollView.contentView.bounds.contains(lastButton.frame))
 
     for expected in expectedShapes {
       let button = try XCTUnwrap(buttons.first { $0.title == expected.title })
       let insertionCenter = documentController.canvasVisibleCenter
 
+      undoManager.beginUndoGrouping()
       button.performClick(nil)
+      undoManager.endUndoGrouping()
 
       let element = try XCTUnwrap(editor.document.scene.elements.last)
       guard case .shape(let shape) = element.content else {

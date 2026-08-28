@@ -86,7 +86,7 @@
       var symbolName: String {
         switch self {
         case .select: "arrow.up.left"
-        case .rectangle: "rectangle"
+        case .rectangle: "rectangle.rounded"
         case .circle: "circle"
         case .text: "textformat"
         case .connector: "point.topleft.down.to.point.bottomright.curvepath"

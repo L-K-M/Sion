@@ -101,6 +101,10 @@ final class SionEditorControllerInsertionTests: XCTestCase {
     )
   }
 
+  func testRoundedRectangleToolUsesMatchingSymbol() {
+    XCTAssertEqual(SionEditorController.Tool.rectangle.symbolName, "rectangle.rounded")
+  }
+
   func testInsertionKeepsTheSelectedToolActive() throws {
     let controller = try makeController()
     controller.setTool(.rectangle)

@@ -1181,6 +1181,7 @@
         return
       }
 
+      let restoresCanvasFocus = window?.firstResponder === textView
       textView.delegate = nil
 
       switch disposition {
@@ -1201,6 +1202,11 @@
       inlineTextUndoManager = nil
       scrollView.removeFromSuperview()
       needsDisplay = true
+
+      // Revert removes the editor without another view requesting focus.
+      if restoresCanvasFocus {
+        window?.makeFirstResponder(self)
+      }
     }
 
     private func textEditingFrame(for element: SceneElement) -> NSRect {

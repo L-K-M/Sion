@@ -81,6 +81,7 @@ private enum SionMainMenu {
     submenu.addItem(item("Close", action: AppAction.close, key: "w"))
     submenu.addItem(item("Save", action: AppAction.save, key: "s"))
     submenu.addItem(item("Save As…", action: AppAction.saveAs, key: "S"))
+    submenu.addItem(item("Revert to Saved", action: AppAction.revertToSaved))
     submenu.addItem(.separator())
     submenu.addItem(
       item("Export SVG…", action: AppAction.exportSVG, key: "e", modifiers: [.command, .shift]))
@@ -210,6 +211,7 @@ private enum AppAction {
   static let paste = Selector(("paste:"))
   static let redo = Selector(("redo:"))
   static let revealHiddenElements = Selector(("revealHiddenElements:"))
+  static let revertToSaved = #selector(NSDocument.revertToSaved(_:))
   static let save = Selector(("saveDocument:"))
   static let saveAs = Selector(("saveDocumentAs:"))
   static let selectAll = Selector(("selectAll:"))

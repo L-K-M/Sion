@@ -1668,52 +1668,49 @@
         path.fill()
         return
       }
-
-      guard
-        let context = NSGraphicsContext.current?.cgContext,
-        let sourceColorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+      guard let drawing = paddedGradient(gradient, start: start, end: end, bounds: bounds)
       else {
         return
       }
-      let destinationColorSpace = context.colorSpace ?? sourceColorSpace
-      let colors = gradient.stops.compactMap { stop -> CGColor? in
-        let sourceColor = CGColor(
-          colorSpace: sourceColorSpace,
-          components: [
-            clampedUnit(stop.color.red),
-            clampedUnit(stop.color.green),
-            clampedUnit(stop.color.blue),
-            clampedUnit(stop.color.alpha),
-          ]
-        )
-        return sourceColor?.converted(
-          to: destinationColorSpace,
-          intent: CGColorRenderingIntent.relativeColorimetric,
-          options: nil
-        )
-      }
-      guard colors.count == gradient.stops.count else { return }
 
-      let locations = gradient.stops.map { CGFloat($0.location) }
-      let renderedGradient = locations.withUnsafeBufferPointer { buffer in
-        CGGradient(
-          colorsSpace: destinationColorSpace,
-          colors: colors as CFArray,
-          locations: buffer.baseAddress
-        )
+      let components = drawing.stops.flatMap { stop in
+        [
+          clampedUnit(stop.color.red),
+          clampedUnit(stop.color.green),
+          clampedUnit(stop.color.blue),
+          clampedUnit(stop.color.alpha),
+        ]
       }
-      guard let renderedGradient else { return }
+      let locations = drawing.stops.map { CGFloat($0.location) }
+      guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return }
+      let renderedGradient: CGGradient? = components.withUnsafeBufferPointer {
+        componentBuffer in
+        guard let componentAddress = componentBuffer.baseAddress else { return nil }
+
+        return locations.withUnsafeBufferPointer { locationBuffer in
+          CGGradient(
+            colorSpace: colorSpace,
+            colorComponents: componentAddress,
+            locations: locationBuffer.baseAddress,
+            count: drawing.stops.count
+          )
+        }
+      }
+      guard let renderedGradient,
+        let context = NSGraphicsContext.current?.cgContext
+      else {
+        return
+      }
 
       NSGraphicsContext.saveGraphicsState()
       defer { NSGraphicsContext.restoreGraphicsState() }
 
-      // SVG gradients pad with endpoint colors; match that contract in Canvas.
       path.addClip()
       context.drawLinearGradient(
         renderedGradient,
-        start: start,
-        end: end,
-        options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+        start: drawing.start,
+        end: drawing.end,
+        options: []
       )
     }
 
@@ -1721,6 +1718,57 @@
       NSPoint(
         x: bounds.minX + (bounds.width * CGFloat(point.x)),
         y: bounds.minY + (bounds.height * CGFloat(point.y))
+      )
+    }
+
+    private func paddedGradient(
+      _ gradient: LinearGradientFill,
+      start: NSPoint,
+      end: NSPoint,
+      bounds: NSRect
+    ) -> (start: NSPoint, end: NSPoint, stops: [GradientStop])? {
+      let dx = end.x - start.x
+      let dy = end.y - start.y
+      let squaredLength = (dx * dx) + (dy * dy)
+      guard squaredLength > 0 else { return nil }
+
+      let corners = [
+        NSPoint(x: bounds.minX, y: bounds.minY),
+        NSPoint(x: bounds.maxX, y: bounds.minY),
+        NSPoint(x: bounds.maxX, y: bounds.maxY),
+        NSPoint(x: bounds.minX, y: bounds.maxY),
+      ]
+      let projections = corners.map { point in
+        (((point.x - start.x) * dx) + ((point.y - start.y) * dy)) / squaredLength
+      }
+      guard let minimum = projections.min(), let maximum = projections.max() else {
+        return nil
+      }
+
+      let lowerBound = min(0, minimum)
+      let upperBound = max(1, maximum)
+      let span = upperBound - lowerBound
+      guard span > 0 else { return nil }
+
+      // Bake SVG's endpoint padding into the sRGB gradient domain. Quartz can
+      // omit its before-start extension in wide-gamut contexts.
+      var stops = gradient.stops.map { stop in
+        GradientStop(
+          color: stop.color,
+          location: Double((CGFloat(stop.location) - lowerBound) / span)
+        )
+      }
+      if let first = stops.first, first.location > 0 {
+        stops.insert(GradientStop(color: first.color, location: 0), at: 0)
+      }
+      if let last = stops.last, last.location < 1 {
+        stops.append(GradientStop(color: last.color, location: 1))
+      }
+
+      return (
+        start: NSPoint(x: start.x + (dx * lowerBound), y: start.y + (dy * lowerBound)),
+        end: NSPoint(x: start.x + (dx * upperBound), y: start.y + (dy * upperBound)),
+        stops: stops
       )
     }
 

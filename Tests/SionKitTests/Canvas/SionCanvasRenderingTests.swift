@@ -297,7 +297,10 @@ final class SionCanvasRenderingTests: XCTestCase {
 
   func testColorsRemainSRGBInDisplayP3Context() throws {
     let authored = SionColor(red: 0.25, green: 0.5, blue: 0.75)
+    let terminal = SionColor(red: 0.75, green: 0.25, blue: 0.5)
     let expected = NSColor(srgbRed: 0.25, green: 0.5, blue: 0.75, alpha: 1)
+    let expectedTerminal = NSColor(srgbRed: 0.75, green: 0.25, blue: 0.5, alpha: 1)
+    let expectedMidpoint = NSColor(srgbRed: 0.5, green: 0.375, blue: 0.625, alpha: 1)
     let solidFrame = SionRect(x: 20, y: 60, width: 100, height: 120)
     var solid = SceneElement.shape(frame: solidFrame, kind: .rectangle)
     solid.style = ElementStyle(fill: .solid(authored))
@@ -310,7 +313,7 @@ final class SionCanvasRenderingTests: XCTestCase {
         LinearGradientFill(
           stops: [
             GradientStop(color: authored, location: 0),
-            GradientStop(color: .white, location: 1),
+            GradientStop(color: terminal, location: 1),
           ],
           start: gradientStart,
           end: SionPoint(x: 0.75, y: 0.5)
@@ -332,9 +335,25 @@ final class SionCanvasRenderingTests: XCTestCase {
     assertEqual(
       try pixel(
         in: image,
-        at: gradientFrame.point(atNormalized: gradientStart)
+        at: gradientFrame.point(atNormalized: SionPoint(x: 0.1, y: 0.5))
       ),
       expected,
+      accuracy: sRGBColorAccuracy
+    )
+    assertEqual(
+      try pixel(
+        in: image,
+        at: gradientFrame.point(atNormalized: SionPoint(x: 0.5, y: 0.5))
+      ),
+      expectedMidpoint,
+      accuracy: sRGBColorAccuracy
+    )
+    assertEqual(
+      try pixel(
+        in: image,
+        at: gradientFrame.point(atNormalized: SionPoint(x: 0.9, y: 0.5))
+      ),
+      expectedTerminal,
       accuracy: sRGBColorAccuracy
     )
   }
@@ -533,7 +552,7 @@ final class SionCanvasRenderingTests: XCTestCase {
         bitsPerComponent: TestBitmap.bitsPerComponent,
         bytesPerRow: 0,
         space: renderedColorSpace,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        bitmapInfo: TestBitmap.bitmapInfo.rawValue
       )
     )
   }
@@ -567,8 +586,14 @@ final class SionCanvasRenderingTests: XCTestCase {
   }
 
   private func pixel(in image: CGImage, at point: SionPoint) throws -> NSColor {
-    let pixelX = min(max(0, Int(point.x)), image.width - 1)
-    let pixelY = min(max(0, Int(point.y)), image.height - 1)
+    guard point.isFinite else { throw TestPixelError.outOfBounds }
+
+    let pixelX = Int(point.x)
+    let pixelY = Int(point.y)
+    guard (0..<image.width).contains(pixelX), (0..<image.height).contains(pixelY) else {
+      throw TestPixelError.outOfBounds
+    }
+
     let sourceY = image.height - pixelY - 1
     let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
     var components = [UInt8](repeating: 0, count: TestBitmap.componentsPerPixel)
@@ -582,7 +607,7 @@ final class SionCanvasRenderingTests: XCTestCase {
           bitsPerComponent: TestBitmap.bitsPerComponent,
           bytesPerRow: TestBitmap.componentsPerPixel,
           space: colorSpace,
-          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+          bitmapInfo: TestBitmap.bitmapInfo.rawValue
         )
       )
       context.interpolationQuality = .none
@@ -694,4 +719,11 @@ final class SionCanvasRenderingTests: XCTestCase {
 private enum TestBitmap {
   static let bitsPerComponent = 8
   static let componentsPerPixel = 4
+  static let bitmapInfo = CGBitmapInfo(
+    rawValue: CGImageAlphaInfo.premultipliedLast.rawValue
+  ).union(.byteOrder32Big)
+}
+
+private enum TestPixelError: Error {
+  case outOfBounds
 }

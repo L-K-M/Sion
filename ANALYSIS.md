@@ -371,12 +371,13 @@ for lasso precision.
 
 ### P2.3 Expand the Inspector with mixed-value editing
 
-**Evidence.** Lock-aware controls exist, but the UI exposes only a small subset
-of modeled state. Missing fields include rotation, rounded-corner radius,
-shadow, opacity, blend, text style, dash/cap/join, connector decorations,
-image scaling/interpolation/description, element name, visibility, and canvas
-background/extent/grid settings. The transient Inspector popover may dismiss
-when its color well opens the shared color panel.
+**Evidence.** Lock-aware controls and mixed-value element-name editing exist;
+one name edit batches the selection into one undo transaction. The UI still
+exposes only a small subset of modeled state. Missing fields include rotation,
+rounded-corner radius, shadow, opacity, blend, text style, dash/cap/join,
+connector decorations, image scaling/interpolation/description, visibility,
+and canvas background/extent/grid settings. The transient Inspector popover
+may dismiss when its color well opens the shared color panel.
 
 **Scope.** Build a scrollable, sectioned Inspector for Geometry, Text,
 Connector, Appearance, Image, and Canvas. Show mixed values explicitly; batch

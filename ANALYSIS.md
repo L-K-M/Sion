@@ -659,8 +659,9 @@ AppKit-managed providers. Find and one-shot spelling commands work in the active
 inline text editor; document-wide search/replacement and persistent spelling
 preferences remain open. Window minimum size, localization hooks,
 signing/notarization/update strategy, sandbox/file access, and
-strict-concurrency migration remain open; `Package.swift` uses Swift 5 language
-mode under a Swift 6.3.3 toolchain. Save As now keeps the native display name
+strict-concurrency migration of the AppKit targets remain open. `SionCore` and
+its tests use Swift 6 language mode; the AppKit targets still inherit Swift 5
+mode under the Swift 6.3.3 toolchain. Save As now keeps the native display name
 and archived title synchronized without dirtying the document.
 Revert to Saved now routes through `NSDocument`; archive reads discard pending
 inline edits and restore canvas focus. The Help menu opens a localized bundled

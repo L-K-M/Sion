@@ -1669,34 +1669,40 @@
         return
       }
 
-      let components = gradient.stops.flatMap { stop in
-        [
-          clampedUnit(stop.color.red),
-          clampedUnit(stop.color.green),
-          clampedUnit(stop.color.blue),
-          clampedUnit(stop.color.alpha),
-        ]
-      }
-      let locations = gradient.stops.map { CGFloat($0.location) }
-      guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return }
-      let renderedGradient: CGGradient? = components.withUnsafeBufferPointer {
-        componentBuffer in
-        guard let componentAddress = componentBuffer.baseAddress else { return nil }
-
-        return locations.withUnsafeBufferPointer { locationBuffer in
-          CGGradient(
-            colorSpace: colorSpace,
-            colorComponents: componentAddress,
-            locations: locationBuffer.baseAddress,
-            count: gradient.stops.count
-          )
-        }
-      }
-      guard let renderedGradient,
-        let context = NSGraphicsContext.current?.cgContext
+      guard
+        let context = NSGraphicsContext.current?.cgContext,
+        let sourceColorSpace = CGColorSpace(name: CGColorSpace.sRGB)
       else {
         return
       }
+      let destinationColorSpace = context.colorSpace ?? sourceColorSpace
+      let colors = gradient.stops.compactMap { stop -> CGColor? in
+        let sourceColor = CGColor(
+          colorSpace: sourceColorSpace,
+          components: [
+            clampedUnit(stop.color.red),
+            clampedUnit(stop.color.green),
+            clampedUnit(stop.color.blue),
+            clampedUnit(stop.color.alpha),
+          ]
+        )
+        return sourceColor?.converted(
+          to: destinationColorSpace,
+          intent: CGColorRenderingIntent.relativeColorimetric,
+          options: nil
+        )
+      }
+      guard colors.count == gradient.stops.count else { return }
+
+      let locations = gradient.stops.map { CGFloat($0.location) }
+      let renderedGradient = locations.withUnsafeBufferPointer { buffer in
+        CGGradient(
+          colorsSpace: destinationColorSpace,
+          colors: colors as CFArray,
+          locations: buffer.baseAddress
+        )
+      }
+      guard let renderedGradient else { return }
 
       NSGraphicsContext.saveGraphicsState()
       defer { NSGraphicsContext.restoreGraphicsState() }

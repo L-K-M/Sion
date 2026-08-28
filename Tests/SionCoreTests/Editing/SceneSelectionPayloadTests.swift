@@ -25,6 +25,52 @@ final class SceneSelectionPayloadTests: XCTestCase {
     XCTAssertEqual(try SceneSelectionPayload(data: payload.dataRepresentation()), payload)
   }
 
+  func testAssetBudgetPreflightUsesSelectedHierarchyAndUniqueAssets() throws {
+    let fixture = try makeFixture()
+    let encodedAssetByteCount =
+      fixture.asset.data.base64EncodedData().count
+      + fixture.displayAsset.data.base64EncodedData().count
+
+    XCTAssertFalse(
+      SceneSelectionPayload.assetsCouldFitEncodedByteBudget(
+        package: fixture.package,
+        selectedElementIDs: [fixture.groupID],
+        maximumByteCount: encodedAssetByteCount
+      )
+    )
+    XCTAssertTrue(
+      SceneSelectionPayload.assetsCouldFitEncodedByteBudget(
+        package: fixture.package,
+        selectedElementIDs: [fixture.groupID],
+        maximumByteCount: encodedAssetByteCount + 1
+      )
+    )
+    XCTAssertTrue(
+      SceneSelectionPayload.assetsCouldFitEncodedByteBudget(
+        package: fixture.package,
+        selectedElementIDs: [fixture.groupID, fixture.imageID],
+        maximumByteCount: encodedAssetByteCount + 1
+      )
+    )
+    XCTAssertTrue(
+      SceneSelectionPayload.assetsCouldFitEncodedByteBudget(
+        package: fixture.package,
+        selectedElementIDs: [fixture.textID],
+        maximumByteCount: 1
+      )
+    )
+
+    var missingAssetPackage = fixture.package
+    missingAssetPackage.assets[fixture.asset.id] = nil
+    XCTAssertFalse(
+      SceneSelectionPayload.assetsCouldFitEncodedByteBudget(
+        package: missingAssetPackage,
+        selectedElementIDs: [fixture.groupID],
+        maximumByteCount: encodedAssetByteCount + 1
+      )
+    )
+  }
+
   func testCaptureDetachesReferencesOutsideSelection() throws {
     let fixture = try makeFixture()
 

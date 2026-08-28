@@ -728,22 +728,11 @@
   }
 
   private func nsColor(_ color: SionColor) -> NSColor {
-    NSColor(
-      calibratedRed: color.red,
-      green: color.green,
-      blue: color.blue,
-      alpha: color.alpha
-    )
+    SionColorBridge.appKitColor(color)
   }
 
   private func sionColor(_ color: NSColor) -> SionColor {
-    let converted = color.usingColorSpace(.deviceRGB) ?? .black
-    return SionColor(
-      red: converted.redComponent,
-      green: converted.greenComponent,
-      blue: converted.blueComponent,
-      alpha: converted.alphaComponent
-    )
+    SionColorBridge.modelColor(color)
   }
 
   extension NSView {

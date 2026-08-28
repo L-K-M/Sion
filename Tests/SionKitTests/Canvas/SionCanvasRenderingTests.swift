@@ -7,7 +7,8 @@ import XCTest
 @MainActor
 final class SionCanvasRenderingTests: XCTestCase {
   private let canvasSize = SionSize(width: 320, height: 240)
-  private let colorAccuracy = 0.04
+  private let colorAccuracy: CGFloat = 0.04
+  private let sRGBColorAccuracy: CGFloat = 2.0 / 255.0
 
   func testElementOpacityMultipliesIntrinsicFillAlpha() throws {
     var shape = SceneElement.shape(
@@ -166,6 +167,255 @@ final class SionCanvasRenderingTests: XCTestCase {
     XCTAssertGreaterThan(lower.redComponent, 0.8)
   }
 
+  func testPixelSamplerUsesExactCoordinatesAndChannels() throws {
+    let graphics = try bitmapContext(width: 3, height: 2)
+    graphics.setFillColor(NSColor.white.cgColor)
+    graphics.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
+    graphics.setFillColor(NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1).cgColor)
+    graphics.fill(CGRect(x: 1, y: 0, width: 1, height: 1))
+    graphics.setFillColor(NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1).cgColor)
+    graphics.fill(CGRect(x: 2, y: 1, width: 1, height: 1))
+    let image = try XCTUnwrap(graphics.makeImage())
+
+    assertEqual(
+      try pixel(in: image, at: SionPoint(x: 1, y: 1)),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
+    assertEqual(
+      try pixel(in: image, at: SionPoint(x: 2, y: 0)),
+      NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
+    )
+    assertEqual(
+      try pixel(in: image, at: SionPoint(x: 1.9, y: 1.9)),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
+  }
+
+  func testGradientHonorsAuthoredStartAndEndPoints() throws {
+    let frame = SionRect(x: 80, y: 60, width: 160, height: 120)
+    let start = SionPoint(x: 0.25, y: 0.5)
+    let end = SionPoint(x: 0.75, y: 0.5)
+    let beforeStart = SionPoint(x: 0.1, y: 0.5)
+    let afterEnd = SionPoint(x: 0.9, y: 0.5)
+    var shape = SceneElement.shape(frame: frame, kind: .rectangle)
+    shape.style = ElementStyle(
+      fill: .linearGradient(
+        LinearGradientFill(
+          stops: [
+            GradientStop(color: SionColor(red: 1, green: 0, blue: 0), location: 0),
+            GradientStop(color: SionColor(red: 0, green: 0, blue: 1), location: 1),
+          ],
+          start: start,
+          end: end
+        )
+      )
+    )
+
+    let image = try render(elements: [shape])
+
+    assertEqual(
+      try pixel(in: image, at: frame.point(atNormalized: beforeStart)),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
+    assertEqual(
+      try pixel(in: image, at: frame.point(atNormalized: afterEnd)),
+      NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
+    )
+  }
+
+  func testShortTransparentGradientExtendsItsEndpointColors() throws {
+    let frame = SionRect(x: 80, y: 60, width: 160, height: 120)
+    var shape = SceneElement.shape(frame: frame, kind: .rectangle)
+    shape.style = ElementStyle(
+      fill: .linearGradient(
+        LinearGradientFill(
+          stops: [
+            GradientStop(
+              color: SionColor(red: 1, green: 0, blue: 0, alpha: 0),
+              location: 0
+            ),
+            GradientStop(color: SionColor(red: 1, green: 0, blue: 0), location: 1),
+          ],
+          start: SionPoint(x: 0.4, y: 0.5),
+          end: SionPoint(x: 0.6, y: 0.5)
+        )
+      )
+    )
+
+    let image = try render(elements: [shape])
+
+    assertEqual(
+      try pixel(
+        in: image,
+        at: frame.point(atNormalized: SionPoint(x: 0.25, y: 0.5))
+      ),
+      NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+    )
+    assertEqual(
+      try pixel(
+        in: image,
+        at: frame.point(atNormalized: SionPoint(x: 0.75, y: 0.5))
+      ),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
+  }
+
+  func testRotatedVectorPathKeepsGradientInLocalGeometry() throws {
+    let frame = SionRect(x: 80, y: 60, width: 160, height: 120)
+    let rotation = Double.pi / 2
+    let start = SionPoint(x: 0.25, y: 0.5)
+    let end = SionPoint(x: 0.75, y: 0.5)
+    let beforeStart = SionPoint(x: 0.1, y: 0.5)
+    let afterEnd = SionPoint(x: 0.9, y: 0.5)
+    let pathMinimum = SionPoint(x: 0.2, y: 0.2)
+    let pathMaximum = SionPoint(x: 0.8, y: 0.8)
+    let pathBounds = SionRect(
+      x: frame.minX + (frame.width * pathMinimum.x),
+      y: frame.minY + (frame.height * pathMinimum.y),
+      width: frame.width * (pathMaximum.x - pathMinimum.x),
+      height: frame.height * (pathMaximum.y - pathMinimum.y)
+    )
+    let path = VectorPath(commands: [
+      .move(to: pathMinimum),
+      .line(to: SionPoint(x: pathMaximum.x, y: pathMinimum.y)),
+      .line(to: pathMaximum),
+      .line(to: SionPoint(x: pathMinimum.x, y: pathMaximum.y)),
+      .close,
+    ])
+    var element = SceneElement.path(frame: frame, path: path)
+    element.geometry.rotationRadians = rotation
+    element.style = ElementStyle(
+      fill: .linearGradient(
+        LinearGradientFill(
+          stops: [
+            GradientStop(color: SionColor(red: 1, green: 0, blue: 0), location: 0),
+            GradientStop(color: SionColor(red: 0, green: 0, blue: 1), location: 1),
+          ],
+          start: start,
+          end: end
+        )
+      )
+    )
+
+    let image = try render(elements: [element])
+    let rotatedBeforeStart = InteractionGeometry.rotated(
+      pathBounds.point(atNormalized: beforeStart),
+      around: frame.center,
+      by: rotation
+    )
+    let rotatedAfterEnd = InteractionGeometry.rotated(
+      pathBounds.point(atNormalized: afterEnd),
+      around: frame.center,
+      by: rotation
+    )
+
+    assertEqual(
+      try pixel(in: image, at: rotatedBeforeStart),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
+    assertEqual(
+      try pixel(in: image, at: rotatedAfterEnd),
+      NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
+    )
+  }
+
+  func testColorsRemainSRGBInDisplayP3Context() throws {
+    let authored = SionColor(red: 0.25, green: 0.5, blue: 0.75)
+    let terminal = SionColor(red: 0.75, green: 0.25, blue: 0.5)
+    let expected = NSColor(srgbRed: 0.25, green: 0.5, blue: 0.75, alpha: 1)
+    let expectedTerminal = NSColor(srgbRed: 0.75, green: 0.25, blue: 0.5, alpha: 1)
+    let expectedMidpoint = NSColor(srgbRed: 0.5, green: 0.375, blue: 0.625, alpha: 1)
+    let solidFrame = SionRect(x: 20, y: 60, width: 100, height: 120)
+    var solid = SceneElement.shape(frame: solidFrame, kind: .rectangle)
+    solid.style = ElementStyle(fill: .solid(authored))
+
+    let gradientFrame = SionRect(x: 180, y: 60, width: 100, height: 120)
+    let gradientStart = SionPoint(x: 0.25, y: 0.5)
+    var gradient = SceneElement.shape(frame: gradientFrame, kind: .rectangle)
+    gradient.style = ElementStyle(
+      fill: .linearGradient(
+        LinearGradientFill(
+          stops: [
+            GradientStop(color: authored, location: 0),
+            GradientStop(color: terminal, location: 1),
+          ],
+          start: gradientStart,
+          end: SionPoint(x: 0.75, y: 0.5)
+        )
+      )
+    )
+    let displayP3 = try XCTUnwrap(CGColorSpace(name: CGColorSpace.displayP3))
+
+    let image = try render(
+      elements: [solid, gradient],
+      colorSpace: displayP3
+    )
+    XCTAssertEqual(
+      try XCTUnwrap(image.image.colorSpace?.name) as String,
+      CGColorSpace.displayP3 as String
+    )
+
+    assertEqual(
+      try pixel(in: image, at: solidFrame.center),
+      expected,
+      accuracy: sRGBColorAccuracy
+    )
+    assertEqual(
+      try pixel(
+        in: image,
+        at: gradientFrame.point(atNormalized: SionPoint(x: 0.1, y: 0.5))
+      ),
+      expected,
+      accuracy: sRGBColorAccuracy
+    )
+    assertEqual(
+      try pixel(
+        in: image,
+        at: gradientFrame.point(atNormalized: SionPoint(x: 0.5, y: 0.5))
+      ),
+      expectedMidpoint,
+      accuracy: sRGBColorAccuracy
+    )
+    assertEqual(
+      try pixel(
+        in: image,
+        at: gradientFrame.point(atNormalized: SionPoint(x: 0.9, y: 0.5))
+      ),
+      expectedTerminal,
+      accuracy: sRGBColorAccuracy
+    )
+  }
+
+  func testColorBridgeConvertsDisplayP3InputToStoredSRGB() throws {
+    let source = NSColor(displayP3Red: 0.25, green: 0.5, blue: 0.75, alpha: 0.8)
+    let expected = try XCTUnwrap(source.usingColorSpace(.sRGB))
+
+    let model = SionColorBridge.modelColor(source)
+    let bridged = SionColorBridge.appKitColor(model)
+
+    XCTAssertEqual(
+      model.red,
+      Double(expected.redComponent),
+      accuracy: Double(sRGBColorAccuracy)
+    )
+    XCTAssertEqual(
+      model.green,
+      Double(expected.greenComponent),
+      accuracy: Double(sRGBColorAccuracy)
+    )
+    XCTAssertEqual(
+      model.blue,
+      Double(expected.blueComponent),
+      accuracy: Double(sRGBColorAccuracy)
+    )
+    XCTAssertEqual(
+      model.alpha,
+      Double(expected.alphaComponent),
+      accuracy: Double(sRGBColorAccuracy)
+    )
+    XCTAssertEqual(bridged.colorSpace, .sRGB)
+  }
+
   func testSelectionChromeEscapesElementOpacity() throws {
     var connector = SceneElement.connector(
       source: .free(SionPoint(x: 80, y: 120)),
@@ -267,8 +517,9 @@ final class SionCanvasRenderingTests: XCTestCase {
     elements: [SceneElement],
     assets: [AssetID: SionAsset] = [:],
     selection: Set<ElementID> = [],
-    connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
-  ) throws -> NSBitmapImageRep {
+    connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil,
+    colorSpace: CGColorSpace? = nil
+  ) throws -> RenderedCanvas {
     _ = NSApplication.shared
     let scene = SionScene(
       canvas: SionCanvas(
@@ -296,7 +547,8 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
     let graphics = try bitmapContext(
       width: Int(canvasSize.width),
-      height: Int(canvasSize.height)
+      height: Int(canvasSize.height),
+      colorSpace: colorSpace
     )
     let context = NSGraphicsContext(cgContext: graphics, flipped: true)
     let previousContext = NSGraphicsContext.current
@@ -307,13 +559,28 @@ final class SionCanvasRenderingTests: XCTestCase {
     graphics.scaleBy(x: 1, y: -1)
     canvas.draw(canvas.bounds)
     context.flushGraphics()
-    return try bitmapRepresentation(from: graphics)
+
+    // Editing overflow can shift model coordinates within the rendered view.
+    let modelOrigin = canvas.viewPoint(for: .zero)
+    return RenderedCanvas(
+      image: try XCTUnwrap(graphics.makeImage()),
+      modelToViewOffset: SionVector(
+        dx: Double(modelOrigin.x),
+        dy: Double(modelOrigin.y)
+      )
+    )
   }
 
-  private func bitmapContext(width: Int, height: Int) throws -> CGContext {
-    let colorSpace = try XCTUnwrap(
-      CGColorSpace(name: CGColorSpace.sRGB)
-    )
+  private func bitmapContext(
+    width: Int,
+    height: Int,
+    colorSpace: CGColorSpace? = nil
+  ) throws -> CGContext {
+    let renderedColorSpace =
+      try colorSpace
+      ?? XCTUnwrap(
+        CGColorSpace(name: CGColorSpace.sRGB)
+      )
     return try XCTUnwrap(
       CGContext(
         data: nil,
@@ -321,8 +588,8 @@ final class SionCanvasRenderingTests: XCTestCase {
         height: height,
         bitsPerComponent: TestBitmap.bitsPerComponent,
         bytesPerRow: 0,
-        space: colorSpace,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        space: renderedColorSpace,
+        bitmapInfo: TestBitmap.bitmapInfo.rawValue
       )
     )
   }
@@ -343,75 +610,140 @@ final class SionCanvasRenderingTests: XCTestCase {
     graphics.setFillColor(NSColor.white.cgColor)
     graphics.fill(bounds)
     graphics.setFillColor(
-      NSColor(calibratedRed: 0.25, green: 0.25, blue: 0.25, alpha: 1).cgColor
+      NSColor(srgbRed: 0.25, green: 0.25, blue: 0.25, alpha: 1).cgColor
     )
     graphics.fill(bounds)
     graphics.setFillColor(
-      NSColor(calibratedRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).cgColor
+      NSColor(srgbRed: 0.8, green: 0.8, blue: 0.8, alpha: 1).cgColor
     )
     graphics.setBlendMode(.overlay)
     graphics.fill(bounds)
 
-    return try pixel(in: bitmapRepresentation(from: graphics), at: point)
+    return try pixel(in: XCTUnwrap(graphics.makeImage()), at: point)
   }
 
-  private func pixel(in image: NSBitmapImageRep, at point: SionPoint) throws -> NSColor {
-    let color = try XCTUnwrap(
-      image.colorAt(x: Int(point.x), y: Int(point.y))
+  private func pixel(in image: CGImage, at point: SionPoint) throws -> NSColor {
+    guard point.isFinite,
+      point.x >= 0,
+      point.y >= 0,
+      point.x < Double(image.width),
+      point.y < Double(image.height)
+    else {
+      throw TestPixelError.outOfBounds
+    }
+
+    let pixelX = Int(point.x)
+    let pixelY = Int(point.y)
+
+    guard image.bitsPerComponent == TestBitmap.bitsPerComponent,
+      image.bitsPerPixel == TestBitmap.bitsPerPixel,
+      image.alphaInfo == TestBitmap.alphaInfo,
+      image.bitmapInfo.contains(.byteOrder32Little)
+    else {
+      throw TestPixelError.unsupportedFormat
+    }
+    let data = try XCTUnwrap(image.dataProvider?.data)
+    let bytes = try XCTUnwrap(CFDataGetBytePtr(data))
+    let offset = (pixelY * image.bytesPerRow) + (pixelX * TestBitmap.componentsPerPixel)
+    let alpha = CGFloat(bytes[offset + TestBitmap.alphaIndex]) / 255
+    guard alpha > 0 else {
+      return NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0)
+    }
+
+    let sourceSpace = try XCTUnwrap(image.colorSpace)
+    let appKitColorSpace = try XCTUnwrap(NSColorSpace(cgColorSpace: sourceSpace))
+    let components = [
+      (CGFloat(bytes[offset + TestBitmap.redIndex]) / 255) / alpha,
+      (CGFloat(bytes[offset + TestBitmap.greenIndex]) / 255) / alpha,
+      (CGFloat(bytes[offset + TestBitmap.blueIndex]) / 255) / alpha,
+      alpha,
+    ]
+    let sourceColor = try components.withUnsafeBufferPointer { buffer in
+      NSColor(
+        colorSpace: appKitColorSpace,
+        components: try XCTUnwrap(buffer.baseAddress),
+        count: buffer.count
+      )
+    }
+    return try XCTUnwrap(sourceColor.usingColorSpace(.sRGB))
+  }
+
+  private func pixel(in canvas: RenderedCanvas, at modelPoint: SionPoint) throws -> NSColor {
+    try pixel(
+      in: canvas.image,
+      at: modelPoint + canvas.modelToViewOffset
     )
-    return try XCTUnwrap(color.usingColorSpace(.sRGB))
   }
 
   private func assertEqual(
     _ actual: NSColor,
     _ expected: NSColor,
+    accuracy: CGFloat? = nil,
     file: StaticString = #filePath,
     line: UInt = #line
   ) {
+    let accuracy = accuracy ?? colorAccuracy
+
     XCTAssertEqual(
       actual.redComponent,
       expected.redComponent,
-      accuracy: colorAccuracy,
+      accuracy: accuracy,
       file: file,
       line: line
     )
     XCTAssertEqual(
       actual.greenComponent,
       expected.greenComponent,
-      accuracy: colorAccuracy,
+      accuracy: accuracy,
       file: file,
       line: line
     )
     XCTAssertEqual(
       actual.blueComponent,
       expected.blueComponent,
-      accuracy: colorAccuracy,
+      accuracy: accuracy,
       file: file,
       line: line
     )
     XCTAssertEqual(
       actual.alphaComponent,
       expected.alphaComponent,
-      accuracy: colorAccuracy,
+      accuracy: accuracy,
       file: file,
       line: line
     )
   }
 
-  private func renderedPixels(_ image: NSBitmapImageRep) throws -> Data {
-    let bytes = try XCTUnwrap(image.bitmapData)
-    let visibleBytesPerRow = image.pixelsWide * image.samplesPerPixel
-    var pixels = Data(capacity: visibleBytesPerRow * image.pixelsHigh)
+  private func renderedPixels(_ image: CGImage) throws -> Data {
+    let context = try bitmapContext(width: image.width, height: image.height)
+    context.setBlendMode(.copy)
+    context.draw(
+      image,
+      in: CGRect(
+        x: 0,
+        y: 0,
+        width: CGFloat(image.width),
+        height: CGFloat(image.height)
+      )
+    )
 
-    // NSBitmapImageRep leaves row-padding bytes uninitialized.
-    for row in 0..<image.pixelsHigh {
+    let bytes = try XCTUnwrap(context.data)
+      .assumingMemoryBound(to: UInt8.self)
+    let visibleBytesPerRow = image.width * TestBitmap.componentsPerPixel
+    var pixels = Data(capacity: visibleBytesPerRow * image.height)
+
+    for row in 0..<image.height {
       pixels.append(
-        bytes.advanced(by: row * image.bytesPerRow),
+        bytes.advanced(by: row * context.bytesPerRow),
         count: visibleBytesPerRow
       )
     }
 
     return pixels
+  }
+
+  private func renderedPixels(_ canvas: RenderedCanvas) throws -> Data {
+    try renderedPixels(canvas.image)
   }
 
   private func redDisplayAsset() throws -> SionAsset {
@@ -425,6 +757,26 @@ final class SionCanvasRenderingTests: XCTestCase {
   }
 }
 
+private struct RenderedCanvas {
+  let image: CGImage
+  let modelToViewOffset: SionVector
+}
+
 private enum TestBitmap {
   static let bitsPerComponent = 8
+  static let componentsPerPixel = 4
+  static let bitsPerPixel = bitsPerComponent * componentsPerPixel
+  static let blueIndex = 0
+  static let greenIndex = 1
+  static let redIndex = 2
+  static let alphaIndex = 3
+  static let alphaInfo = CGImageAlphaInfo.premultipliedFirst
+  static let bitmapInfo = CGBitmapInfo(
+    rawValue: alphaInfo.rawValue
+  ).union(.byteOrder32Little)
+}
+
+private enum TestPixelError: Error {
+  case outOfBounds
+  case unsupportedFormat
 }

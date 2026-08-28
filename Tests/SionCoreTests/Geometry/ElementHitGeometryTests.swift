@@ -252,6 +252,54 @@ final class ElementHitGeometryTests: XCTestCase {
     )
 
     XCTAssertFalse(ElementHitGeometry.contains(SionPoint(x: 24, y: -4), in: element))
+
+    let closedPath = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 20, y: 0)),
+        .line(to: SionPoint(x: 20, y: 20)),
+        .line(to: SionPoint(x: 0, y: 20)),
+        .close,
+      ]
+    )
+    var closedElement = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: closedPath
+    )
+    closedElement.style = element.style
+
+    XCTAssertFalse(
+      ElementHitGeometry.contains(SionPoint(x: -4, y: -4), in: closedElement)
+    )
+  }
+
+  func testZeroLengthGapKeepsBothSquareCapsAtTurn() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 20, y: 0)),
+        .line(to: SionPoint(x: 40, y: 20)),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 10,
+        dashPattern: [20, 0],
+        lineCap: .square
+      )
+    )
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 24.5, y: -4.5), in: element)
+    )
   }
 
   func testTinyDashPatternCompletesWithinInteractiveDeadline() {

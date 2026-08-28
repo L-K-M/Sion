@@ -7,10 +7,7 @@ extension SceneElement {
       case .cylinder = shape.kind,
       case .preset(.vertices) = magnetConfiguration
     {
-      return MagnetResolver.magnets(
-        for: magnetConfiguration,
-        normalizedOutline: ShapeGeometryRecipe.cylinder.vertexMagnetOutline
-      )
+      return ShapeGeometryRecipe.cylinder.vertexMagnets
     }
 
     return MagnetResolver.magnets(

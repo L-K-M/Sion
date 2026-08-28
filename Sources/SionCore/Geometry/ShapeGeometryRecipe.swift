@@ -5,7 +5,7 @@ package struct ShapeGeometryRecipe: Equatable, Sendable {
   package let outerOutline: VectorPath
   package let detailStrokes: [VectorPath]
   package let magnetOutline: [SionPoint]
-  package let vertexMagnetOutline: [SionPoint]
+  package let vertexMagnets: [Magnet]
 
   package static let cylinder = ShapeGeometryRecipe(
     outerOutline: VectorPath(commands: [
@@ -56,14 +56,38 @@ package struct ShapeGeometryRecipe: Equatable, Sendable {
       CylinderPoint.bottom,
       CylinderPoint.leftBottomRim,
     ],
-    vertexMagnetOutline: [
-      // Keep the four historical corner IDs in their original quadrants.
-      CylinderPoint.leftRim,
-      CylinderPoint.rightRim,
-      CylinderPoint.rightBottomRim,
-      CylinderPoint.leftBottomRim,
-      CylinderPoint.top,
-      CylinderPoint.bottom,
+    vertexMagnets: [
+      // Preserve legacy corner IDs without deriving normals from ID order.
+      Magnet(
+        id: "vertex-0",
+        normalizedPosition: CylinderPoint.leftRim,
+        outwardDirection: .west
+      ),
+      Magnet(
+        id: "vertex-1",
+        normalizedPosition: CylinderPoint.rightRim,
+        outwardDirection: .east
+      ),
+      Magnet(
+        id: "vertex-2",
+        normalizedPosition: CylinderPoint.rightBottomRim,
+        outwardDirection: .east
+      ),
+      Magnet(
+        id: "vertex-3",
+        normalizedPosition: CylinderPoint.leftBottomRim,
+        outwardDirection: .west
+      ),
+      Magnet(
+        id: "vertex-4",
+        normalizedPosition: CylinderPoint.top,
+        outwardDirection: .north
+      ),
+      Magnet(
+        id: "vertex-5",
+        normalizedPosition: CylinderPoint.bottom,
+        outwardDirection: .south
+      ),
     ]
   )
 }

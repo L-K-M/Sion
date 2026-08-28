@@ -100,6 +100,41 @@ final class SionDrawingDocumentTests: XCTestCase {
       DocumentPreview.pngSignature
     )
   }
+
+  func testSaveAsUpdatesWindowAndArchiveTitles() async throws {
+    let document = SionDrawingDocument()
+    document.makeWindowControllers()
+    let windowController = try XCTUnwrap(
+      document.windowControllers.first as? SionDocumentWindowController
+    )
+    defer { windowController.close() }
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString,
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let savedTitle = "Renamed Diagram"
+    let url = directory.appendingPathComponent("\(savedTitle).sion")
+    let saveError: Error? = await withCheckedContinuation { continuation in
+      document.save(
+        to: url,
+        ofType: SionDrawingDocument.typeIdentifier,
+        for: .saveAsOperation
+      ) { error in
+        continuation.resume(returning: error)
+      }
+    }
+
+    XCTAssertNil(saveError)
+    XCTAssertEqual(document.fileURL, url)
+    XCTAssertEqual(windowController.window?.title, document.displayName)
+
+    let package = try SionArchive.decode(Data(contentsOf: url))
+    XCTAssertEqual(package.document.title, savedTitle)
+  }
 }
 
 private enum DocumentPreview {

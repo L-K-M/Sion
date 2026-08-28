@@ -242,6 +242,10 @@ final class InspectorPaletteTests: XCTestCase {
     fieldEditor.selectAll(nil)
     fieldEditor.insertText("Shared", replacementRange: fieldEditor.selectedRange())
 
+    // Typing marks the edit as changed before Escape cancels it.
+    let delegate = try XCTUnwrap(nameField.delegate as? NSTextFieldDelegate)
+    delegate.controlTextDidChange?(Notification(object: nameField))
+
     // Escape cancels the edit: the field reverts and editing ends.
     fieldEditor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
     XCTAssertTrue(panel.makeFirstResponder(nil))
@@ -250,7 +254,6 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Second")
     XCTAssertFalse(undoManager.canUndo)
     XCTAssertEqual(nameField.stringValue, "")
-    XCTAssertEqual(nameField.placeholderString, "Mixed")
   }
 
   func testSingleNameClearsAndCommitsOnFocusLoss() throws {

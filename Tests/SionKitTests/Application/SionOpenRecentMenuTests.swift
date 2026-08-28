@@ -8,6 +8,7 @@ final class SionOpenRecentMenuTests: XCTestCase {
   func testFinishedLaunchRoutesRecentDocumentActions() throws {
     let application = NSApplication.shared
     let previousDelegate = application.delegate
+    let previousHelpMenu = application.helpMenu
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
@@ -33,6 +34,7 @@ final class SionOpenRecentMenuTests: XCTestCase {
     defer {
       documentController.removeDocument(sentinel)
       application.delegate = previousDelegate
+      application.helpMenu = previousHelpMenu
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu
@@ -74,11 +76,13 @@ final class SionOpenRecentMenuTests: XCTestCase {
 
   func testWillFinishLaunchingInstallsOpenRecentAfterOpen() throws {
     let application = NSApplication.shared
+    let previousHelpMenu = application.helpMenu
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
 
     defer {
+      application.helpMenu = previousHelpMenu
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu

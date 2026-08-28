@@ -7,11 +7,13 @@ import XCTest
 final class SionApplicationDelegateTests: XCTestCase {
   func testWillFinishLaunchingRegistersInlineFindAndSpellingMenus() throws {
     let application = NSApplication.shared
+    let previousHelpMenu = application.helpMenu
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
 
     defer {
+      application.helpMenu = previousHelpMenu
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu
@@ -95,11 +97,13 @@ final class SionApplicationDelegateTests: XCTestCase {
 
   func testWillFinishLaunchingRegistersServicesSubmenu() throws {
     let application = NSApplication.shared
+    let previousHelpMenu = application.helpMenu
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
     let previousWindowsMenu = application.windowsMenu
 
     defer {
+      application.helpMenu = previousHelpMenu
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu
@@ -122,6 +126,39 @@ final class SionApplicationDelegateTests: XCTestCase {
       applicationMenu.index(of: servicesItem),
       applicationMenu.index(of: hideItem)
     )
+  }
+
+  func testWillFinishLaunchingRegistersHelpMenu() throws {
+    let application = NSApplication.shared
+    let previousHelpMenu = application.helpMenu
+    let previousMainMenu = application.mainMenu
+    let previousServicesMenu = application.servicesMenu
+    let previousWindowsMenu = application.windowsMenu
+
+    defer {
+      application.helpMenu = previousHelpMenu
+      application.mainMenu = previousMainMenu
+      application.servicesMenu = previousServicesMenu
+      application.windowsMenu = previousWindowsMenu
+    }
+
+    application.helpMenu = nil
+    let delegate: NSApplicationDelegate = SionApplicationDelegate()
+    delegate.applicationWillFinishLaunching?(
+      Notification(name: NSApplication.willFinishLaunchingNotification, object: application)
+    )
+
+    let mainMenu = try XCTUnwrap(application.mainMenu)
+    let helpParent = try XCTUnwrap(mainMenu.item(withTitle: HelpMenuContract.menuTitle))
+    let helpMenu = try XCTUnwrap(helpParent.submenu)
+    let helpItem = try XCTUnwrap(helpMenu.item(withTitle: HelpMenuContract.itemTitle))
+
+    XCTAssertEqual(mainMenu.items.last, helpParent)
+    XCTAssertTrue(application.helpMenu === helpMenu)
+    XCTAssertEqual(helpItem.action, #selector(NSApplication.showHelp(_:)))
+    XCTAssertTrue(helpItem.target === application)
+    XCTAssertEqual(helpItem.keyEquivalent, HelpMenuContract.keyEquivalent)
+    XCTAssertEqual(helpItem.keyEquivalentModifierMask, NSEvent.ModifierFlags.command)
   }
 
   private func assertFinderItem(
@@ -164,4 +201,10 @@ final class SionApplicationDelegateTests: XCTestCase {
     XCTAssertEqual(item?.keyEquivalent, key, file: file, line: line)
     XCTAssertEqual(item?.keyEquivalentModifierMask, modifiers, file: file, line: line)
   }
+}
+
+private enum HelpMenuContract {
+  static let menuTitle = "Help"
+  static let itemTitle = "Sion Help"
+  static let keyEquivalent = "?"
 }

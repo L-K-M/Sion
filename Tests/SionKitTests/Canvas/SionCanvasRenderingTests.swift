@@ -511,7 +511,7 @@ final class SionCanvasRenderingTests: XCTestCase {
     selection: Set<ElementID> = [],
     connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil,
     colorSpace: CGColorSpace? = nil
-  ) throws -> CGImage {
+  ) throws -> RenderedCanvas {
     _ = NSApplication.shared
     let scene = SionScene(
       canvas: SionCanvas(
@@ -551,7 +551,16 @@ final class SionCanvasRenderingTests: XCTestCase {
     graphics.scaleBy(x: 1, y: -1)
     canvas.draw(canvas.bounds)
     context.flushGraphics()
-    return try XCTUnwrap(graphics.makeImage())
+
+    // Editing overflow can shift model coordinates within the rendered view.
+    let modelOrigin = canvas.viewPoint(for: .zero)
+    return RenderedCanvas(
+      image: try XCTUnwrap(graphics.makeImage()),
+      modelToViewOffset: SionVector(
+        dx: Double(modelOrigin.x),
+        dy: Double(modelOrigin.y)
+      )
+    )
   }
 
   private func bitmapContext(
@@ -651,6 +660,13 @@ final class SionCanvasRenderingTests: XCTestCase {
     return try XCTUnwrap(sourceColor.usingColorSpace(.sRGB))
   }
 
+  private func pixel(in canvas: RenderedCanvas, at modelPoint: SionPoint) throws -> NSColor {
+    try pixel(
+      in: canvas.image,
+      at: modelPoint + canvas.modelToViewOffset
+    )
+  }
+
   private func assertEqual(
     _ actual: NSColor,
     _ expected: NSColor,
@@ -718,6 +734,10 @@ final class SionCanvasRenderingTests: XCTestCase {
     return pixels
   }
 
+  private func renderedPixels(_ canvas: RenderedCanvas) throws -> Data {
+    try renderedPixels(canvas.image)
+  }
+
   private func redDisplayAsset() throws -> SionAsset {
     let graphics = try bitmapContext(width: 1, height: 1)
     graphics.setFillColor(NSColor.red.cgColor)
@@ -727,6 +747,11 @@ final class SionCanvasRenderingTests: XCTestCase {
 
     return try SionAsset.safeDisplayPNG(data: data)
   }
+}
+
+private struct RenderedCanvas {
+  let image: CGImage
+  let modelToViewOffset: SionVector
 }
 
 private enum TestBitmap {

@@ -289,6 +289,30 @@
       try perform(name: lockState.undoActionName, commands: commands)
     }
 
+    var canRenameSelection: Bool {
+      !selectedElements.isEmpty
+        && selectedElements.allSatisfy { $0.lockState == .editable }
+    }
+
+    /// One name edit applies atomically across the current selection.
+    func renameSelection(_ name: String?) throws {
+      guard canRenameSelection else { return }
+      let elements = selectedElements
+
+      let commands = elements.compactMap { element -> SceneCommand? in
+        guard element.name != name else { return nil }
+
+        return .rename(elementID: element.id, name: name)
+      }
+      guard !commands.isEmpty else { return }
+
+      let actionName =
+        elements.count == 1
+        ? EditorActionName.renameElement
+        : EditorActionName.renameElements
+      try perform(name: actionName, commands: commands)
+    }
+
     func hideSelection() throws {
       let hiddenIDs = hideTargets.map(\.id)
       guard !hiddenIDs.isEmpty else { return }
@@ -1705,6 +1729,8 @@
 
   private enum EditorActionName {
     static let editText = "Edit Text"
+    static let renameElement = "Rename Element"
+    static let renameElements = "Rename Elements"
     static let hideGrid = "Hide Grid"
     static let showGrid = "Show Grid"
   }

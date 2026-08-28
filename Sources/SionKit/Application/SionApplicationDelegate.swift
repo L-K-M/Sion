@@ -66,8 +66,9 @@ public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 private enum SionMainMenu {
   static func install(recentDocumentsMenuController: SionRecentDocumentsMenuController) {
+    let applicationMenu = applicationMenu()
     let menu = NSMenu()
-    menu.addItem(applicationMenu())
+    menu.addItem(applicationMenu.item)
     menu.addItem(fileMenu(recentDocumentsMenuController: recentDocumentsMenuController))
     menu.addItem(editMenu())
     menu.addItem(arrangeMenu())
@@ -75,9 +76,12 @@ private enum SionMainMenu {
     menu.addItem(windowMenu())
     menu.addItem(helpMenu())
     NSApp.mainMenu = menu
+
+    // Attaching the main menu can replace AppKit's Services role.
+    NSApp.servicesMenu = applicationMenu.servicesMenu
   }
 
-  private static func applicationMenu() -> NSMenuItem {
+  private static func applicationMenu() -> ApplicationMenu {
     let submenu = NSMenu(title: "Sion")
     submenu.addItem(
       item("About Sion", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
@@ -87,9 +91,6 @@ private enum SionMainMenu {
     submenu.addItem(parentItem(title: servicesMenu.title, submenu: servicesMenu))
     submenu.addItem(.separator())
 
-    // AppKit populates the registered submenu from available services.
-    NSApp.servicesMenu = servicesMenu
-
     submenu.addItem(item("Hide Sion", action: #selector(NSApplication.hide(_:)), key: "h"))
     submenu.addItem(
       item(
@@ -98,7 +99,15 @@ private enum SionMainMenu {
     submenu.addItem(item("Show All", action: #selector(NSApplication.unhideAllApplications(_:))))
     submenu.addItem(.separator())
     submenu.addItem(item("Quit Sion", action: #selector(NSApplication.terminate(_:)), key: "q"))
-    return parentItem(title: "Sion", submenu: submenu)
+    return ApplicationMenu(
+      item: parentItem(title: "Sion", submenu: submenu),
+      servicesMenu: servicesMenu
+    )
+  }
+
+  private struct ApplicationMenu {
+    let item: NSMenuItem
+    let servicesMenu: NSMenu
   }
 
   private static func fileMenu(

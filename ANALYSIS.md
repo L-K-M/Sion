@@ -302,9 +302,10 @@ diverge: Canvas uses fixed point geometry while SVG markers scale with stroke
 width, and the two renderers place diamonds differently. Connector hit testing
 also excludes decoration lobes.
 
-**Scope.** Specify fill/stroke behavior and scaling with connector stroke for
-every `ConnectorDecoration`; implement one geometry description consumed by
-Canvas, SVG, hit testing, and bounds.
+**Scope.** Unify fixed Canvas geometry with stroke-scaled SVG markers, including
+diamond anchoring, and include decoration lobes in connector hit testing.
+Implement one geometry description consumed by Canvas, SVG, hit testing, and
+bounds.
 
 **Accept.** A matrix covers none/open arrow/filled arrow/circle/diamond at each
 endpoint, short segments, diagonals, opacity, thick strokes, and all line caps.

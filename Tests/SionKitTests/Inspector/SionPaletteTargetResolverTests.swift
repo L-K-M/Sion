@@ -156,9 +156,15 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertEqual(nameField.placeholderString, "Mixed")
 
     nameField.stringValue = "Shared"
-    XCTAssertTrue(
-      NSApp.sendAction(try XCTUnwrap(nameField.action), to: nameField.target, from: nameField)
+    undoManager.beginUndoGrouping()
+    let sentAction = NSApp.sendAction(
+      try XCTUnwrap(nameField.action),
+      to: nameField.target,
+      from: nameField
     )
+    undoManager.endUndoGrouping()
+
+    XCTAssertTrue(sentAction)
 
     XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "Shared")
     XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Shared")

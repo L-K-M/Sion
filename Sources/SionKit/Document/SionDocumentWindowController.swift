@@ -78,6 +78,13 @@
       canvasView.cancelActiveDrag()
     }
 
+    func windowDidResize(_ notification: Notification) {
+      guard window?.isVisible == true else { return }
+
+      // A zero-sized restored viewport can become usable after its first show.
+      applyInitialZoomIfNeeded()
+    }
+
     override func showWindow(_ sender: Any?) {
       super.showWindow(sender)
       window?.makeFirstResponder(canvasView)
@@ -313,7 +320,7 @@
       guard !editorController.document.scene.elements.isEmpty else { return }
 
       // Fit only after AppKit exposes a usable viewport; a later show can retry.
-      scrollView.layoutSubtreeIfNeeded()
+      window?.contentView?.layoutSubtreeIfNeeded()
       let available = scrollView.contentSize
       guard available.width > 0, available.height > 0 else { return }
 

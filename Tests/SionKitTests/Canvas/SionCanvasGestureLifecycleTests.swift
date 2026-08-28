@@ -49,10 +49,14 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
     try fixture.controller.updateTextEdit("Changed", on: fixture.targetID)
     fixture.canvas.cancelOperation(nil)
 
-    XCTAssertEqual(
-      fixture.controller.document.scene.element(withID: fixture.targetID)?.editableText?.string,
-      GestureTestGeometry.targetText
+    let editedElement = try XCTUnwrap(
+      fixture.controller.document.scene.element(withID: fixture.targetID)
     )
+    guard case .shape(let shape) = editedElement.content else {
+      return XCTFail("Expected the text fixture to remain a shape")
+    }
+
+    XCTAssertEqual(shape.label?.string, GestureTestGeometry.targetText)
     XCTAssertEqual(fixture.controller.selection, [fixture.targetID])
 
     fixture.controller.beginAnchorEditing(on: fixture.targetID)

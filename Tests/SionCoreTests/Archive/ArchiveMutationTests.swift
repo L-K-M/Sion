@@ -83,22 +83,54 @@ final class ArchiveMutationTests: XCTestCase {
         try package.validate()
         return .validPackage
       } catch {
-        return .invalidPackage(errorFingerprint(error))
+        return .invalidPackage(errorIdentity(error))
       }
     } catch {
-      return .rejected(errorFingerprint(error))
+      return .rejected(errorIdentity(error))
     }
   }
 
-  private func errorFingerprint(_ error: Error) -> String {
-    "\(String(reflecting: type(of: error))):\(String(reflecting: error))"
+  private func errorIdentity(_ error: Error) -> ErrorIdentity {
+    guard let decodingError = error as? DecodingError else {
+      return .typed(String(reflecting: type(of: error)))
+    }
+
+    // Foundation error dictionaries have no stable print order across platforms.
+    switch decodingError {
+    case .dataCorrupted(let context):
+      return .decoding(.dataCorrupted, path: codingPath(context))
+    case .keyNotFound(let key, let context):
+      return .decoding(.keyNotFound(key.stringValue), path: codingPath(context))
+    case .typeMismatch(let type, let context):
+      return .decoding(.typeMismatch(String(reflecting: type)), path: codingPath(context))
+    case .valueNotFound(let type, let context):
+      return .decoding(.valueNotFound(String(reflecting: type)), path: codingPath(context))
+    @unknown default:
+      return .typed(String(reflecting: type(of: error)))
+    }
+  }
+
+  private func codingPath(_ context: DecodingError.Context) -> [String] {
+    context.codingPath.map(\.stringValue)
   }
 }
 
 private enum DecodeOutcome: Equatable {
   case validPackage
-  case invalidPackage(String)
-  case rejected(String)
+  case invalidPackage(ErrorIdentity)
+  case rejected(ErrorIdentity)
+}
+
+private enum ErrorIdentity: Equatable {
+  case decoding(DecodingFailure, path: [String])
+  case typed(String)
+}
+
+private enum DecodingFailure: Equatable {
+  case dataCorrupted
+  case keyNotFound(String)
+  case typeMismatch(String)
+  case valueNotFound(String)
 }
 
 private enum MutationCorpus {

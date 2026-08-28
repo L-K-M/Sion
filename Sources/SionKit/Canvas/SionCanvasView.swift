@@ -1374,7 +1374,7 @@
         return false
       }
 
-      return fileSize <= SionArchiveConstants.maximumEntryByteCount
+      return fileSize > 0 && fileSize <= SionArchiveConstants.maximumEntryByteCount
     }
 
     private func drawCanvas() {

@@ -100,12 +100,36 @@
   }
 
   @MainActor
-  private final class InspectorPaletteController: NSViewController, PaletteContent {
+  private final class InspectorPaletteController: NSViewController, NSTextFieldDelegate,
+    PaletteContent
+  {
     typealias Target = SionEditorController
+
+    private enum NameFieldPresentation {
+      case noSelection
+      case value(String)
+      case mixed
+
+      func matches(_ value: String) -> Bool {
+        switch self {
+        case .noSelection, .mixed:
+          value.isEmpty
+        case .value(let displayedValue):
+          value == displayedValue
+        }
+      }
+    }
+
+    private enum NameEditState {
+      case unchanged
+      case changed
+    }
 
     private weak var target: SionEditorController?
     private var observerID: UUID?
     private var presentation: PalettePresentation?
+    private var nameFieldPresentation = NameFieldPresentation.noSelection
+    private var nameEditState = NameEditState.unchanged
     private let selectionLabel = NSTextField(labelWithString: "No selection")
     private let nameField = NSTextField()
     private let lockButton = NSButton(
@@ -227,7 +251,7 @@
     }
 
     private func configureNameField() {
-      // Focus loss may follow an undo refresh, so only explicit actions commit.
+      nameField.delegate = self
       nameField.target = self
       nameField.action = #selector(changeName(_:))
       nameField.setAccessibilityLabel("Element name")
@@ -327,21 +351,36 @@
 
     private func refreshNameField(for elements: [SceneElement]) {
       nameField.isEnabled = target?.canRenameSelection == true
+
       guard !elements.isEmpty else {
-        nameField.stringValue = ""
-        nameField.placeholderString = nil
+        presentNameField(.noSelection)
         return
       }
 
       let names = Set(elements.map(\.name))
       guard names.count == 1 else {
-        nameField.stringValue = ""
-        nameField.placeholderString = InspectorCopy.mixedValue
+        presentNameField(.mixed)
         return
       }
 
-      nameField.stringValue = names.first.flatMap { $0 } ?? ""
-      nameField.placeholderString = nil
+      presentNameField(.value(names.first.flatMap { $0 } ?? ""))
+    }
+
+    private func presentNameField(_ presentation: NameFieldPresentation) {
+      nameFieldPresentation = presentation
+      nameEditState = .unchanged
+
+      switch presentation {
+      case .noSelection:
+        nameField.stringValue = ""
+        nameField.placeholderString = nil
+      case .value(let name):
+        nameField.stringValue = name
+        nameField.placeholderString = nil
+      case .mixed:
+        nameField.stringValue = ""
+        nameField.placeholderString = InspectorCopy.mixedValue
+      }
     }
 
     @objc private func changeLock(_ sender: NSButton) {
@@ -356,10 +395,33 @@
     }
 
     @objc private func changeName(_ sender: NSTextField) {
+      commitNameIfNeeded(sender)
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+      guard let field = notification.object as? NSTextField, field === nameField else { return }
+
+      nameEditState = .changed
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+      guard let field = notification.object as? NSTextField, field === nameField else { return }
+
+      commitNameIfNeeded(field)
+    }
+
+    private func commitNameIfNeeded(_ sender: NSTextField) {
       guard let target else { return }
+      guard nameEditState == .changed || !nameFieldPresentation.matches(sender.stringValue) else {
+        return
+      }
 
       let name = sender.stringValue.isEmpty ? nil : sender.stringValue
+      nameEditState = .unchanged
       attemptEdit { try target.renameSelection(name) }
+
+      // Model state wins after rejected, duplicate, or observer-driven edits.
+      refreshNameField(for: target.selectedElements)
     }
 
     @objc private func changeRoute(_ sender: NSPopUpButton) {

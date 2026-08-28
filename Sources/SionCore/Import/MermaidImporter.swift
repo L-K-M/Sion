@@ -3,11 +3,11 @@ import Foundation
 /// Converts Mermaid flowcharts into editable Sion elements.
 public enum MermaidImporter {
   public static func looksLikeMermaid(_ source: String) -> Bool {
-    diagramLines(in: source) != nil
+    diagram(in: source) != nil
   }
 
   public static func elements(from source: String, centeredAt origin: SionPoint) -> [SceneElement] {
-    guard let lines = diagramLines(in: source) else {
+    guard let diagram = diagram(in: source), let direction = diagram.direction else {
       return []
     }
 
@@ -16,7 +16,7 @@ public enum MermaidImporter {
     var links: [Link] = []
 
     // Import the graph projection; Mermaid remains a recovery format.
-    for rawLine in lines {
+    for rawLine in diagram.lines {
       let line = rawLine.trimmingCharacters(in: .whitespaces)
       guard shouldParse(line) else {
         continue
@@ -44,7 +44,11 @@ public enum MermaidImporter {
       return []
     }
 
-    let layout = MermaidLayout(nodeCount: nodeOrder.count, center: origin)
+    let layout = MermaidLayout(
+      nodeCount: nodeOrder.count,
+      center: origin,
+      direction: direction
+    )
     var identifiers: [String: ElementID] = [:]
     var centers: [String: SionPoint] = [:]
     var elements: [SceneElement] = []
@@ -99,7 +103,7 @@ public enum MermaidImporter {
     return elements
   }
 
-  private static func diagramLines(in source: String) -> ArraySlice<Substring>? {
+  private static func diagram(in source: String) -> MermaidDiagram? {
     let lines = source.split(omittingEmptySubsequences: false, whereSeparator: \Character.isNewline)
     var inFrontMatter = false
 
@@ -113,13 +117,14 @@ public enum MermaidImporter {
         continue
       }
 
-      let firstToken = line.split(whereSeparator: \Character.isWhitespace).first?
-        .lowercased()
-      guard let firstToken, MermaidSyntax.headers.contains(firstToken) else {
+      let tokens = line.split(whereSeparator: \Character.isWhitespace)
+      guard let header = tokens.first?.lowercased(), MermaidSyntax.headers.contains(header) else {
         return nil
       }
-
-      return lines[lines.index(after: index)...]
+      return MermaidDiagram(
+        direction: MermaidDirection(token: tokens.dropFirst().first),
+        lines: lines[lines.index(after: index)...]
+      )
     }
 
     return nil
@@ -270,6 +275,60 @@ private struct Link {
   let label: String?
 }
 
+private struct MermaidDiagram {
+  let direction: MermaidDirection?
+  let lines: ArraySlice<Substring>
+}
+
+private enum MermaidDirection {
+  case topToBottom
+  case bottomToTop
+  case leftToRight
+  case rightToLeft
+
+  init?(token: Substring?) {
+    switch token?.lowercased() {
+    case "tb", "td":
+      self = .topToBottom
+    case "bt":
+      self = .bottomToTop
+    case "lr":
+      self = .leftToRight
+    case "rl":
+      self = .rightToLeft
+    default:
+      return nil
+    }
+  }
+
+  var primaryStep: SionVector {
+    switch self {
+    case .topToBottom:
+      return .south
+    case .bottomToTop:
+      return .north
+    case .leftToRight:
+      return .east
+    case .rightToLeft:
+      return .west
+    }
+  }
+
+  var axis: MermaidLayoutAxis {
+    switch self {
+    case .topToBottom, .bottomToTop:
+      return .vertical
+    case .leftToRight, .rightToLeft:
+      return .horizontal
+    }
+  }
+}
+
+private enum MermaidLayoutAxis {
+  case horizontal
+  case vertical
+}
+
 private enum MermaidSyntax {
   static let headers = Set(["flowchart", "graph"])
   static let arrows = ["-.->", "-->", "==>", "---"]
@@ -281,7 +340,7 @@ private enum MermaidSyntax {
 }
 
 private struct MermaidLayout {
-  static let columnCount = 3
+  static let primarySlotCount = 3
   static let nodeWidth = 160.0
   static let nodeHeight = 88.0
   static let horizontalStep = 220.0
@@ -291,26 +350,64 @@ private struct MermaidLayout {
 
   private let nodeCount: Int
   private let center: SionPoint
+  private let direction: MermaidDirection
 
-  init(nodeCount: Int, center: SionPoint) {
+  init(nodeCount: Int, center: SionPoint, direction: MermaidDirection) {
     self.nodeCount = nodeCount
     self.center = center
+    self.direction = direction
   }
 
   func frame(at index: Int) -> SionRect {
-    let columns = min(Self.columnCount, nodeCount)
-    let rows = Int(ceil(Double(nodeCount) / Double(Self.columnCount)))
-    let width = Self.nodeWidth + (Double(columns - 1) * Self.horizontalStep)
-    let height = Self.nodeHeight + (Double(rows - 1) * Self.verticalStep)
-    let column = index % Self.columnCount
-    let row = index / Self.columnCount
+    // Preserve source order along the declared axis pending topology-aware ranking.
+    let primaryCount = min(Self.primarySlotCount, nodeCount)
+    let secondaryCount = Int(ceil(Double(nodeCount) / Double(Self.primarySlotCount)))
+    let primaryIndex = index % Self.primarySlotCount
+    let secondaryIndex = index / Self.primarySlotCount
+    let primaryOffset = centeredOffset(index: primaryIndex, count: primaryCount)
+    let secondaryOffset = centeredOffset(index: secondaryIndex, count: secondaryCount)
+    let nodeCenter =
+      center
+      + (direction.primaryStep * primaryOffset * primarySpacing)
+      + (secondaryStep * secondaryOffset * secondarySpacing)
 
     return SionRect(
-      x: center.x - (width / 2) + (Double(column) * Self.horizontalStep),
-      y: center.y - (height / 2) + (Double(row) * Self.verticalStep),
+      x: nodeCenter.x - (Self.nodeWidth / 2),
+      y: nodeCenter.y - (Self.nodeHeight / 2),
       width: Self.nodeWidth,
       height: Self.nodeHeight
     )
+  }
+
+  private var primarySpacing: Double {
+    switch direction.axis {
+    case .horizontal:
+      return Self.horizontalStep
+    case .vertical:
+      return Self.verticalStep
+    }
+  }
+
+  private var secondarySpacing: Double {
+    switch direction.axis {
+    case .horizontal:
+      return Self.verticalStep
+    case .vertical:
+      return Self.horizontalStep
+    }
+  }
+
+  private var secondaryStep: SionVector {
+    switch direction.axis {
+    case .horizontal:
+      return .south
+    case .vertical:
+      return .east
+    }
+  }
+
+  private func centeredOffset(index: Int, count: Int) -> Double {
+    Double(index) - (Double(count - 1) / 2)
   }
 }
 

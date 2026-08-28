@@ -611,11 +611,10 @@ and D3 framing terms.
 
 ### P2.16 Honor Mermaid direction and topology
 
-**Evidence.** `MermaidImporter` recognizes flowchart/graph headers but ignores
-the header's TB/TD/BT/LR/RL direction token; `MermaidLayout` always uses a
-three-column row-major grid. Unsupported, malformed, and unparsed statements
-are skipped without import diagnostics. Subgraphs and arrow variants such as
-`==>` and `-.->` are ignored or flattened.
+**Evidence.** `MermaidImporter` honors TB/TD/BT/LR/RL direction in its simple
+order-based grid, but does not rank nodes from graph topology. Unsupported,
+malformed, and unparsed statements are skipped without import diagnostics.
+Subgraphs and arrow variants such as `==>` and `-.->` are ignored or flattened.
 
 **Scope.** Build a deterministic layered graph layout: rank by topology, order
 to reduce crossings, honor direction, reserve node/label bounds, and define a

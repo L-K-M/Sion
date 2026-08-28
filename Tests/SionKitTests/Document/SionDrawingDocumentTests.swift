@@ -165,6 +165,7 @@ final class SionDrawingDocumentTests: XCTestCase {
     XCTAssertEqual(package.document.title, authoredTitle)
   }
 
+  @MainActor
   func testReadForRevertRestoresSavedContentAndCanvasFocus() throws {
     let savedElement = SceneElement.text(
       frame: SionRect(x: 40, y: 40, width: 180, height: 80),
@@ -180,13 +181,14 @@ final class SionDrawingDocumentTests: XCTestCase {
     let windowController = try XCTUnwrap(
       document.windowControllers.first as? SionDocumentWindowController
     )
+    defer { windowController.close() }
+
     let window = try XCTUnwrap(windowController.window)
     let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
     let canvas = try XCTUnwrap(scrollView.documentView as? SionCanvasView)
     defer {
       // Do not let a stale responder turn this assertion into a test hang.
       window.makeFirstResponder(canvas)
-      windowController.close()
     }
 
     windowController.beginTextEditing(savedElement.id)

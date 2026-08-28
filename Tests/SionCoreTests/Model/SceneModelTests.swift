@@ -139,6 +139,27 @@ final class SceneModelTests: XCTestCase {
       ])
   }
 
+  func testCylinderVertexMagnetsFollowOuterSilhouette() {
+    var cylinder = SceneElement.shape(
+      frame: SionRect(x: 0, y: 0, width: 200, height: 80),
+      kind: .cylinder
+    )
+    cylinder.magnetConfiguration = .preset(.vertices)
+    let arcFraction = ShapeGeometryDefaults.cylinderArcFraction
+
+    XCTAssertEqual(
+      cylinder.expandedMagnets.map(\.normalizedPosition),
+      [
+        SionPoint(x: 0, y: arcFraction),
+        SionPoint(x: 0.5, y: 0),
+        SionPoint(x: 1, y: arcFraction),
+        SionPoint(x: 1, y: 1 - arcFraction),
+        SionPoint(x: 0.5, y: 1),
+        SionPoint(x: 0, y: 1 - arcFraction),
+      ]
+    )
+  }
+
   func testExpandedDirectionalMagnetsFollowElementOutlines() {
     var triangle = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 200, height: 100),

@@ -272,6 +272,24 @@ final class SionArchiveTests: XCTestCase {
     )
 
     XCTAssertTrue(svg.contains("fill-rule=\"evenodd\""))
+  func testSVGCylinderPaintsFrontRimFromSharedGeometry() throws {
+    var cylinder = SceneElement.shape(
+      frame: SionRect(x: 60, y: 40, width: 200, height: 80),
+      kind: .cylinder
+    )
+    cylinder.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 4)
+    )
+    let document = SionDocument(scene: SionScene(elements: [cylinder]))
+
+    let svg = try SVGExporter.export(document: document, assets: [:])
+
+    XCTAssertTrue(
+      svg.contains(
+        "<path d=\"M60 50C60 55.523 104.772 60 160 60C215.228 60 260 55.523 260 50\" fill=\"none\""
+      )
+    )
   }
 
   func testSVGTilesImagesAndHandlesExtremeShapeValues() throws {

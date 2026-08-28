@@ -53,6 +53,30 @@ final class ElementHitGeometryTests: XCTestCase {
     XCTAssertFalse(ElementHitGeometry.contains(frame.center, in: ellipse, tolerance: 2))
   }
 
+  func testStrokeOnlyCylinderHitsFrontRimAtEveryAspectRatio() {
+    let sizes = [
+      SionSize(width: 200, height: 80),
+      SionSize(width: 100, height: 100),
+      SionSize(width: 60, height: 180),
+    ]
+
+    for size in sizes {
+      let frame = SionRect(origin: SionPoint(x: 40, y: 30), size: size)
+      var cylinder = SceneElement.shape(frame: frame, kind: .cylinder)
+      cylinder.style = ElementStyle(
+        fill: .none,
+        stroke: StrokeStyle(color: .black, width: 4)
+      )
+      let arcHeight = frame.height * ShapeGeometryDefaults.cylinderArcFraction
+      let rimPoint = SionPoint(x: frame.center.x, y: frame.minY + (2 * arcHeight))
+
+      XCTAssertTrue(
+        ElementHitGeometry.contains(rimPoint, in: cylinder),
+        "Missing front rim hit for \(size)"
+      )
+    }
+  }
+
   func testFillOnlyShapeUsesHitToleranceAtEdge() {
     let frame = SionRect(x: 40, y: 70, width: 120, height: 80)
     var ellipse = SceneElement.shape(frame: frame, kind: .ellipse)

@@ -284,6 +284,24 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
   }
 
+  func testCylinderPaintsFrontRim() throws {
+    var cylinder = SceneElement.shape(
+      frame: SionRect(x: 60, y: 40, width: 200, height: 80),
+      kind: .cylinder
+    )
+    cylinder.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 4)
+    )
+
+    let image = try render(elements: [cylinder])
+    let rim = try pixel(in: image, at: SionPoint(x: 160, y: 60))
+
+    XCTAssertLessThan(rim.redComponent, 0.2)
+    XCTAssertLessThan(rim.greenComponent, 0.2)
+    XCTAssertLessThan(rim.blueComponent, 0.2)
+  }
+
   func testPixelSamplerUsesExactCoordinatesAndChannels() throws {
     let graphics = try bitmapContext(width: 3, height: 2)
     graphics.setFillColor(NSColor.white.cgColor)

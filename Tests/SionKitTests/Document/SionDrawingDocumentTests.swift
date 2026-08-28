@@ -35,7 +35,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testUndoGroupClosureDoesNotDirtySavedDocumentAgain() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     let undoManager = try XCTUnwrap(document.undoManager)
     undoManager.groupsByEvent = false
     undoManager.beginUndoGrouping()
@@ -52,7 +52,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testOneUndoReturnsDocumentToCleanState() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     let undoManager = try XCTUnwrap(document.undoManager)
     undoManager.groupsByEvent = false
     undoManager.beginUndoGrouping()
@@ -68,7 +68,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testSerializationKeepsInlineTextEditorActive() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     let id = try document.editingController.insertText("Draft", at: SionPoint(x: 100, y: 100))
     document.makeWindowControllers()
     let windowController = try XCTUnwrap(
@@ -84,7 +84,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testSerializationPersistsPNGPreview() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     _ = try document.editingController.insertShape(at: SionPoint(x: 100, y: 100))
     document.makeWindowControllers()
     let windowController = try XCTUnwrap(
@@ -103,8 +103,68 @@ final class SionDrawingDocumentTests: XCTestCase {
     )
   }
 
+  func testSerializationWritesInjectedGenerator() throws {
+    let document = SionDrawingDocument(
+      archiveGenerator: DocumentArchiveFixture.generator
+    )
+    let manifest = try manifest(from: document)
+
+    XCTAssertEqual(
+      manifest.generator,
+      GeneratorDescriptor(
+        name: DocumentArchiveFixture.generator.name,
+        version: DocumentArchiveFixture.generator.version
+      )
+    )
+  }
+
+  func testTypeInitializerUsesApplicationGenerator() throws {
+    let document = try SionDrawingDocument(type: SionDrawingDocument.typeIdentifier)
+    defer { document.close() }
+
+    XCTAssertEqual(
+      try manifest(from: document).generator.name,
+      DocumentArchiveFixture.applicationName
+    )
+  }
+
+  func testContentsInitializerOpensArchiveWithApplicationGenerator() throws {
+    let package = SionPackage(
+      document: SionDocument(title: DocumentArchiveFixture.openedTitle)
+    )
+    let archive = try SionArchive.encode(
+      package: package,
+      intent: .manual,
+      generator: DocumentArchiveFixture.generator
+    )
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString,
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let url = directory.appendingPathComponent(DocumentArchiveFixture.filename)
+    try archive.data.write(to: url)
+
+    let document = try SionDrawingDocument(
+      contentsOf: url,
+      ofType: SionDrawingDocument.typeIdentifier
+    )
+    defer { document.close() }
+
+    XCTAssertEqual(
+      document.editingController.document.title,
+      DocumentArchiveFixture.openedTitle
+    )
+    XCTAssertEqual(
+      try manifest(from: document).generator.name,
+      DocumentArchiveFixture.applicationName
+    )
+  }
+
   func testSaveAsUpdatesWindowAndArchiveTitles() async throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     document.makeWindowControllers()
     let windowController = try XCTUnwrap(
       document.windowControllers.first as? SionDocumentWindowController
@@ -141,7 +201,7 @@ final class SionDrawingDocumentTests: XCTestCase {
   }
 
   func testAutosaveElsewhereKeepsAuthoredTitle() throws {
-    let document = SionDrawingDocument()
+    let document = makeDocument()
     let authoredTitle = "Recovery Source"
     try document.editingController.load(
       SionPackage(document: SionDocument(title: authoredTitle))
@@ -175,8 +235,12 @@ final class SionDrawingDocumentTests: XCTestCase {
     let savedPackage = SionPackage(
       document: SionDocument(scene: SionScene(elements: [savedElement]))
     )
-    let savedArchive = try SionArchive.encode(package: savedPackage, intent: .manual)
-    let document = SionDrawingDocument()
+    let savedArchive = try SionArchive.encode(
+      package: savedPackage,
+      intent: .manual,
+      generator: DocumentArchiveFixture.generator
+    )
+    let document = makeDocument()
     try document.editingController.load(savedPackage)
     document.makeWindowControllers()
     let windowController = try XCTUnwrap(
@@ -217,10 +281,33 @@ final class SionDrawingDocumentTests: XCTestCase {
     XCTAssertNil(textView.window)
     XCTAssertTrue(window.firstResponder === canvas)
   }
+
+  private func makeDocument() -> SionDrawingDocument {
+    SionDrawingDocument(archiveGenerator: DocumentArchiveFixture.generator)
+  }
+
+  private func manifest(from document: SionDrawingDocument) throws -> SionManifest {
+    let data = try document.data(ofType: SionDrawingDocument.typeIdentifier)
+    let entries = Dictionary(
+      uniqueKeysWithValues: try StoredZIPArchive.decode(data).map { ($0.path, $0.data) }
+    )
+    let manifestData = try XCTUnwrap(entries[SionArchiveConstants.manifestPath])
+    return try CanonicalJSON.decodeStrict(SionManifest.self, from: manifestData)
+  }
 }
 
 private enum DocumentPreview {
   static let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+}
+
+private enum DocumentArchiveFixture {
+  static let applicationName = "Sion"
+  static let filename = "Opened.sion"
+  static let generator = SionArchiveGenerator(
+    name: "SionKitTests",
+    version: "2.0.0"
+  )
+  static let openedTitle = "Opened"
 }
 
 private enum RevertFixture {

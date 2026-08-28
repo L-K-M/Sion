@@ -4,7 +4,7 @@ import Foundation
 
 let testArchiveGenerator = SionArchiveGenerator(
   name: "SionCoreTests",
-  version: "1.0.0"
+  version: "unknown"
 )
 
 func testPNGData(width: UInt32 = 1, height: UInt32 = 1) -> Data {

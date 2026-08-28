@@ -103,6 +103,55 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertTrue(descendants.compactMap { $0 as? NSPopUpButton }.allSatisfy { !$0.isEnabled })
   }
 
+  func testRejectedInspectorEditRestoresDisplayedValue() throws {
+    _ = NSApplication.shared
+    let connector = SceneElement.connector(
+      source: .free(SionPoint(x: 40, y: 80)),
+      target: .free(SionPoint(x: 240, y: 80)),
+      routingStyle: .orthogonal
+    )
+    let editor = try SionEditorController(
+      package: SionPackage(
+        document: SionDocument(scene: SionScene(elements: [connector]))
+      ),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+    editor.select(connector.id)
+    let documentController = SionDocumentWindowController(editorController: editor)
+    defer { documentController.close() }
+
+    let documentWindow = try XCTUnwrap(documentController.window)
+    documentWindow.orderFrontRegardless()
+    let inspector = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.inspector.paletteKind)
+    )
+    defer { inspector.close() }
+    inspector.showPanel()
+
+    let panel = try XCTUnwrap(
+      NSApp.windows.first { $0.title == "Inspector" && $0.isVisible }
+    )
+    let routePopup = try XCTUnwrap(
+      panel.contentView?.inspectorTestDescendants.compactMap { $0 as? NSPopUpButton }
+        .first { $0.accessibilityLabel() == "Connector route" }
+    )
+    let documentBefore = editor.document
+    try editor.beginMove()
+    defer { editor.cancelActiveGesture() }
+
+    routePopup.selectItem(withTitle: ConnectorRoutingStyle.straight.displayName)
+    let action = try XCTUnwrap(routePopup.action)
+
+    XCTAssertTrue(NSApp.sendAction(action, to: routePopup.target, from: routePopup))
+    XCTAssertEqual(editor.document, documentBefore)
+    XCTAssertTrue(editor.hasPendingEditorGesture)
+    XCTAssertEqual(
+      routePopup.titleOfSelectedItem,
+      ConnectorRoutingStyle.orthogonal.displayName
+    )
+  }
+
   func testFloatingInspectorObservesDocumentSelection() throws {
     _ = NSApplication.shared
     var shape = SceneElement.shape(

@@ -57,9 +57,13 @@ final class ArchiveMutationTests: XCTestCase {
   }
 
   func testErrorIdentityDistinguishesArchiveFailures() {
-    XCTAssertNotEqual(
+    XCTAssertEqual(
       errorIdentity(SionArchiveError.invalidMimetype),
-      errorIdentity(SionArchiveError.sceneDescriptorMismatch)
+      .archive(.invalidMimetype)
+    )
+    XCTAssertEqual(
+      errorIdentity(SionArchiveError.sceneDescriptorMismatch),
+      .archive(.sceneDescriptorMismatch)
     )
   }
 
@@ -130,7 +134,10 @@ final class ArchiveMutationTests: XCTestCase {
     case .valueNotFound(let type, let context):
       return .decoding(.valueNotFound(String(reflecting: type)), path: codingPath(context))
     @unknown default:
-      return .unknownDecoding(String(reflecting: type(of: error)))
+      let caseName =
+        Mirror(reflecting: error).children.first?.label
+        ?? String(reflecting: type(of: error))
+      return .unknownDecoding(caseName)
     }
   }
 

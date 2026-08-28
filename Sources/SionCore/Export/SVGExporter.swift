@@ -246,12 +246,9 @@ public enum SVGExporter {
       "<path d=\"\(routePath(route))\" fill=\"none\" \(strokeAttributes(element.style)) \(markerStart) \(markerEnd)/>"
 
     if let label = connector.label {
-      let point = point(on: route, fraction: connector.labelPosition)
-      let labelFrame = SionRect(
-        x: point.x - SVGDefaults.connectorLabelWidth / 2,
-        y: point.y - SVGDefaults.connectorLabelHeight / 2,
-        width: SVGDefaults.connectorLabelWidth,
-        height: SVGDefaults.connectorLabelHeight
+      let labelFrame = connectorLabelFrame(
+        on: route,
+        fraction: connector.labelPosition
       )
       content += renderText(label, in: labelFrame)
     }
@@ -385,17 +382,28 @@ public enum SVGExporter {
     case .connector(let connector):
       guard let label = connector.label, let route else { return nil }
 
-      let point = point(on: route, fraction: connector.labelPosition)
-      let frame = SionRect(
-        x: point.x - SVGDefaults.connectorLabelWidth / 2,
-        y: point.y - SVGDefaults.connectorLabelHeight / 2,
-        width: SVGDefaults.connectorLabelWidth,
-        height: SVGDefaults.connectorLabelHeight
+      let frame = connectorLabelFrame(
+        on: route,
+        fraction: connector.labelPosition
       )
       return conservativeTextBounds(label, in: frame)
     case .path, .image, .group:
       return nil
     }
+  }
+
+  private static func connectorLabelFrame(
+    on route: ConnectorRoute,
+    fraction: Double
+  ) -> SionRect {
+    let point = point(on: route, fraction: fraction)
+
+    return SionRect(
+      x: point.x - SVGDefaults.connectorLabelWidth / 2,
+      y: point.y - SVGDefaults.connectorLabelHeight / 2,
+      width: SVGDefaults.connectorLabelWidth,
+      height: SVGDefaults.connectorLabelHeight
+    )
   }
 
   private static func renderText(_ text: TextContent, in frame: SionRect) -> String {

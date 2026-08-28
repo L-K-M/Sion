@@ -442,11 +442,30 @@ final class SVGExporterTests: XCTestCase {
 
   private func elementGroup(id: ElementID, in source: String) throws -> Substring {
     let opening = try openingTag(startingWith: "<g id=\"element-\(id)\"", in: source)
-    let close = try XCTUnwrap(
-      source.range(of: "</g>", range: opening.endIndex..<source.endIndex)?.upperBound
-    )
+    var depth = 1
+    var searchStart = opening.endIndex
 
-    return source[opening.startIndex..<close]
+    // Match the element's closing group, not a nested effect group.
+    while depth > 0 {
+      let nextOpening = source.range(
+        of: "<g",
+        range: searchStart..<source.endIndex
+      )
+      let nextClosing = try XCTUnwrap(
+        source.range(of: "</g>", range: searchStart..<source.endIndex)
+      )
+
+      if let nextOpening, nextOpening.lowerBound < nextClosing.lowerBound {
+        depth += 1
+        searchStart = nextOpening.upperBound
+        continue
+      }
+
+      depth -= 1
+      searchStart = nextClosing.upperBound
+    }
+
+    return source[opening.startIndex..<searchStart]
   }
 
   private func numberAttribute(_ name: String, in tag: Substring) -> Double? {

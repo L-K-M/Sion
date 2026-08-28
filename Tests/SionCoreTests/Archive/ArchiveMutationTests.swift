@@ -98,8 +98,25 @@ final class ArchiveMutationTests: XCTestCase {
   }
 
   private func errorIdentity(_ error: Error) -> ErrorIdentity {
+    if let error = error as? ZIPArchiveError {
+      return .zip(error)
+    }
+    if let error = error as? SionArchiveError {
+      return .archive(error)
+    }
+    if let error = error as? CanonicalJSONError {
+      return .canonicalJSON(error)
+    }
+    if let error = error as? SionPackageError {
+      return .package(error)
+    }
+    if let error = error as? SceneValidationError {
+      return .sceneValidation(error)
+    }
+
     guard let decodingError = error as? DecodingError else {
-      return .typed(String(reflecting: type(of: error)))
+      let bridged = error as NSError
+      return .bridged(domain: bridged.domain, code: bridged.code)
     }
 
     // Foundation error dictionaries have no stable print order across platforms.
@@ -113,7 +130,7 @@ final class ArchiveMutationTests: XCTestCase {
     case .valueNotFound(let type, let context):
       return .decoding(.valueNotFound(String(reflecting: type)), path: codingPath(context))
     @unknown default:
-      return .typed(String(reflecting: type(of: error)))
+      return .unknownDecoding(String(reflecting: type(of: error)))
     }
   }
 
@@ -129,8 +146,14 @@ private enum DecodeOutcome: Equatable {
 }
 
 private enum ErrorIdentity: Equatable {
+  case archive(SionArchiveError)
+  case bridged(domain: String, code: Int)
+  case canonicalJSON(CanonicalJSONError)
   case decoding(DecodingFailure, path: [String])
-  case typed(String)
+  case package(SionPackageError)
+  case sceneValidation(SceneValidationError)
+  case unknownDecoding(String)
+  case zip(ZIPArchiveError)
 }
 
 private enum DecodingFailure: Equatable {

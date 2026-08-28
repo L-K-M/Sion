@@ -2457,7 +2457,7 @@
           if hasCurrent {
             path.close()
 
-            // A following quadratic starts at the closed subpath's origin.
+            // Keep converter state at the closed subpath's origin.
             current = path.currentPoint
           }
         }

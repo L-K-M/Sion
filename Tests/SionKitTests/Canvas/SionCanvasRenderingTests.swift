@@ -324,10 +324,12 @@ final class SionCanvasRenderingTests: XCTestCase {
     let subpathStart = SionPoint(x: 0.1, y: 0.2)
     let control = SionPoint(x: 0.1, y: 0.8)
     let end = SionPoint(x: 0.5, y: 0.8)
+    let priorEndpoint = SionPoint(x: 0.9, y: 0.8)
+    let quadraticToCubicControlFraction = 2.0 / 3.0
     let closedSubpath: [PathCommand] = [
       .move(to: subpathStart),
       .line(to: SionPoint(x: 0.9, y: 0.2)),
-      .line(to: SionPoint(x: 0.9, y: 0.8)),
+      .line(to: priorEndpoint),
       .close,
     ]
     let style = ElementStyle(
@@ -352,9 +354,36 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
     explicitReset.style = style
 
+    // This cubic preserves the stale quadratic control points from before the fix.
+    var staleControl = SceneElement.path(
+      frame: frame,
+      path: VectorPath(
+        commands: closedSubpath + [
+          .cubic(
+            control1: priorEndpoint.interpolated(
+              to: control,
+              fraction: quadraticToCubicControlFraction
+            ),
+            control2: end.interpolated(
+              to: control,
+              fraction: quadraticToCubicControlFraction
+            ),
+            to: end
+          )
+        ]
+      )
+    )
+    staleControl.style = style
+
+    let implicitPixels = try renderedPixels(render(elements: [implicitReset]))
+
     XCTAssertEqual(
-      try renderedPixels(render(elements: [implicitReset])),
+      implicitPixels,
       try renderedPixels(render(elements: [explicitReset]))
+    )
+    XCTAssertNotEqual(
+      implicitPixels,
+      try renderedPixels(render(elements: [staleControl]))
     )
   }
 

@@ -185,6 +185,10 @@ final class SionCanvasRenderingTests: XCTestCase {
       try pixel(in: image, at: SionPoint(x: 2, y: 0)),
       NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
     )
+    assertEqual(
+      try pixel(in: image, at: SionPoint(x: 1.9, y: 1.9)),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
   }
 
   func testGradientHonorsAuthoredStartAndEndPoints() throws {
@@ -345,6 +349,9 @@ final class SionCanvasRenderingTests: XCTestCase {
     let image = try render(
       elements: [solid, gradient],
       colorSpace: displayP3
+    )
+    XCTAssertTrue(
+      CGColorSpaceEqualToColorSpace(image.image.colorSpace, displayP3)
     )
 
     assertEqual(

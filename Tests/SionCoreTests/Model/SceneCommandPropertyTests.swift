@@ -9,6 +9,7 @@ final class SceneCommandPropertyTests: XCTestCase {
       PropertyCorpus.commandCount,
       GeneratedOperation.allCases.count
     )
+    XCTAssertEqual(Set(PropertyCorpus.seeds).count, PropertyCorpus.seeds.count)
 
     for seed in PropertyCorpus.seeds {
       let firstTrace = try commandTrace(seed: seed)
@@ -459,8 +460,11 @@ private enum PropertyCorpus {
 
   private static let baseSeed: UInt64 = 0x510D_2026_0000_0000
   private static let seedCount = 16
+  private static let seedStride: UInt64 = 0x9E37_79B9_7F4A_7C15
 
-  static let seeds = (0..<seedCount).map { baseSeed | UInt64($0) }
+  static let seeds = (0..<seedCount).map {
+    baseSeed &+ (UInt64($0) &* seedStride)
+  }
 }
 
 private struct ElementIDSequence {
@@ -493,7 +497,10 @@ private struct FixedGenerator {
   }
 
   mutating func integer(through upperBound: Int) -> Int {
-    Int(next() % UInt64(upperBound + 1))
+    precondition(upperBound >= 0, "upperBound must be non-negative")
+
+    // High LCG bits avoid the short periods of its low-order bits.
+    return Int(unitInterval() * Double(upperBound + 1))
   }
 
   mutating func integer(in range: ClosedRange<Int>) -> Int {

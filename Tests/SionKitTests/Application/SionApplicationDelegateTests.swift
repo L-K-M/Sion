@@ -29,5 +29,10 @@ final class SionApplicationDelegateTests: XCTestCase {
     let servicesMenu = try XCTUnwrap(servicesItem.submenu)
 
     XCTAssertTrue(application.servicesMenu === servicesMenu)
+    let hideItem = try XCTUnwrap(applicationMenu.item(withTitle: "Hide Sion"))
+    XCTAssertLessThan(
+      applicationMenu.indexOfItem(servicesItem),
+      applicationMenu.indexOfItem(hideItem)
+    )
   }
 }

@@ -6,6 +6,90 @@ import XCTest
 
 @MainActor
 final class SionCanvasMenuValidationTests: XCTestCase {
+  func testFindValidationRequiresInlineTextEditor() throws {
+    _ = NSApplication.shared
+    let controller = try makeController(elements: [])
+    let canvas = SionCanvasView(editorController: controller)
+    let find = NSMenuItem(
+      title: "Find…",
+      action: #selector(NSResponder.performTextFinderAction(_:)),
+      keyEquivalent: "f"
+    )
+    find.tag = NSTextFinder.Action.showFindInterface.rawValue
+
+    XCTAssertFalse(canvas.validateMenuItem(find))
+  }
+
+  func testInlineEditorHandlesFindAndSpellingCommands() throws {
+    let application = NSApplication.shared
+    let previousMainMenu = application.mainMenu
+    let previousServicesMenu = application.servicesMenu
+    let previousWindowsMenu = application.windowsMenu
+    let findPasteboard = NSPasteboard(name: .find)
+    let previousFindString = findPasteboard.string(forType: .string)
+    let text = SceneElement.text(
+      frame: SionRect(x: 40, y: 40, width: 220, height: 80),
+      text: "alpha beta alpha"
+    )
+    let controller = try makeController(elements: [text])
+    let canvas = SionCanvasView(editorController: controller)
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+      styleMask: [.titled],
+      backing: .buffered,
+      defer: false
+    )
+    window.contentView = canvas
+
+    defer {
+      canvas.discardPendingEdits()
+      window.close()
+      findPasteboard.clearContents()
+      if let previousFindString {
+        findPasteboard.setString(previousFindString, forType: .string)
+      }
+      application.mainMenu = previousMainMenu
+      application.servicesMenu = previousServicesMenu
+      application.windowsMenu = previousWindowsMenu
+    }
+
+    let delegate: NSApplicationDelegate = SionApplicationDelegate()
+    delegate.applicationWillFinishLaunching?(
+      Notification(name: NSApplication.willFinishLaunchingNotification, object: application)
+    )
+    canvas.beginTextEditing(text.id)
+
+    let textView = try XCTUnwrap(
+      canvas.subviews
+        .compactMap { $0 as? NSScrollView }
+        .compactMap { $0.documentView as? NSTextView }
+        .first
+    )
+    XCTAssertTrue(window.firstResponder === textView)
+    XCTAssertTrue(textView.usesFindPanel)
+
+    let editMenu = try XCTUnwrap(application.mainMenu?.item(withTitle: "Edit")?.submenu)
+    let findMenu = try XCTUnwrap(editMenu.item(withTitle: "Find")?.submenu)
+    let useSelection = try XCTUnwrap(findMenu.item(withTitle: "Use Selection for Find"))
+    let findNext = try XCTUnwrap(findMenu.item(withTitle: "Find Next"))
+    textView.setSelectedRange(NSRange(location: 0, length: 5))
+
+    XCTAssertTrue(textView.tryToPerform(useSelection.action!, with: useSelection))
+    XCTAssertEqual(findPasteboard.string(forType: .string), "alpha")
+    XCTAssertTrue(textView.tryToPerform(findNext.action!, with: findNext))
+    XCTAssertEqual(textView.selectedRange(), NSRange(location: 11, length: 5))
+
+    let spellingMenu = try XCTUnwrap(
+      editMenu.item(withTitle: "Spelling and Grammar")?.submenu
+    )
+    let showSpelling = try XCTUnwrap(
+      spellingMenu.item(withTitle: "Show Spelling and Grammar")
+    )
+    let checkSpelling = try XCTUnwrap(spellingMenu.item(withTitle: "Check Document Now"))
+    XCTAssertTrue(textView.responds(to: showSpelling.action))
+    XCTAssertTrue(textView.responds(to: checkSpelling.action))
+  }
+
   func testEditValidationMatchesExecutableSelection() throws {
     _ = NSApplication.shared
     let editable = shape(id: "00000000-0000-0000-0000-000000000001")

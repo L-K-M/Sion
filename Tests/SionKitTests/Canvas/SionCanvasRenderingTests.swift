@@ -206,10 +206,19 @@ final class SionCanvasRenderingTests: XCTestCase {
       selection: [connector.id],
       connectorRouteProvider: unavailableRoute
     )
+    let empty = try render(
+      elements: [],
+      connectorRouteProvider: unavailableRoute
+    )
+    let unselectedPixels = try renderedPixels(unselected)
+    let selectedPixels = try renderedPixels(selected)
+    let emptyPixels = try renderedPixels(empty)
 
-    XCTAssertNotEqual(
-      try renderedPixels(selected),
-      try renderedPixels(unselected)
+    XCTAssertNotEqual(selectedPixels, unselectedPixels)
+    XCTAssertEqual(
+      unselectedPixels,
+      emptyPixels,
+      "An unselected route-less connector must paint nothing"
     )
   }
 

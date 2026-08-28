@@ -3,16 +3,24 @@ import AppKit
 @MainActor
 public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
   private let documentController: SionDocumentController
-  private lazy var recentDocumentsMenuController =
-    SionRecentDocumentsMenuController(documentController: documentController)
+  // NSMenu retains its delegate weakly, so keep the adapter for the app lifetime.
+  private let recentDocumentsMenuController: SionRecentDocumentsMenuController
 
   public override init() {
-    documentController = SionDocumentController()
+    let documentController = SionDocumentController()
+    self.documentController = documentController
+    recentDocumentsMenuController = SionRecentDocumentsMenuController(
+      documentController: documentController
+    )
     super.init()
   }
 
-  init(documentController: SionDocumentController) {
+  init(
+    documentController: SionDocumentController,
+    recentDocumentsMenuController: SionRecentDocumentsMenuController
+  ) {
     self.documentController = documentController
+    self.recentDocumentsMenuController = recentDocumentsMenuController
     super.init()
   }
 

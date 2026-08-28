@@ -32,6 +32,7 @@ final class SionRecentDocumentsMenuController: NSObject, NSMenuDelegate {
   }
 
   func makeMenu() -> NSMenu {
+    // A title alone does not opt a programmatic submenu into AppKit population.
     let menu = NSMenu(title: MenuTitle.openRecent)
     menu.autoenablesItems = false
     menu.delegate = self

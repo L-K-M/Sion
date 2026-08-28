@@ -77,7 +77,7 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     let editMenu = try XCTUnwrap(application.mainMenu?.item(withTitle: "Edit")?.submenu)
     let findMenu = try XCTUnwrap(editMenu.item(withTitle: "Find")?.submenu)
     for item in findMenu.items where !item.isSeparatorItem {
-      XCTAssertTrue(textView.responds(to: item.action))
+      XCTAssertTrue(textView.validateMenuItem(item), item.title)
     }
 
     let spellingMenu = try XCTUnwrap(
@@ -87,8 +87,8 @@ final class SionCanvasMenuValidationTests: XCTestCase {
       spellingMenu.item(withTitle: "Show Spelling and Grammar")
     )
     let checkSpelling = try XCTUnwrap(spellingMenu.item(withTitle: "Check Document Now"))
-    XCTAssertTrue(textView.responds(to: showSpelling.action))
-    XCTAssertTrue(textView.responds(to: checkSpelling.action))
+    XCTAssertTrue(textView.validateMenuItem(showSpelling))
+    XCTAssertTrue(textView.validateMenuItem(checkSpelling))
   }
 
   func testEditValidationMatchesExecutableSelection() throws {

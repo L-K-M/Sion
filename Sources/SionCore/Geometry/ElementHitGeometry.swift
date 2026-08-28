@@ -24,8 +24,9 @@ public enum ElementHitGeometry {
           by: element.style.hitExpansion(tolerance: hitTolerance)
         ).contains(localPoint) == true
       if broadPhaseHit,
-        content.kind.flattened(in: frame).contains(
+        content.kind.contains(
           localPoint,
+          in: frame,
           style: element.style,
           tolerance: hitTolerance
         )
@@ -72,6 +73,7 @@ private struct FlattenedPath {
   let subpaths: [FlattenedSubpath]
   let fillRule: PathFillRule
   let truncationTolerance: Double
+  let dashPhaseUncertainty: Double
 
   func contains(
     _ point: SionPoint,
@@ -108,10 +110,11 @@ private struct FlattenedPath {
       stroke.dashPattern = []
     }
 
-    return StrokeHitGeometry(stroke: stroke, tolerance: geometryTolerance).contains(
-      point,
-      in: subpaths
-    )
+    return StrokeHitGeometry(
+      stroke: stroke,
+      tolerance: geometryTolerance,
+      phaseUncertainty: dashPhaseUncertainty
+    ).contains(point, in: subpaths)
   }
 
   private var bounds: SionRect? {
@@ -228,6 +231,7 @@ private struct FlattenedPathBuilder {
   private var activePoints: [SionPoint] = []
   private var currentPoint: SionPoint?
   private var truncationTolerance = 0.0
+  private var dashPhaseUncertainty = 0.0
   private let maximumCurveSubdivisionDepth: Int
 
   init(
@@ -291,7 +295,8 @@ private struct FlattenedPathBuilder {
     return FlattenedPath(
       subpaths: subpaths,
       fillRule: fillRule,
-      truncationTolerance: truncationTolerance
+      truncationTolerance: truncationTolerance,
+      dashPhaseUncertainty: dashPhaseUncertainty
     )
   }
 
@@ -322,12 +327,12 @@ private struct FlattenedPathBuilder {
     // De Casteljau subdivision keeps error stable on large canvases.
     let flatness = distance(from: control, toLineFrom: start, to: end)
     guard flatness > HitGeometryDefaults.curveFlatness else {
-      activePoints.append(end)
+      appendQuadraticLeaf(start: start, control: control, end: end)
       return
     }
     guard depth < maximumCurveSubdivisionDepth else {
       truncationTolerance = max(truncationTolerance, flatness)
-      activePoints.append(end)
+      appendQuadraticLeaf(start: start, control: control, end: end)
       return
     }
 
@@ -360,12 +365,22 @@ private struct FlattenedPathBuilder {
       distance(from: control2, toLineFrom: start, to: end)
     )
     guard flatness > HitGeometryDefaults.curveFlatness else {
-      activePoints.append(end)
+      appendCubicLeaf(
+        start: start,
+        control1: control1,
+        control2: control2,
+        end: end
+      )
       return
     }
     guard depth < maximumCurveSubdivisionDepth else {
       truncationTolerance = max(truncationTolerance, flatness)
-      activePoints.append(end)
+      appendCubicLeaf(
+        start: start,
+        control1: control1,
+        control2: control2,
+        end: end
+      )
       return
     }
 
@@ -389,6 +404,41 @@ private struct FlattenedPathBuilder {
       end: end,
       depth: depth + 1
     )
+  }
+
+  private mutating func appendQuadraticLeaf(
+    start: SionPoint,
+    control: SionPoint,
+    end: SionPoint
+  ) {
+    recordDashPhaseUncertainty(
+      controlPolygonLength: start.distance(to: control) + control.distance(to: end),
+      chordLength: start.distance(to: end)
+    )
+    activePoints.append(end)
+  }
+
+  private mutating func appendCubicLeaf(
+    start: SionPoint,
+    control1: SionPoint,
+    control2: SionPoint,
+    end: SionPoint
+  ) {
+    recordDashPhaseUncertainty(
+      controlPolygonLength: start.distance(to: control1)
+        + control1.distance(to: control2)
+        + control2.distance(to: end),
+      chordLength: start.distance(to: end)
+    )
+    activePoints.append(end)
+  }
+
+  private mutating func recordDashPhaseUncertainty(
+    controlPolygonLength: Double,
+    chordLength: Double
+  ) {
+    // A Bezier's control polygon bounds how far flattened dash phase can lag.
+    dashPhaseUncertainty += max(0, controlPolygonLength - chordLength)
   }
 
   private func distance(
@@ -415,6 +465,7 @@ private enum SubpathClosure {
 private struct StrokeHitGeometry {
   let stroke: StrokeStyle
   let tolerance: Double
+  let phaseUncertainty: Double
 
   private var radius: Double {
     stroke.width / 2
@@ -445,8 +496,8 @@ private struct StrokeHitGeometry {
 
     let joinsAtSeam =
       subpath.closure == .closed
-      && dashPattern.isPainted(before: pathLength)
-      && dashPattern.isPainted(after: 0)
+      && dashPattern.mayBePainted(before: pathLength, uncertainty: phaseUncertainty)
+      && dashPattern.mayBePainted(after: 0, uncertainty: phaseUncertainty)
 
     for segment in segments {
       if dashedBodyContains(
@@ -463,8 +514,15 @@ private struct StrokeHitGeometry {
 
     for index in segments.indices.dropFirst() {
       let outgoing = segments[index]
-      guard dashPattern.isPainted(before: outgoing.startDistance),
-        dashPattern.isPainted(after: outgoing.startDistance)
+      guard
+        dashPattern.mayBePainted(
+          before: outgoing.startDistance,
+          uncertainty: phaseUncertainty
+        ),
+        dashPattern.mayBePainted(
+          after: outgoing.startDistance,
+          uncertainty: phaseUncertainty
+        )
       else {
         continue
       }
@@ -574,7 +632,8 @@ private struct StrokeHitGeometry {
       within: measuredSegment.startDistance...measuredSegment.endDistance,
       pathLength: pathLength,
       closure: closure,
-      joinsAtSeam: joinsAtSeam
+      joinsAtSeam: joinsAtSeam,
+      uncertainty: phaseUncertainty
     )
 
     for span in spans {
@@ -676,30 +735,34 @@ private struct StrokeHitGeometry {
 
   private func joinPoints(in run: StrokeRun) -> [StrokeJoin] {
     let points = run.vertices
+    guard points.count >= 2 else { return [] }
+
+    if run.closure == .closed {
+      return points.indices.map { index in
+        let previousIndex =
+          index == points.startIndex
+          ? points.index(before: points.endIndex) : points.index(before: index)
+        let nextIndex =
+          points.index(after: index) == points.endIndex
+          ? points.startIndex : points.index(after: index)
+
+        return StrokeJoin(
+          previous: points[previousIndex],
+          vertex: points[index],
+          next: points[nextIndex]
+        )
+      }
+    }
+
     guard points.count >= 3 else { return [] }
 
-    var joins = points.indices.dropFirst().dropLast().map { index in
+    return points.indices.dropFirst().dropLast().map { index in
       StrokeJoin(
         previous: points[points.index(before: index)],
         vertex: points[index],
         next: points[points.index(after: index)]
       )
     }
-    if run.closure == .closed,
-      let first = points.first,
-      let last = points.last
-    {
-      joins.append(StrokeJoin(previous: last, vertex: first, next: points[1]))
-      joins.append(
-        StrokeJoin(
-          previous: points[points.count - 2],
-          vertex: last,
-          next: first
-        )
-      )
-    }
-
-    return joins
   }
 
   private func lineIntersection(
@@ -850,16 +913,29 @@ private struct DashPattern {
     return entryIndex(containing: precedingPhase).isMultiple(of: 2)
   }
 
+  func mayBePainted(after distance: Double, uncertainty: Double) -> Bool {
+    guard uncertainty > 0 else { return isPainted(after: distance) }
+
+    return paintMayOccur(near: distance, uncertainty: uncertainty)
+  }
+
+  func mayBePainted(before distance: Double, uncertainty: Double) -> Bool {
+    guard uncertainty > 0 else { return isPainted(before: distance) }
+
+    return paintMayOccur(near: distance, uncertainty: uncertainty)
+  }
+
   func paintedSpans(
     near distance: Double,
     within segmentRange: ClosedRange<Double>,
     pathLength: Double,
     closure: SubpathClosure,
-    joinsAtSeam: Bool
+    joinsAtSeam: Bool,
+    uncertainty: Double
   ) -> [DashPaintSpan] {
     candidatePaintRanges(near: distance).compactMap { candidate in
-      let pathStart = max(0, candidate.lowerBound)
-      let pathEnd = min(pathLength, candidate.upperBound)
+      let pathStart = max(0, candidate.lowerBound - uncertainty)
+      let pathEnd = min(pathLength, candidate.upperBound + uncertainty)
       guard pathStart <= pathEnd else { return nil }
 
       let start = max(segmentRange.lowerBound, pathStart)
@@ -883,6 +959,13 @@ private struct DashPattern {
         startsWithCap: startsWithCap,
         endsWithCap: endsWithCap
       )
+    }
+  }
+
+  private func paintMayOccur(near distance: Double, uncertainty: Double) -> Bool {
+    candidatePaintRanges(near: distance).contains { candidate in
+      distance >= candidate.lowerBound - uncertainty
+        && distance <= candidate.upperBound + uncertainty
     }
   }
 
@@ -931,13 +1014,35 @@ private struct DashPattern {
 }
 
 extension ShapeKind {
+  fileprivate func contains(
+    _ point: SionPoint,
+    in frame: SionRect,
+    style: ElementStyle,
+    tolerance: Double
+  ) -> Bool {
+    if let coarsePath = coarseFlattened(in: frame) {
+      guard coarsePath.contains(point, style: style, tolerance: tolerance) else {
+        return false
+      }
+
+      // A completed coarse path is already identical to the full traversal.
+      guard coarsePath.truncationTolerance > 0 else { return true }
+    }
+
+    return flattened(in: frame).contains(point, style: style, tolerance: tolerance)
+  }
+
   fileprivate func hitBounds(in frame: SionRect) -> SionRect? {
     guard case .custom(let path) = self else { return frame }
 
     return path.hitBounds(in: frame)
   }
 
-  fileprivate func flattened(in frame: SionRect) -> FlattenedPath {
+  fileprivate func flattened(
+    in frame: SionRect,
+    maximumBuiltInCurveSubdivisionDepth: Int = HitGeometryDefaults
+      .maximumBuiltInCurveSubdivisionDepth
+  ) -> FlattenedPath {
     switch self {
     case .rectangle:
       return polygon([
@@ -947,9 +1052,16 @@ extension ShapeKind {
         SionPoint(x: frame.minX, y: frame.maxY),
       ])
     case .roundedRectangle(let radius):
-      return roundedRectangle(in: frame, radius: radius)
+      return roundedRectangle(
+        in: frame,
+        radius: radius,
+        maximumCurveSubdivisionDepth: maximumBuiltInCurveSubdivisionDepth
+      )
     case .ellipse:
-      return ellipse(in: frame)
+      return ellipse(
+        in: frame,
+        maximumCurveSubdivisionDepth: maximumBuiltInCurveSubdivisionDepth
+      )
     case .diamond:
       return polygon([
         SionPoint(x: frame.center.x, y: frame.minY),
@@ -974,11 +1086,31 @@ extension ShapeKind {
         SionPoint(x: frame.minX, y: frame.center.y),
       ])
     case .capsule:
-      return roundedRectangle(in: frame, radius: min(frame.width, frame.height) / 2)
+      return roundedRectangle(
+        in: frame,
+        radius: min(frame.width, frame.height) / 2,
+        maximumCurveSubdivisionDepth: maximumBuiltInCurveSubdivisionDepth
+      )
     case .cylinder:
-      return cylinder(in: frame)
+      return cylinder(
+        in: frame,
+        maximumCurveSubdivisionDepth: maximumBuiltInCurveSubdivisionDepth
+      )
     case .custom(let path):
       return path.flattened(in: frame)
+    }
+  }
+
+  private func coarseFlattened(in frame: SionRect) -> FlattenedPath? {
+    switch self {
+    case .roundedRectangle, .ellipse, .capsule, .cylinder:
+      return flattened(
+        in: frame,
+        maximumBuiltInCurveSubdivisionDepth: HitGeometryDefaults
+          .maximumBuiltInBroadPhaseSubdivisionDepth
+      )
+    case .rectangle, .diamond, .triangle, .hexagon, .custom:
+      return nil
     }
   }
 
@@ -995,7 +1127,11 @@ extension ShapeKind {
     return builder.build()
   }
 
-  private func roundedRectangle(in frame: SionRect, radius: Double) -> FlattenedPath {
+  private func roundedRectangle(
+    in frame: SionRect,
+    radius: Double,
+    maximumCurveSubdivisionDepth: Int
+  ) -> FlattenedPath {
     let finiteRadius = radius.isFinite ? radius : 0
     let clampedRadius = min(max(0, finiteRadius), min(frame.width, frame.height) / 2)
     guard clampedRadius > 0 else {
@@ -1003,7 +1139,9 @@ extension ShapeKind {
     }
 
     let control = clampedRadius * HitGeometryDefaults.arcControlFactor
-    var builder = FlattenedPathBuilder()
+    var builder = FlattenedPathBuilder(
+      maximumCurveSubdivisionDepth: maximumCurveSubdivisionDepth
+    )
     builder.move(to: SionPoint(x: frame.minX + clampedRadius, y: frame.minY))
     builder.line(to: SionPoint(x: frame.maxX - clampedRadius, y: frame.minY))
     builder.cubic(
@@ -1034,12 +1172,17 @@ extension ShapeKind {
     return builder.build()
   }
 
-  private func ellipse(in frame: SionRect) -> FlattenedPath {
+  private func ellipse(
+    in frame: SionRect,
+    maximumCurveSubdivisionDepth: Int
+  ) -> FlattenedPath {
     let horizontalRadius = frame.width / 2
     let verticalRadius = frame.height / 2
     let horizontalControl = horizontalRadius * HitGeometryDefaults.arcControlFactor
     let verticalControl = verticalRadius * HitGeometryDefaults.arcControlFactor
-    var builder = FlattenedPathBuilder()
+    var builder = FlattenedPathBuilder(
+      maximumCurveSubdivisionDepth: maximumCurveSubdivisionDepth
+    )
     builder.move(to: SionPoint(x: frame.center.x, y: frame.minY))
     builder.cubic(
       control1: SionPoint(x: frame.center.x + horizontalControl, y: frame.minY),
@@ -1066,14 +1209,19 @@ extension ShapeKind {
     return builder.build()
   }
 
-  private func cylinder(in frame: SionRect) -> FlattenedPath {
+  private func cylinder(
+    in frame: SionRect,
+    maximumCurveSubdivisionDepth: Int
+  ) -> FlattenedPath {
     let arcHeight = min(
       frame.height * ShapeGeometryDefaults.cylinderArcFraction,
       frame.height / 2
     )
     let horizontalControl = (frame.width / 2) * HitGeometryDefaults.arcControlFactor
     let verticalControl = arcHeight * HitGeometryDefaults.arcControlFactor
-    var builder = FlattenedPathBuilder()
+    var builder = FlattenedPathBuilder(
+      maximumCurveSubdivisionDepth: maximumCurveSubdivisionDepth
+    )
     builder.move(to: SionPoint(x: frame.minX, y: frame.minY + arcHeight))
     builder.cubic(
       control1: SionPoint(x: frame.minX, y: frame.minY + arcHeight - verticalControl),
@@ -1263,6 +1411,10 @@ private enum HitGeometryDefaults {
   static let flattenedSegmentsPerPathCommand = 16
   static let maximumFlattenedCurveSegmentCount =
     SceneLimits.maximumPathCommandCount * flattenedSegmentsPerPathCommand
+  // A 32-segment conservative preflight rejects distant curved-shape misses.
+  static let maximumBuiltInBroadPhaseSubdivisionDepth = 3
+  // Four-curve built-ins stay below 1,024 segments at maximum canvas scale.
+  static let maximumBuiltInCurveSubdivisionDepth = 8
   static let maximumCurveSubdivisionDepth = 12
   // StrokeStyle has no override, so mirror NSBezierPath's default.
   static let miterLimit = 10.0

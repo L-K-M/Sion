@@ -374,7 +374,7 @@ private struct FlattenedPathBuilder {
     // De Casteljau subdivision keeps error stable on large canvases.
     let flatness = distance(from: control, toLineFrom: start, to: end)
     // One split preserves an implicitly closed shallow curve's fill area.
-    let needsFillContour = depth == 0 && flatness > HitGeometryDefaults.epsilon
+    let needsFillContour = depth == 0 && flatness > 0
     guard flatness > HitGeometryDefaults.curveFlatness || needsFillContour else {
       appendQuadraticLeaf(
         start: start,
@@ -424,7 +424,7 @@ private struct FlattenedPathBuilder {
       distance(from: control2, toLineFrom: start, to: end)
     )
     // One split preserves an implicitly closed shallow curve's fill area.
-    let needsFillContour = depth == 0 && flatness > HitGeometryDefaults.epsilon
+    let needsFillContour = depth == 0 && flatness > 0
     guard flatness > HitGeometryDefaults.curveFlatness || needsFillContour else {
       appendCubicLeaf(
         start: start,

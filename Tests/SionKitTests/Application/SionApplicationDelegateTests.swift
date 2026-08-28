@@ -9,10 +9,12 @@ final class SionApplicationDelegateTests: XCTestCase {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
     let previousServicesMenu = application.servicesMenu
+    let previousWindowsMenu = application.windowsMenu
 
     defer {
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
+      application.windowsMenu = previousWindowsMenu
     }
 
     application.mainMenu = nil

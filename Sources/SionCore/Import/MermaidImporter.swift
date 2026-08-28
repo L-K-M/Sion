@@ -304,6 +304,9 @@ public enum MermaidImporter {
         kind: .roundedRectangle(radius: MermaidLayout.cornerRadius)
       )
     }
+    guard !UnsupportedNodeDecoration.hasPrefix(in: decoration) else {
+      return nil
+    }
     guard let delimiters = delimiters(for: decoration.first) else {
       return nil
     }
@@ -470,6 +473,20 @@ private enum MermaidArrow: String, CaseIterable {
   case solid = "-->"
   case thick = "==>"
   case line = "---"
+}
+
+private enum UnsupportedNodeDecoration: String, CaseIterable {
+  case stadium = "(["
+  case subroutine = "[["
+  case cylinder = "[("
+  case circle = "(("
+  case hexagon = "{{"
+  case parallelogramOrTrapezoid = "[/"
+  case reversedParallelogramOrTrapezoid = "[\\"
+
+  static func hasPrefix(in decoration: String) -> Bool {
+    allCases.contains { decoration.hasPrefix($0.rawValue) }
+  }
 }
 
 extension Character {

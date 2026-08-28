@@ -656,13 +656,9 @@ private struct StrokeHitGeometry {
     for index in segments.indices.dropFirst() {
       let outgoing = segments[index]
       guard
-        dashPattern.mayBePainted(
-          before: outgoing.startDistance,
-          uncertainty: subpath.dashPhaseUncertainty
-        ),
-        dashPattern.mayBePainted(
-          after: outgoing.startDistance,
-          uncertainty: subpath.dashPhaseUncertainty
+        dashPattern.mayPaintContinuously(
+          across: outgoing.startDistance,
+          forwardUncertainty: subpath.dashPhaseUncertainty
         )
       else {
         continue
@@ -699,26 +695,12 @@ private struct StrokeHitGeometry {
     pathLength: Double,
     dashPattern: DashPattern
   ) -> DashSeamState {
-    guard subpath.closure == .closed,
-      dashPattern.isPainted(after: 0),
-      dashPattern.mayBePainted(
-        before: pathLength,
-        uncertainty: subpath.dashPhaseUncertainty
-      )
-    else {
-      return .disconnected
-    }
+    guard subpath.closure == .closed else { return .disconnected }
 
-    guard
-      dashPattern.isDefinitelyPainted(
-        before: pathLength,
-        throughForwardUncertainty: subpath.dashPhaseUncertainty
-      )
-    else {
-      return .possiblyConnected
-    }
-
-    return .connected
+    return dashPattern.seamState(
+      pathLength: pathLength,
+      forwardUncertainty: subpath.dashPhaseUncertainty
+    )
   }
 
   private func contains(_ point: SionPoint, in run: StrokeRun) -> Bool {
@@ -1113,6 +1095,7 @@ private struct DashPaintSpan {
 
 private struct DashPattern {
   private let cumulativeEnds: [Double]
+  private let positivePaintRanges: [ClosedRange<Double>]
   private let period: Double
 
   init?(_ source: [Double]) {
@@ -1136,55 +1119,50 @@ private struct DashPattern {
 
     var total = 0.0
     var ends: [Double] = []
+    var paintRanges: [ClosedRange<Double>] = []
     ends.reserveCapacity(lengths.count)
-    for length in lengths {
+    paintRanges.reserveCapacity(lengths.count / 2)
+    for (index, length) in lengths.enumerated() {
+      let start = total
       total += length
       guard total.isFinite else { return nil }
 
       ends.append(total)
+      if index.isMultiple(of: 2), length > 0 {
+        paintRanges.append(start...total)
+      }
     }
     guard total > 0 else { return nil }
 
     cumulativeEnds = ends
+    positivePaintRanges = paintRanges
     period = total
   }
 
-  func isPainted(after distance: Double) -> Bool {
-    entryIndex(containing: phase(at: distance)).isMultiple(of: 2)
-  }
-
-  func isPainted(before distance: Double) -> Bool {
-    let currentPhase = phase(at: distance)
-    let precedingPhase = currentPhase > 0 ? currentPhase.nextDown : period.nextDown
-    return entryIndex(containing: precedingPhase).isMultiple(of: 2)
-  }
-
-  func mayBePainted(after distance: Double, uncertainty: Double) -> Bool {
-    guard uncertainty > 0 else { return isPainted(after: distance) }
-
-    return paintMayOccur(near: distance, uncertainty: uncertainty)
-  }
-
-  func mayBePainted(before distance: Double, uncertainty: Double) -> Bool {
-    guard uncertainty > 0 else { return isPainted(before: distance) }
-
-    return paintMayOccur(near: distance, uncertainty: uncertainty)
-  }
-
-  func isDefinitelyPainted(
-    before distance: Double,
-    throughForwardUncertainty uncertainty: Double
+  func mayPaintContinuously(
+    across distance: Double,
+    forwardUncertainty: Double
   ) -> Bool {
-    guard isPainted(before: distance) else { return false }
-    guard uncertainty > 0 else { return true }
+    guard let range = nextPositivePaintRange(atOrAfter: distance) else { return false }
 
-    let currentPhase = phase(at: distance)
-    let precedingPhase = currentPhase > 0 ? currentPhase.nextDown : period.nextDown
-    let index = entryIndex(containing: precedingPhase)
-    guard index.isMultiple(of: 2) else { return false }
+    let maximumDistance = distance + max(0, forwardUncertainty)
+    return range.lowerBound < maximumDistance && range.upperBound > distance
+  }
 
-    // Flattening underestimates curve length, so the true seam only moves forward.
-    return uncertainty < cumulativeEnds[index] - currentPhase
+  func seamState(
+    pathLength: Double,
+    forwardUncertainty: Double
+  ) -> DashSeamState {
+    // Only the initial dash can remain one run across a closed seam.
+    guard let initialDash = positivePaintRanges.first,
+      initialDash.lowerBound == 0,
+      initialDash.upperBound >= pathLength
+    else {
+      return .disconnected
+    }
+
+    let remainingLength = initialDash.upperBound - pathLength
+    return forwardUncertainty <= remainingLength ? .connected : .possiblyConnected
   }
 
   func paintedSpans(
@@ -1225,19 +1203,25 @@ private struct DashPattern {
     }
   }
 
-  private func paintMayOccur(near distance: Double, uncertainty: Double) -> Bool {
-    candidatePaintRanges(near: distance).contains { candidate in
-      distance >= candidate.lowerBound - uncertainty
-        && distance <= candidate.upperBound + uncertainty
-    }
-  }
-
   private func candidatePaintRanges(near distance: Double) -> [ClosedRange<Double>] {
     let currentPhase = phase(at: distance)
     let cycleStart = distance - currentPhase
     let index = entryIndex(containing: currentPhase)
     if index.isMultiple(of: 2) {
-      return [paintRange(at: index, cycleStart: cycleStart)]
+      let current = paintRange(at: index, cycleStart: cycleStart)
+      let entryStart = index == cumulativeEnds.startIndex ? 0 : cumulativeEnds[index - 1]
+      guard
+        currentPhase == entryStart,
+        let previous = positivePaintRangeEnding(
+          at: currentPhase,
+          cycleStart: cycleStart
+        )
+      else {
+        return [current]
+      }
+
+      // A zero gap leaves two distinct capped dashes at the same point.
+      return [previous, current]
     }
 
     let previous = paintRange(at: index - 1, cycleStart: cycleStart)
@@ -1247,6 +1231,67 @@ private struct DashPattern {
     }
 
     return [previous, paintRange(at: 0, cycleStart: cycleStart + period)]
+  }
+
+  private func nextPositivePaintRange(
+    atOrAfter distance: Double
+  ) -> ClosedRange<Double>? {
+    guard let first = positivePaintRanges.first else { return nil }
+
+    let currentPhase = phase(at: distance)
+    let cycleStart = distance - currentPhase
+    var lower = positivePaintRanges.startIndex
+    var upper = positivePaintRanges.endIndex
+    while lower < upper {
+      let midpoint = lower + ((upper - lower) / 2)
+      if positivePaintRanges[midpoint].upperBound <= currentPhase {
+        lower = midpoint + 1
+        continue
+      }
+
+      upper = midpoint
+    }
+
+    guard lower < positivePaintRanges.endIndex else {
+      return (cycleStart + period + first.lowerBound)...(cycleStart + period + first.upperBound)
+    }
+
+    let range = positivePaintRanges[lower]
+    return (cycleStart + range.lowerBound)...(cycleStart + range.upperBound)
+  }
+
+  private func positivePaintRangeEnding(
+    at phase: Double,
+    cycleStart: Double
+  ) -> ClosedRange<Double>? {
+    guard !positivePaintRanges.isEmpty else { return nil }
+
+    if phase == 0 {
+      guard let last = positivePaintRanges.last, last.upperBound == period else {
+        return nil
+      }
+
+      return (cycleStart - period + last.lowerBound)...cycleStart
+    }
+
+    var lower = positivePaintRanges.startIndex
+    var upper = positivePaintRanges.endIndex
+    while lower < upper {
+      let midpoint = lower + ((upper - lower) / 2)
+      if positivePaintRanges[midpoint].upperBound < phase {
+        lower = midpoint + 1
+        continue
+      }
+
+      upper = midpoint
+    }
+
+    guard lower < positivePaintRanges.endIndex else { return nil }
+
+    let range = positivePaintRanges[lower]
+    guard range.upperBound == phase else { return nil }
+
+    return (cycleStart + range.lowerBound)...(cycleStart + range.upperBound)
   }
 
   private func paintRange(at index: Int, cycleStart: Double) -> ClosedRange<Double> {

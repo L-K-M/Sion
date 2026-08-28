@@ -11,17 +11,58 @@
     let pixelSize: SionSize
   }
 
+  struct SafeImageRenditionService: Sendable {
+    typealias Build = @Sendable (Data) async -> SafeImageRendition?
+
+    private let build: Build
+
+    init() {
+      build = { data in
+        let task = Task.detached(priority: .userInitiated) {
+          SafeImageRenditionBuilder.make(from: data)
+        }
+
+        return await withTaskCancellationHandler {
+          await task.value
+        } onCancel: {
+          task.cancel()
+        }
+      }
+    }
+
+    init(build: @escaping Build) {
+      self.build = build
+    }
+
+    func make(from data: Data) async -> SafeImageRendition? {
+      guard !Task.isCancelled else { return nil }
+
+      let rendition = await build(data)
+      guard !Task.isCancelled else { return nil }
+
+      return rendition
+    }
+  }
+
   /// Downsamples imports through ImageIO before AppKit sees their pixels.
   enum SafeImageRenditionBuilder {
     static func make(from data: Data) -> SafeImageRendition? {
-      guard data.count <= SionArchiveConstants.maximumEntryByteCount else { return nil }
+      guard !Task.isCancelled,
+        data.count <= SionArchiveConstants.maximumEntryByteCount
+      else {
+        return nil
+      }
 
       if let source = CGImageSourceCreateWithData(
         data as CFData,
         [kCGImageSourceShouldCache: false] as CFDictionary
       ) {
+        guard !Task.isCancelled else { return nil }
+
         return make(from: source)
       }
+
+      guard !Task.isCancelled else { return nil }
 
       return makeFromPDF(data)
     }
@@ -60,6 +101,8 @@
         return nil
       }
 
+      guard !Task.isCancelled else { return nil }
+
       return rendition(from: image, sourceSize: sourceSize)
     }
 
@@ -94,7 +137,7 @@
       )
       context.concatenate(transform)
       context.drawPDFPage(page)
-      guard let image = context.makeImage() else { return nil }
+      guard !Task.isCancelled, let image = context.makeImage() else { return nil }
 
       return rendition(from: image, sourceSize: sourceSize)
     }
@@ -116,7 +159,7 @@
       }
 
       CGImageDestinationAddImage(destination, image, nil)
-      guard CGImageDestinationFinalize(destination) else { return nil }
+      guard !Task.isCancelled, CGImageDestinationFinalize(destination) else { return nil }
 
       let data = output as Data
       guard data.count <= SionArchiveConstants.maximumEntryByteCount else { return nil }

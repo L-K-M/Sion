@@ -109,6 +109,28 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testImplicitlyClosedSubepsilonCurveHitsFill() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .quadratic(
+          control: SionPoint(x: 0.5, y: 1e-10),
+          to: SionPoint(x: 1, y: 0)
+        ),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(fill: .solid(.black))
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 0.5, y: 2e-11), in: element)
+    )
+  }
+
   func testThinCurvedStrokeIncludesFlatteningMargin() {
     let path = VectorPath(
       coordinateSpace: .localPoints,

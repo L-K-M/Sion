@@ -9,19 +9,22 @@ final class SionRevertMenuTests: XCTestCase {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
     let previousWindowsMenu = application.windowsMenu
-    let existingWindows = Set(application.windows.map(ObjectIdentifier.init))
 
     defer {
-      for window in application.windows
-      where !existingWindows.contains(ObjectIdentifier(window)) {
-        window.close()
-      }
-
       application.mainMenu = previousMainMenu
       application.windowsMenu = previousWindowsMenu
     }
 
     let delegate = SionApplicationDelegate()
+    let documentController = try XCTUnwrap(
+      Mirror(reflecting: delegate).children.first {
+        $0.label == TestApplicationDelegate.documentController
+      }?.value as? NSDocumentController
+    )
+    let sentinelDocument = SionDrawingDocument()
+    documentController.addDocument(sentinelDocument)
+    defer { documentController.removeDocument(sentinelDocument) }
+
     delegate.applicationDidFinishLaunching(
       Notification(name: NSApplication.didFinishLaunchingNotification, object: application)
     )
@@ -44,4 +47,8 @@ private enum TestMenu {
 
 private enum TestAction {
   static let revertToSaved = #selector(NSDocument.revertToSaved(_:))
+}
+
+private enum TestApplicationDelegate {
+  static let documentController = "documentController"
 }

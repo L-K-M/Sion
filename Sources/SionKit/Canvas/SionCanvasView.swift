@@ -1683,7 +1683,7 @@
         componentBuffer in
         guard let componentAddress = componentBuffer.baseAddress else { return nil }
 
-        locations.withUnsafeBufferPointer { locationBuffer in
+        return locations.withUnsafeBufferPointer { locationBuffer in
           CGGradient(
             colorSpace: colorSpace,
             colorComponents: componentAddress,

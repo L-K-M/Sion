@@ -243,7 +243,7 @@ final class InspectorPaletteTests: XCTestCase {
     fieldEditor.insertText("Shared", replacementRange: fieldEditor.selectedRange())
 
     // Escape cancels the edit: the field reverts and editing ends.
-    fieldEditor.doCommandBy(#selector(NSResponder.cancelOperation(_:)))
+    fieldEditor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
     XCTAssertTrue(panel.makeFirstResponder(nil))
 
     XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")

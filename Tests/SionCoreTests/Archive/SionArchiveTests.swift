@@ -96,9 +96,10 @@ final class SionArchiveTests: XCTestCase {
     let entries = Dictionary(
       uniqueKeysWithValues: try StoredZIPArchive.decode(encoded.data).map { ($0.path, $0.data) }
     )
+    let manifestData = try XCTUnwrap(entries[SionArchiveConstants.manifestPath])
     let manifest = try CanonicalJSON.decodeStrict(
       SionManifest.self,
-      from: entries[SionArchiveConstants.manifestPath]!
+      from: manifestData
     )
 
     XCTAssertEqual(

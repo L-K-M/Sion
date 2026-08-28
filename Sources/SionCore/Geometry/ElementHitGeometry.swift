@@ -145,14 +145,15 @@ private struct FlattenedPath {
   }
 
   private var bounds: SionRect? {
-    let points = subpaths.flatMap(\.points)
-    guard let first = points.first else { return nil }
-
-    return points.dropFirst().reduce(
-      SionRect(x: first.x, y: first.y, width: 0, height: 0)
-    ) { bounds, point in
-      bounds.union(SionRect(x: point.x, y: point.y, width: 0, height: 0))
+    var result: SionRect?
+    for subpath in subpaths {
+      for point in subpath.points {
+        let pointBounds = SionRect(x: point.x, y: point.y, width: 0, height: 0)
+        result = result?.union(pointBounds) ?? pointBounds
+      }
     }
+
+    return result
   }
 
   private func containsFill(_ point: SionPoint) -> Bool {
@@ -676,11 +677,6 @@ private struct StrokeHitGeometry {
         return geometry.contains(point, in: StrokeRun(subpath: subpath))
       }
 
-      // A truncated subpath stays selectable without changing exact siblings.
-      if subpath.truncationTolerance > 0 {
-        return geometry.contains(point, in: StrokeRun(subpath: subpath))
-      }
-
       return geometry.contains(point, in: subpath, dashPattern: dashPattern)
     }
   }
@@ -690,17 +686,14 @@ private struct StrokeHitGeometry {
     in subpath: FlattenedSubpath,
     dashPattern: DashPattern
   ) -> Bool {
-    let run = StrokeRun(subpath: subpath)
-    if let containsPoint = degenerateCapContains(point, in: run) {
-      return containsPoint
-    }
-
     guard let segments = measuredSegments(in: subpath) else {
-      return contains(point, in: run)
+      return contains(point, in: StrokeRun(subpath: subpath))
     }
-    guard let pathLength = segments.last?.endDistance else { return false }
+    guard let pathLength = segments.last?.endDistance else {
+      return degenerateCapContains(point, in: StrokeRun(subpath: subpath)) ?? false
+    }
     guard dashPattern.preservesPhasePrecision(upTo: pathLength) else {
-      return contains(point, in: run)
+      return contains(point, in: StrokeRun(subpath: subpath))
     }
 
     let seamState = dashSeamState(
@@ -710,13 +703,26 @@ private struct StrokeHitGeometry {
     )
 
     for segment in segments {
+      var phaseUncertainty = subpath.dashPhaseUncertainty
+      if subpath.truncationTolerance > 0 {
+        // Truncated tangents can shift a query's projected dash position.
+        let referenceRadius =
+          stroke.lineCap == .square
+          ? hypot(radius, radius) : radius
+        phaseUncertainty += max(0, tolerance - subpath.approximationTolerance)
+        phaseUncertainty += curveTolerance(
+          tangentDirectionDelta: segment.tangentDirectionDelta,
+          referenceRadius: referenceRadius
+        )
+      }
+
       if dashedBodyContains(
         point,
         measuredSegment: segment,
         pathLength: pathLength,
         seamState: seamState,
         dashPattern: dashPattern,
-        phaseUncertainty: subpath.dashPhaseUncertainty
+        phaseUncertainty: phaseUncertainty
       ) {
         return true
       }
@@ -894,6 +900,22 @@ private struct StrokeHitGeometry {
     let segment = measuredSegment.segment
     let vector = segment.end - segment.start
     let length = measuredSegment.length
+    let maximumReferenceRadius =
+      stroke.lineCap == .square
+      ? hypot(radius, radius) : radius
+    let maximumCurveTolerance = curveTolerance(
+      tangentDirectionDelta: measuredSegment.tangentDirectionDelta,
+      referenceRadius: maximumReferenceRadius
+    )
+    // Reject remote chords before resolving their dash phase and cap spans.
+    guard
+      distance(from: point, to: segment)
+        <= maximumReferenceRadius + tolerance + maximumCurveTolerance
+        + HitGeometryDefaults.epsilon
+    else {
+      return false
+    }
+
     let direction = vector / length
     let projectedDistance = min(length, max(0, (point - segment.start).dot(direction)))
     let pathDistance = measuredSegment.startDistance + projectedDistance
@@ -2085,8 +2107,8 @@ private enum HitGeometryDefaults {
   static let maximumFlattenedCurveSegmentCount =
     SceneLimits.maximumPathCommandCount * flattenedSegmentsPerPathCommand
   static let maximumInteractiveDashPatternCount = SceneLimits.maximumPathCommandCount
-  // A 32-segment conservative preflight rejects distant curved-shape misses.
-  static let maximumBuiltInBroadPhaseSubdivisionDepth = 3
+  // An eight-segment conservative preflight rejects curved-shape misses.
+  static let maximumBuiltInBroadPhaseSubdivisionDepth = 1
   // Four-curve built-ins use at most 1,024 curve segments.
   static let maximumBuiltInCurveSubdivisionDepth = 8
   static let maximumCurveSubdivisionDepth = 12

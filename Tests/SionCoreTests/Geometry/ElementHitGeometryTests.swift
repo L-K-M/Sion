@@ -1283,6 +1283,33 @@ final class ElementHitGeometryTests: XCTestCase {
     XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
   }
 
+  func testLargeDashedEllipseGapsStayWithinInteractiveDeadline() {
+    let frame = SionRect(x: 0, y: 0, width: 1_000, height: 1_000)
+    var element = SceneElement.shape(frame: frame, kind: .ellipse)
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 2,
+        dashPattern: [1, 1_000],
+        lineCap: .butt
+      )
+    )
+    let gapPoint = SionPoint(x: frame.maxX, y: frame.center.y)
+
+    let started = ContinuousClock.now
+    var containsPoint = false
+    for _ in 0..<Self.largeSceneElementCount {
+      if ElementHitGeometry.contains(gapPoint, in: element, tolerance: 2) {
+        containsPoint = true
+      }
+    }
+    let elapsed = started.duration(to: .now)
+
+    XCTAssertFalse(containsPoint)
+    XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
+  }
+
   func testMaximumNormalizedPathsDistantMissesStayWithinInteractiveDeadline() {
     var commands: [PathCommand] = [.move(to: .zero)]
     for index in 1..<SceneLimits.maximumPathCommandCount {

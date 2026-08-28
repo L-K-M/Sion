@@ -120,19 +120,22 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     let application = NSApplication.shared
     let previousMainMenu = application.mainMenu
     let previousWindowsMenu = application.windowsMenu
-    let existingWindows = Set(application.windows.map(ObjectIdentifier.init))
     defer {
-      for window in application.windows
-      where !existingWindows.contains(ObjectIdentifier(window)) {
-        (window.windowController?.document as? NSDocument)?.close()
-        window.close()
-      }
-
       application.mainMenu = previousMainMenu
       application.windowsMenu = previousWindowsMenu
     }
 
     let delegate = SionApplicationDelegate()
+    let documentController = try XCTUnwrap(
+      Mirror(reflecting: delegate).children.first {
+        $0.label == TestApplicationDelegate.documentController
+      }?.value as? NSDocumentController
+    )
+    // Exercise menu installation without triggering launch-only document UI.
+    let sentinelDocument = SionDrawingDocument()
+    documentController.addDocument(sentinelDocument)
+    defer { documentController.removeDocument(sentinelDocument) }
+
     delegate.applicationDidFinishLaunching(
       Notification(name: NSApplication.didFinishLaunchingNotification)
     )
@@ -178,6 +181,10 @@ private enum TestMenu {
   static let bringForward = "Bring Forward"
   static let sendBackward = "Send Backward"
   static let sendToBack = "Send to Back"
+}
+
+private enum TestApplicationDelegate {
+  static let documentController = "documentController"
 }
 
 private enum TestPasteboard {

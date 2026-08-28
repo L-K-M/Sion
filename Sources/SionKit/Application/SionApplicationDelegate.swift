@@ -50,6 +50,7 @@ private enum SionMainMenu {
     menu.addItem(applicationMenu())
     menu.addItem(fileMenu())
     menu.addItem(editMenu())
+    menu.addItem(arrangeMenu())
     menu.addItem(viewMenu())
     menu.addItem(windowMenu())
     NSApp.mainMenu = menu
@@ -95,10 +96,41 @@ private enum SionMainMenu {
     submenu.addItem(item("Cut", action: AppAction.cut, key: "x"))
     submenu.addItem(item("Copy", action: AppAction.copy, key: "c"))
     submenu.addItem(item("Paste", action: AppAction.paste, key: "v"))
+    submenu.addItem(item("Duplicate", action: AppAction.duplicate, key: "d"))
     submenu.addItem(item("Delete", action: AppAction.delete, key: "\u{8}", modifiers: []))
     submenu.addItem(.separator())
     submenu.addItem(item("Select All", action: AppAction.selectAll, key: "a"))
     return parentItem(title: "Edit", submenu: submenu)
+  }
+
+  private static func arrangeMenu() -> NSMenuItem {
+    let submenu = NSMenu(title: "Arrange")
+    submenu.addItem(
+      item(
+        "Bring to Front", action: AppAction.bringToFront, key: "]",
+        modifiers: [.command, .shift]))
+    submenu.addItem(item("Bring Forward", action: AppAction.bringForward, key: "]"))
+    submenu.addItem(item("Send Backward", action: AppAction.sendBackward, key: "["))
+    submenu.addItem(
+      item("Send to Back", action: AppAction.sendToBack, key: "[", modifiers: [.command, .shift]))
+    submenu.addItem(.separator())
+    submenu.addItem(item("Align Left", action: AppAction.alignLeading))
+    submenu.addItem(
+      item("Align Center Horizontally", action: AppAction.alignCenterHorizontally))
+    submenu.addItem(item("Align Right", action: AppAction.alignTrailing))
+    submenu.addItem(item("Align Top", action: AppAction.alignTop))
+    submenu.addItem(item("Align Center Vertically", action: AppAction.alignCenterVertically))
+    submenu.addItem(item("Align Bottom", action: AppAction.alignBottom))
+    submenu.addItem(.separator())
+    submenu.addItem(item("Distribute Horizontally", action: AppAction.distributeHorizontally))
+    submenu.addItem(item("Distribute Vertically", action: AppAction.distributeVertically))
+    submenu.addItem(.separator())
+    submenu.addItem(
+      item("Lock", action: AppAction.lockSelection, key: "l", modifiers: [.command, .shift]))
+    submenu.addItem(item("Unlock", action: AppAction.unlockSelection))
+    submenu.addItem(item("Hide Selection", action: AppAction.hideSelection))
+    submenu.addItem(item("Reveal All Hidden", action: AppAction.revealHiddenElements))
+    return parentItem(title: "Arrange", submenu: submenu)
   }
 
   private static func viewMenu() -> NSMenuItem {
@@ -152,21 +184,38 @@ private enum SionMainMenu {
 
 private enum AppAction {
   static let actualSize = Selector(("actualSize:"))
+  static let alignBottom = Selector(("alignBottom:"))
+  static let alignCenterHorizontally = Selector(("alignCenterHorizontally:"))
+  static let alignCenterVertically = Selector(("alignCenterVertically:"))
+  static let alignLeading = Selector(("alignLeading:"))
+  static let alignTop = Selector(("alignTop:"))
+  static let alignTrailing = Selector(("alignTrailing:"))
+  static let bringForward = Selector(("bringForward:"))
+  static let bringToFront = Selector(("bringToFront:"))
   static let close = Selector(("performClose:"))
   static let copy = Selector(("copy:"))
   static let cut = Selector(("cut:"))
   static let delete = Selector(("delete:"))
+  static let distributeHorizontally = Selector(("distributeHorizontally:"))
+  static let distributeVertically = Selector(("distributeVertically:"))
+  static let duplicate = Selector(("duplicate:"))
   static let exportMermaid = Selector(("exportMermaid:"))
   static let exportSVG = Selector(("exportSVG:"))
+  static let hideSelection = Selector(("hideSelection:"))
+  static let lockSelection = Selector(("lockSelection:"))
   static let paste = Selector(("paste:"))
   static let redo = Selector(("redo:"))
+  static let revealHiddenElements = Selector(("revealHiddenElements:"))
   static let save = Selector(("saveDocument:"))
   static let saveAs = Selector(("saveDocumentAs:"))
   static let selectAll = Selector(("selectAll:"))
+  static let sendBackward = Selector(("sendBackward:"))
+  static let sendToBack = Selector(("sendToBack:"))
   static let showHistory = Selector(("showHistory:"))
   static let showInspector = Selector(("showInspector:"))
   static let showLibrary = Selector(("showLibrary:"))
   static let undo = Selector(("undo:"))
+  static let unlockSelection = Selector(("unlockSelection:"))
   static let zoomIn = Selector(("zoomIn:"))
   static let zoomOut = Selector(("zoomOut:"))
   static let zoomToFit = Selector(("zoomToFit:"))

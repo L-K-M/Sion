@@ -125,6 +125,7 @@ public enum SceneRenderGeometry {
     return bounds
   }
 
+  /// Axis-aligned bounds of every visible style effect on one element.
   package static func paintedBounds(
     of element: SceneElement,
     route: ConnectorRoute? = nil

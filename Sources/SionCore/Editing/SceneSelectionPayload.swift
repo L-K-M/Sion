@@ -78,6 +78,11 @@ public struct SceneSelectionPayload: Equatable, Sendable {
     self.assets = assets
   }
 
+  /// The copied content's bounds; connectors contribute their routed paths.
+  package var contentBounds: SionRect {
+    Self.contentBounds(of: elements)
+  }
+
   public func dataRepresentation() throws -> Data {
     try CanonicalJSON.encode(
       PayloadFile(

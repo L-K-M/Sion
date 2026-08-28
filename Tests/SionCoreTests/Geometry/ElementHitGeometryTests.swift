@@ -3,6 +3,8 @@ import XCTest
 @testable import SionCore
 
 final class ElementHitGeometryTests: XCTestCase {
+  private static let interactiveHitDeadline = Duration.seconds(1)
+
   func testTransparentFrameCornersMissNonrectangularShapes() {
     let frame = SionRect(x: 120, y: 80, width: 160, height: 100)
     let customPath = VectorPath(commands: [
@@ -121,7 +123,7 @@ final class ElementHitGeometryTests: XCTestCase {
     let elapsed = started.duration(to: .now)
 
     XCTAssertTrue(containsPoint)
-    XCTAssertLessThan(elapsed, .seconds(1))
+    XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
   }
 
   func testClosedDashSpanningPerimeterKeepsMiterAtSeam() {
@@ -147,6 +149,65 @@ final class ElementHitGeometryTests: XCTestCase {
 
     XCTAssertTrue(
       ElementHitGeometry.contains(SionPoint(x: 13, y: 13), in: element, tolerance: 0)
+    )
+  }
+
+  func testExplicitClosingLineKeepsMiterAtSeam() {
+    let frame = SionRect(x: 0, y: 0, width: 100, height: 100)
+    let path = VectorPath(commands: [
+      .move(to: SionPoint(x: 0.2, y: 0.2)),
+      .line(to: SionPoint(x: 0.8, y: 0.2)),
+      .line(to: SionPoint(x: 0.8, y: 0.8)),
+      .line(to: SionPoint(x: 0.2, y: 0.8)),
+      .line(to: SionPoint(x: 0.2, y: 0.2)),
+      .close,
+    ])
+    var element = SceneElement.path(frame: frame, path: path)
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 20,
+        lineCap: .butt,
+        lineJoin: .miter
+      )
+    )
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 13, y: 13), in: element, tolerance: 0)
+    )
+  }
+
+  func testDashCapsExtendOnlyPaintedRuns() {
+    let frame = SionRect(x: 100, y: 200, width: 100, height: 100)
+    let path = VectorPath(commands: [
+      .move(to: SionPoint(x: 0.2, y: 0.5)),
+      .line(to: SionPoint(x: 0.8, y: 0.5)),
+    ])
+
+    func element(lineCap: StrokeLineCap) -> SceneElement {
+      var element = SceneElement.path(frame: frame, path: path)
+      element.style = ElementStyle(
+        fill: .none,
+        stroke: StrokeStyle(
+          color: .black,
+          width: 10,
+          dashPattern: [20, 20],
+          lineCap: lineCap
+        )
+      )
+      return element
+    }
+
+    let pointPastDash = SionPoint(x: 142, y: 250)
+    XCTAssertFalse(
+      ElementHitGeometry.contains(pointPastDash, in: element(lineCap: .butt))
+    )
+    XCTAssertTrue(
+      ElementHitGeometry.contains(pointPastDash, in: element(lineCap: .round))
+    )
+    XCTAssertTrue(
+      ElementHitGeometry.contains(pointPastDash, in: element(lineCap: .square))
     )
   }
 
@@ -387,7 +448,7 @@ final class ElementHitGeometryTests: XCTestCase {
     let elapsed = started.duration(to: .now)
 
     XCTAssertFalse(containsPoint)
-    XCTAssertLessThan(elapsed, .seconds(1))
+    XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
   }
 
   func testCustomPathHonorsFillRule() {

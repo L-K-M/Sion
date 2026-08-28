@@ -590,6 +590,53 @@ final class ElementHitGeometryTests: XCTestCase {
     }
   }
 
+  func testClosedZeroLengthPathsHonorSolidAndDashedCaps() {
+    let point = SionPoint(x: 20, y: 20)
+    let paths = [
+      VectorPath(
+        coordinateSpace: .localPoints,
+        commands: [
+          .move(to: point),
+          .close,
+        ]
+      ),
+      VectorPath(
+        coordinateSpace: .localPoints,
+        commands: [
+          .move(to: point),
+          .line(to: point),
+          .close,
+        ]
+      ),
+    ]
+    let dashPatterns: [[Double]] = [[], [20, 20]]
+
+    for path in paths {
+      for dashPattern in dashPatterns {
+        func element(lineCap: StrokeLineCap) -> SceneElement {
+          var element = SceneElement.path(
+            frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+            path: path
+          )
+          element.style = ElementStyle(
+            fill: .none,
+            stroke: StrokeStyle(
+              color: .black,
+              width: 10,
+              dashPattern: dashPattern,
+              lineCap: lineCap
+            )
+          )
+          return element
+        }
+
+        XCTAssertFalse(ElementHitGeometry.contains(point, in: element(lineCap: .butt)))
+        XCTAssertTrue(ElementHitGeometry.contains(point, in: element(lineCap: .round)))
+        XCTAssertTrue(ElementHitGeometry.contains(point, in: element(lineCap: .square)))
+      }
+    }
+  }
+
   func testCurvedButtCapUsesEndpointTangent() {
     let path = VectorPath(
       coordinateSpace: .localPoints,

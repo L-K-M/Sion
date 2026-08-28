@@ -343,6 +343,53 @@ final class ElementHitGeometryTests: XCTestCase {
     XCTAssertTrue(ElementHitGeometry.contains(curvePoint, in: element, tolerance: 2))
   }
 
+  func testMaximumCurvedPathCompletesWithinInteractiveDeadline() {
+    let frame = SionRect(
+      x: 0,
+      y: 0,
+      width: SceneLimits.maximumCoordinateMagnitude,
+      height: SceneLimits.maximumCoordinateMagnitude
+    )
+    var commands: [PathCommand] = [.move(to: SionPoint(x: 0, y: 0.5))]
+    for index in 1..<SceneLimits.maximumPathCommandCount {
+      if index.isMultiple(of: 2) {
+        commands.append(
+          .cubic(
+            control1: SionPoint(x: 0, y: 0),
+            control2: SionPoint(x: 1, y: 1),
+            to: SionPoint(x: 1, y: 0.5)
+          )
+        )
+        continue
+      }
+
+      commands.append(
+        .cubic(
+          control1: SionPoint(x: 1, y: 0),
+          control2: SionPoint(x: 0, y: 1),
+          to: SionPoint(x: 0, y: 0.5)
+        )
+      )
+    }
+    let path = VectorPath(commands: commands)
+    var element = SceneElement.path(frame: frame, path: path)
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 2)
+    )
+
+    let started = ContinuousClock.now
+    let containsPoint = ElementHitGeometry.contains(
+      SionPoint(x: frame.center.x, y: frame.minY + (frame.height * 0.6)),
+      in: element,
+      tolerance: 2
+    )
+    let elapsed = started.duration(to: .now)
+
+    XCTAssertFalse(containsPoint)
+    XCTAssertLessThan(elapsed, .seconds(1))
+  }
+
   func testCustomPathHonorsFillRule() {
     let commands: [PathCommand] = [
       .move(to: SionPoint(x: 0.1, y: 0.1)),

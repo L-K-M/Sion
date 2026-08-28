@@ -241,10 +241,12 @@ final class InspectorPaletteTests: XCTestCase {
 
     // Positive control: ending an edit after typing commits it.
     nameField.stringValue = "Shared"
+    undoManager.beginUndoGrouping()
     delegate.controlTextDidChange?(
       Notification(name: NSControl.textDidChangeNotification, object: nameField))
     delegate.controlTextDidEndEditing?(
       Notification(name: NSControl.textDidEndEditingNotification, object: nameField))
+    undoManager.endUndoGrouping()
     XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "Shared")
     XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Shared")
     undoManager.undo()
@@ -265,8 +267,10 @@ final class InspectorPaletteTests: XCTestCase {
     // end-editing notification, so both are applied directly.
     fieldEditor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
     nameField.stringValue = ""
+    undoManager.beginUndoGrouping()
     delegate.controlTextDidEndEditing?(
       Notification(name: NSControl.textDidEndEditingNotification, object: nameField))
+    undoManager.endUndoGrouping()
     XCTAssertTrue(panel.makeFirstResponder(nil))
 
     XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")

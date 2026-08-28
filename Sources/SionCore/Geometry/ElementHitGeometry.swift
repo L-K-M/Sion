@@ -27,8 +27,12 @@ package enum ElementHitGeometry {
           in: frame,
           expansion: hitExpansion
         )
-        && content.kind.hitBounds(in: frame)?.expanded(by: hitExpansion).contains(localPoint)
-          == true
+        && content.kind.passesHitBoundsBroadPhase(
+          localPoint,
+          in: frame,
+          style: element.style,
+          expansion: hitExpansion
+        )
       if broadPhaseHit,
         content.kind.contains(
           localPoint,
@@ -59,7 +63,12 @@ package enum ElementHitGeometry {
           in: frame,
           expansion: hitExpansion
         ),
-        content.path.hitBounds(in: frame)?.expanded(by: hitExpansion).contains(localPoint) == true
+        content.path.passesHitBoundsBroadPhase(
+          localPoint,
+          in: frame,
+          style: element.style,
+          expansion: hitExpansion
+        )
       else {
         return false
       }
@@ -1504,10 +1513,22 @@ extension ShapeKind {
     return hypot(normalizedX, normalizedY) <= envelopeScale
   }
 
-  fileprivate func hitBounds(in frame: SionRect) -> SionRect? {
-    guard case .custom(let path) = self else { return frame }
+  fileprivate func passesHitBoundsBroadPhase(
+    _ point: SionPoint,
+    in frame: SionRect,
+    style: ElementStyle,
+    expansion: Double
+  ) -> Bool {
+    guard case .custom(let path) = self else {
+      return frame.expanded(by: expansion).contains(point)
+    }
 
-    return path.hitBounds(in: frame)
+    return path.passesHitBoundsBroadPhase(
+      point,
+      in: frame,
+      style: style,
+      expansion: expansion
+    )
   }
 
   fileprivate func flattened(
@@ -1734,10 +1755,22 @@ extension VectorPath {
     return frame.expanded(by: expansion).contains(point)
   }
 
-  fileprivate func hitBounds(in frame: SionRect) -> SionRect? {
-    var result: SionRect?
+  fileprivate func passesHitBoundsBroadPhase(
+    _ point: SionPoint,
+    in frame: SionRect,
+    style: ElementStyle,
+    expansion: Double
+  ) -> Bool {
+    // Separate subpaths avoid flattening the empty space between painted islands.
+    let hasVisibleFill = style.hasVisibleFill
+    let visibleStroke = style.visibleStroke
     var activeBounds: SionRect?
-    var activeHasGeometry = false
+    var activeStart: SionPoint?
+    var currentPoint: SionPoint?
+    var activeDrawCommandCount = 0
+    var activeHasCurve = false
+    var activeHasStrokeCommand = false
+    var activeHasNonzeroStrokeSegment = false
 
     func resolve(_ point: SionPoint) -> SionPoint {
       switch coordinateSpace {
@@ -1753,44 +1786,125 @@ extension VectorPath {
       activeBounds = activeBounds?.union(pointBounds) ?? pointBounds
     }
 
-    func finishActiveSubpath() {
-      guard activeHasGeometry, let finishedBounds = activeBounds else {
-        activeBounds = nil
-        activeHasGeometry = false
-        return
-      }
+    func beginActiveSubpath(at point: SionPoint) {
+      activeStart = point
+      includeInActiveBounds(point)
+    }
 
-      result = result?.union(finishedBounds) ?? finishedBounds
+    func resetActiveSubpath() {
       activeBounds = nil
-      activeHasGeometry = false
+      activeStart = nil
+      activeDrawCommandCount = 0
+      activeHasCurve = false
+      activeHasStrokeCommand = false
+      activeHasNonzeroStrokeSegment = false
+    }
+
+    func finishActiveSubpath() -> Bool {
+      let fillMayPaint =
+        hasVisibleFill
+        && (activeHasCurve || activeDrawCommandCount >= 2)
+      let strokeMayPaint =
+        visibleStroke.map { stroke in
+          activeHasNonzeroStrokeSegment
+            || activeHasStrokeCommand && stroke.lineCap != .butt
+        } ?? false
+      let finishedBounds = activeBounds
+      resetActiveSubpath()
+
+      guard fillMayPaint || strokeMayPaint, let finishedBounds else { return false }
+
+      return finishedBounds.expanded(by: expansion).contains(point)
     }
 
     for command in commands {
       switch command {
       case .move(let point):
-        // A move-only subpath paints nothing and must not widen hit work.
-        finishActiveSubpath()
-        includeInActiveBounds(resolve(point))
+        if finishActiveSubpath() {
+          return true
+        }
+
+        let resolved = resolve(point)
+        beginActiveSubpath(at: resolved)
+        currentPoint = resolved
       case .line(let point):
-        includeInActiveBounds(resolve(point))
-        activeHasGeometry = true
+        let end = resolve(point)
+        guard let start = currentPoint else {
+          beginActiveSubpath(at: end)
+          currentPoint = end
+          continue
+        }
+        if activeStart == nil {
+          beginActiveSubpath(at: start)
+        }
+
+        includeInActiveBounds(end)
+        activeDrawCommandCount += 1
+        activeHasStrokeCommand = true
+        activeHasNonzeroStrokeSegment = activeHasNonzeroStrokeSegment || start != end
+        currentPoint = end
       case .quadratic(let control, let point):
-        includeInActiveBounds(resolve(control))
-        includeInActiveBounds(resolve(point))
-        activeHasGeometry = true
+        let resolvedControl = resolve(control)
+        let end = resolve(point)
+        guard let start = currentPoint else {
+          beginActiveSubpath(at: end)
+          currentPoint = end
+          continue
+        }
+        if activeStart == nil {
+          beginActiveSubpath(at: start)
+        }
+
+        includeInActiveBounds(resolvedControl)
+        includeInActiveBounds(end)
+        activeDrawCommandCount += 1
+        activeHasCurve = true
+        activeHasStrokeCommand = true
+        activeHasNonzeroStrokeSegment =
+          activeHasNonzeroStrokeSegment
+          || start != resolvedControl
+          || resolvedControl != end
+        currentPoint = end
       case .cubic(let control1, let control2, let point):
-        includeInActiveBounds(resolve(control1))
-        includeInActiveBounds(resolve(control2))
-        includeInActiveBounds(resolve(point))
-        activeHasGeometry = true
+        let resolvedControl1 = resolve(control1)
+        let resolvedControl2 = resolve(control2)
+        let end = resolve(point)
+        guard let start = currentPoint else {
+          beginActiveSubpath(at: end)
+          currentPoint = end
+          continue
+        }
+        if activeStart == nil {
+          beginActiveSubpath(at: start)
+        }
+
+        includeInActiveBounds(resolvedControl1)
+        includeInActiveBounds(resolvedControl2)
+        includeInActiveBounds(end)
+        activeDrawCommandCount += 1
+        activeHasCurve = true
+        activeHasStrokeCommand = true
+        activeHasNonzeroStrokeSegment =
+          activeHasNonzeroStrokeSegment
+          || start != resolvedControl1
+          || resolvedControl1 != resolvedControl2
+          || resolvedControl2 != end
+        currentPoint = end
       case .close:
-        // A close-only subpath can paint a round or square stroke cap.
-        activeHasGeometry = activeBounds != nil
+        guard let start = activeStart, let end = currentPoint else { continue }
+
+        activeHasStrokeCommand = true
+        activeHasNonzeroStrokeSegment = activeHasNonzeroStrokeSegment || end != start
+        if finishActiveSubpath() {
+          return true
+        }
+
+        // Continue later commands from the closed subpath's origin.
+        currentPoint = start
       }
     }
-    finishActiveSubpath()
 
-    return result
+    return finishActiveSubpath()
   }
 
   fileprivate func flattened(in frame: SionRect) -> FlattenedPath {
@@ -1863,7 +1977,8 @@ extension ElementStyle {
       let stroke,
       stroke.width.isFinite,
       stroke.width > 0,
-      stroke.color.alpha > 0
+      stroke.color.alpha > 0,
+      stroke.mayPaintHitGeometry
     else {
       return nil
     }
@@ -1880,6 +1995,30 @@ extension ElementStyle {
 }
 
 extension StrokeStyle {
+  fileprivate var mayPaintHitGeometry: Bool {
+    guard lineCap == .butt,
+      !dashPattern.isEmpty,
+      dashPattern.count <= HitGeometryDefaults.maximumInteractiveDashPatternCount,
+      dashPattern.count.isMultiple(of: 2)
+    else {
+      return true
+    }
+
+    var hasPositiveEntry = false
+    for (index, length) in dashPattern.enumerated() {
+      guard length.isFinite, length >= 0 else { return true }
+      guard length > 0 else { continue }
+
+      hasPositiveEntry = true
+      if index.isMultiple(of: 2) {
+        return true
+      }
+    }
+
+    // An invalid all-zero pattern keeps the solid conservative fallback.
+    return hasPositiveEntry == false
+  }
+
   fileprivate func hitExpansion(tolerance: Double) -> Double {
     let radius = width / 2
     let capExpansion = lineCap == .square ? hypot(radius, radius) : radius

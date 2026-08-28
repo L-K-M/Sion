@@ -1332,7 +1332,7 @@ final class ElementHitGeometryTests: XCTestCase {
     XCTAssertLessThan(elapsed, Self.interactiveHitDeadline)
   }
 
-  func testMoveOnlyOutlierDoesNotForceMaximumCurveTraversal() {
+  func testNonintersectingSubpathsDoNotForceMaximumCurveTraversal() {
     let frame = SionRect(
       x: 0,
       y: 0,
@@ -1340,7 +1340,7 @@ final class ElementHitGeometryTests: XCTestCase {
       height: SceneLimits.maximumCoordinateMagnitude
     )
     var commands: [PathCommand] = [.move(to: SionPoint(x: 0, y: 0.1))]
-    for index in 1..<(SceneLimits.maximumPathCommandCount - 1) {
+    for index in 1..<(SceneLimits.maximumPathCommandCount - 2) {
       let startsAtLeft = index.isMultiple(of: 2) == false
       commands.append(
         .cubic(
@@ -1350,20 +1350,59 @@ final class ElementHitGeometryTests: XCTestCase {
         )
       )
     }
-    // This unpainted move must not widen the painted path's preflight bounds.
-    commands.append(.move(to: SionPoint(x: 1, y: 1)))
-
-    let path = VectorPath(commands: commands)
-    var element = SceneElement.path(frame: frame, path: path)
-    element.style = ElementStyle(
+    let strokeStyle = ElementStyle(
       fill: .none,
       stroke: StrokeStyle(color: .black, width: 2)
     )
-    let miss = frame.point(atNormalized: SionPoint(x: 0.5, y: 0.9))
+    // None of these cases paints at the query point.
+    let cases: [([PathCommand], ElementStyle, SionPoint)] = [
+      (
+        [.move(to: SionPoint(x: 1, y: 1))],
+        strokeStyle,
+        SionPoint(x: 0.5, y: 0.9)
+      ),
+      (
+        [
+          .move(to: SionPoint(x: 1, y: 1)),
+          .line(to: SionPoint(x: 1, y: 1)),
+        ],
+        strokeStyle,
+        SionPoint(x: 0.5, y: 0.9)
+      ),
+      (
+        [
+          .move(to: SionPoint(x: 0, y: 1)),
+          .line(to: SionPoint(x: 1, y: 1)),
+        ],
+        ElementStyle(fill: .solid(.black)),
+        SionPoint(x: 0.5, y: 0.9)
+      ),
+      (
+        [],
+        ElementStyle(
+          fill: .none,
+          stroke: StrokeStyle(
+            color: .black,
+            width: 2,
+            dashPattern: [0, 20],
+            lineCap: .butt
+          )
+        ),
+        SionPoint(x: 0.5, y: 0.35)
+      ),
+    ]
 
     let started = ContinuousClock.now
-    for _ in 0..<Self.maximumCurvedPathQueryCount {
-      XCTAssertFalse(ElementHitGeometry.contains(miss, in: element))
+    for (outlier, style, normalizedMiss) in cases {
+      var element = SceneElement.path(
+        frame: frame,
+        path: VectorPath(commands: commands + outlier)
+      )
+      element.style = style
+      let miss = frame.point(atNormalized: normalizedMiss)
+      for _ in 0..<Self.maximumCurvedPathQueryCount {
+        XCTAssertFalse(ElementHitGeometry.contains(miss, in: element))
+      }
     }
     let elapsed = started.duration(to: .now)
 

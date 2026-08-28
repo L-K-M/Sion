@@ -623,6 +623,69 @@ final class ElementHitGeometryTests: XCTestCase {
     }
   }
 
+  func testZeroLengthEndpointSegmentsPreserveSquareCaps() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: .zero),
+        .line(to: SionPoint(x: 100, y: 0)),
+        .line(to: SionPoint(x: 100, y: 0)),
+      ]
+    )
+    let dashPatterns: [[Double]] = [[], [1_000, 1]]
+
+    for dashPattern in dashPatterns {
+      var element = SceneElement.path(
+        frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+        path: path
+      )
+      element.style = ElementStyle(
+        fill: .none,
+        stroke: StrokeStyle(
+          color: .black,
+          width: 10,
+          dashPattern: dashPattern,
+          lineCap: .square
+        )
+      )
+
+      XCTAssertTrue(ElementHitGeometry.contains(SionPoint(x: -4, y: 0), in: element))
+      XCTAssertTrue(ElementHitGeometry.contains(SionPoint(x: 104, y: 0), in: element))
+    }
+  }
+
+  func testZeroLengthInteriorSegmentPreservesMiterJoin() {
+    let path = VectorPath(
+      commands: [
+        .move(to: SionPoint(x: 0.2, y: 0.2)),
+        .line(to: SionPoint(x: 0.8, y: 0.2)),
+        .line(to: SionPoint(x: 0.8, y: 0.2)),
+        .line(to: SionPoint(x: 0.8, y: 0.8)),
+      ]
+    )
+    let dashPatterns: [[Double]] = [[], [1_000, 1]]
+
+    for dashPattern in dashPatterns {
+      var element = SceneElement.path(
+        frame: SionRect(x: 0, y: 0, width: 100, height: 100),
+        path: path
+      )
+      element.style = ElementStyle(
+        fill: .none,
+        stroke: StrokeStyle(
+          color: .black,
+          width: 20,
+          dashPattern: dashPattern,
+          lineCap: .butt,
+          lineJoin: .miter
+        )
+      )
+
+      XCTAssertTrue(ElementHitGeometry.contains(SionPoint(x: 87, y: 13), in: element))
+    }
+  }
+
   func testClosedZeroLengthPathsHonorSolidAndDashedCaps() {
     let point = SionPoint(x: 20, y: 20)
     let paths = [

@@ -165,56 +165,41 @@ final class SionDrawingDocumentTests: XCTestCase {
     XCTAssertEqual(package.document.title, authoredTitle)
   }
 
-  func testRevertRestoresSavedContentAndCanvasFocus() async throws {
-    let document = SionDrawingDocument()
-    let textID = try document.editingController.insertText(
-      RevertFixture.savedText,
-      at: SionPoint(x: 100, y: 100)
+  func testReadForRevertRestoresSavedContentAndCanvasFocus() throws {
+    let savedElement = SceneElement.text(
+      frame: SionRect(x: 40, y: 40, width: 180, height: 80),
+      text: RevertFixture.savedText
     )
+    let savedPackage = SionPackage(
+      document: SionDocument(scene: SionScene(elements: [savedElement]))
+    )
+    let savedArchive = try SionArchive.encode(package: savedPackage, intent: .manual)
+    let document = SionDrawingDocument()
+    try document.editingController.load(savedPackage)
     document.makeWindowControllers()
     let windowController = try XCTUnwrap(
       document.windowControllers.first as? SionDocumentWindowController
     )
     defer { windowController.close() }
 
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
-      UUID().uuidString,
-      isDirectory: true
-    )
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-
-    let url = directory.appendingPathComponent(RevertFixture.filename)
-    let saveError: Error? = await withCheckedContinuation { continuation in
-      document.save(
-        to: url,
-        ofType: SionDrawingDocument.typeIdentifier,
-        for: .saveAsOperation
-      ) { error in
-        continuation.resume(returning: error)
-      }
-    }
-    XCTAssertNil(saveError)
-    XCTAssertFalse(document.isDocumentEdited)
-
-    windowController.beginTextEditing(textID)
+    windowController.beginTextEditing(savedElement.id)
     let textView = try XCTUnwrap(windowController.window?.firstResponder as? NSTextView)
     textView.string = RevertFixture.unsavedText
     textView.didChangeText()
 
     XCTAssertTrue(document.isDocumentEdited)
     XCTAssertEqual(
-      document.editingController.document.scene.element(withID: textID)?.textContent,
+      document.editingController.document.scene.element(withID: savedElement.id)?.textContent,
       RevertFixture.unsavedText
     )
 
-    try document.revert(
-      toContentsOf: url,
+    try document.read(
+      from: savedArchive.data,
       ofType: SionDrawingDocument.typeIdentifier
     )
 
     XCTAssertEqual(
-      document.editingController.document.scene.element(withID: textID)?.textContent,
+      document.editingController.document.scene.element(withID: savedElement.id)?.textContent,
       RevertFixture.savedText
     )
     XCTAssertFalse(document.isDocumentEdited)
@@ -229,7 +214,6 @@ private enum DocumentPreview {
 }
 
 private enum RevertFixture {
-  static let filename = "Saved Drawing.sion"
   static let savedText = "Saved"
   static let unsavedText = "Unsaved"
 }

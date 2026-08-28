@@ -62,6 +62,7 @@
     private let editorController: SionEditorController
     private let connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider
     private let creationFailureFeedback: @MainActor () -> Void
+    private let editorFeedback: @MainActor (SionEditorFeedbackRequest) -> Void
     private let pasteboard: NSPasteboard
     private var observerID: UUID?
     private var magnificationObservation: NSKeyValueObservation?
@@ -100,6 +101,7 @@
     init(
       editorController: SionEditorController,
       creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() },
+      editorFeedback: @escaping @MainActor (SionEditorFeedbackRequest) -> Void = { _ in },
       pasteboard: NSPasteboard = .general,
       connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
     ) {
@@ -108,6 +110,7 @@
         connectorRouteProvider
         ?? { editorController.connectorRoute(for: $0) }
       self.creationFailureFeedback = creationFailureFeedback
+      self.editorFeedback = editorFeedback
       self.pasteboard = pasteboard
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
@@ -766,7 +769,18 @@
       guard let text = pasteboard.string(forType: .string), !text.isEmpty else { return }
 
       if MermaidImporter.looksLikeMermaid(text) {
-        _ = try? editorController.insertMermaid(text, at: point)
+        do {
+          let result = try editorController.insertMermaid(text, at: point)
+          switch result {
+          case .diagram:
+            editorFeedback(.clear(.mermaidPaste))
+          case .sourceText(_, let omissions):
+            editorFeedback(.show(.mermaidSourcePreserved(omissions: omissions)))
+          }
+        } catch {
+          NSLog("Mermaid paste failed: %@", String(describing: error))
+          editorFeedback(.show(.commandFailed(.pasteMermaid)))
+        }
         return
       }
 

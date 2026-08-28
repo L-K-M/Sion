@@ -636,13 +636,15 @@ The same engine can seed X1.
 
 ### P2.17 Complete native app integration
 
-**Evidence.** Standard Settings, Open Recent, Revert, Help, Find/Spelling, Page
+**Evidence.** Standard Settings, Open Recent, Help, Find/Spelling, Page
 Setup, and Print flows are incomplete. The Services submenu is registered for
 AppKit-managed providers. Window minimum size, localization hooks,
 signing/notarization/update strategy, sandbox/file access, and
 strict-concurrency migration remain open; `Package.swift` uses Swift 5 language
 mode under a Swift 6.3.3 toolchain. Save As now keeps the native display name
 and archived title synchronized without dirtying the document.
+Revert to Saved now routes through `NSDocument`; archive reads discard pending
+inline edits and restore canvas focus.
 
 **Scope.** Add responder-chain menus and native panels in small PRs. Decide the
 sandbox/security-scoped bookmark model, then configure Developer ID signing,

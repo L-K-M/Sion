@@ -1413,7 +1413,7 @@ private enum HitGeometryDefaults {
     SceneLimits.maximumPathCommandCount * flattenedSegmentsPerPathCommand
   // A 32-segment conservative preflight rejects distant curved-shape misses.
   static let maximumBuiltInBroadPhaseSubdivisionDepth = 3
-  // Four-curve built-ins stay below 1,024 segments at maximum canvas scale.
+  // Four-curve built-ins use at most 1,024 curve segments.
   static let maximumBuiltInCurveSubdivisionDepth = 8
   static let maximumCurveSubdivisionDepth = 12
   // StrokeStyle has no override, so mirror NSBezierPath's default.

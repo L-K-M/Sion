@@ -62,6 +62,31 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testFilledCurveIncludesFlatteningMargin() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .quadratic(
+          control: SionPoint(x: 50, y: -0.24),
+          to: SionPoint(x: 100, y: 0)
+        ),
+        .line(to: SionPoint(x: 100, y: 100)),
+        .line(to: SionPoint(x: 0, y: 100)),
+        .close,
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(fill: .solid(.black))
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 50, y: -0.05), in: element)
+    )
+  }
+
   func testLabelOnlyShapeHitsLabelAreaButNotFrameCorner() {
     let frame = SionRect(x: 40, y: 70, width: 120, height: 80)
     var ellipse = SceneElement.shape(frame: frame, kind: .ellipse, text: "Label")
@@ -335,6 +360,63 @@ final class ElementHitGeometryTests: XCTestCase {
     )
     XCTAssertTrue(
       ElementHitGeometry.contains(SionPoint(x: 119, y: 250), in: square, tolerance: 0)
+    )
+  }
+
+  func testCurvedButtCapUsesEndpointTangent() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .cubic(
+          control1: SionPoint(x: 0, y: 0.1),
+          control2: SionPoint(x: 100, y: 0),
+          to: SionPoint(x: 100, y: 0)
+        ),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    let dashPatterns: [[Double]] = [[], [1_000, 1]]
+    for dashPattern in dashPatterns {
+      element.style = ElementStyle(
+        fill: .none,
+        stroke: StrokeStyle(
+          color: .black,
+          width: 20,
+          dashPattern: dashPattern,
+          lineCap: .butt
+        )
+      )
+
+      // The curve starts upward, so its butt cap admits this forward-side point.
+      XCTAssertTrue(
+        ElementHitGeometry.contains(SionPoint(x: -5, y: 5), in: element, tolerance: 2)
+      )
+    }
+  }
+
+  func testDiagonalSquareCapSurvivesBroadPhase() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 100, y: 100)),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 20, lineCap: .square)
+    )
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: -13, y: 0), in: element, tolerance: 2)
     )
   }
 

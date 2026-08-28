@@ -1,8 +1,8 @@
 import Foundation
 
 /// Platform-neutral point hits against a scene element's selectable geometry.
-public enum ElementHitGeometry {
-  public static func contains(
+package enum ElementHitGeometry {
+  package static func contains(
     _ point: SionPoint,
     in element: SceneElement,
     tolerance: Double = 0
@@ -72,6 +72,7 @@ public enum ElementHitGeometry {
 private struct FlattenedPath {
   let subpaths: [FlattenedSubpath]
   let fillRule: PathFillRule
+  let approximationTolerance: Double
   let truncationTolerance: Double
   let dashPhaseUncertainty: Double
 
@@ -82,9 +83,10 @@ private struct FlattenedPath {
   ) -> Bool {
     guard let bounds else { return false }
 
-    let geometryTolerance = tolerance + truncationTolerance
-    let strokeRadius = style.visibleStroke?.hitExpansion(tolerance: geometryTolerance) ?? 0
-    let fillRadius = style.hasVisibleFill ? geometryTolerance : 0
+    let fillTolerance = tolerance + approximationTolerance
+    let strokeTolerance = tolerance + truncationTolerance
+    let strokeRadius = style.visibleStroke?.hitExpansion(tolerance: strokeTolerance) ?? 0
+    let fillRadius = style.hasVisibleFill ? fillTolerance : 0
     guard bounds.expanded(by: max(fillRadius, strokeRadius)).contains(point) else {
       return false
     }
@@ -94,9 +96,9 @@ private struct FlattenedPath {
         return true
       }
 
-      if geometryTolerance > 0,
+      if fillTolerance > 0,
         subpaths.flatMap(\.fillSegments).contains(where: {
-          distance(from: point, to: $0) <= geometryTolerance
+          distance(from: point, to: $0) <= fillTolerance
         })
       {
         return true
@@ -112,7 +114,7 @@ private struct FlattenedPath {
 
     return StrokeHitGeometry(
       stroke: stroke,
-      tolerance: geometryTolerance,
+      tolerance: strokeTolerance,
       phaseUncertainty: dashPhaseUncertainty
     ).contains(point, in: subpaths)
   }
@@ -197,10 +199,32 @@ private struct FlattenedPath {
 
 private struct FlattenedSubpath {
   let points: [SionPoint]
+  let segmentApproximationTolerances: [Double]
   let closure: SubpathClosure
 
-  var strokeSegments: [SionLineSegment] {
-    segments(closure: closure)
+  var strokeSegments: [FlattenedStrokeSegment] {
+    guard points.count >= 2 else { return [] }
+
+    var result = zip(points, points.dropFirst()).enumerated().map { index, points in
+      FlattenedStrokeSegment(
+        segment: SionLineSegment(start: points.0, end: points.1),
+        approximationTolerance: segmentApproximationTolerances[index]
+      )
+    }
+    if closure == .closed,
+      points.first != points.last,
+      let first = points.first,
+      let last = points.last
+    {
+      result.append(
+        FlattenedStrokeSegment(
+          segment: SionLineSegment(start: last, end: first),
+          approximationTolerance: 0
+        )
+      )
+    }
+
+    return result
   }
 
   // Filling implicitly closes open subpaths, matching Canvas and SVG paint.
@@ -229,7 +253,9 @@ private struct FlattenedSubpath {
 private struct FlattenedPathBuilder {
   private var subpaths: [FlattenedSubpath] = []
   private var activePoints: [SionPoint] = []
+  private var activeSegmentApproximationTolerances: [Double] = []
   private var currentPoint: SionPoint?
+  private var approximationTolerance = 0.0
   private var truncationTolerance = 0.0
   private var dashPhaseUncertainty = 0.0
   private let maximumCurveSubdivisionDepth: Int
@@ -243,6 +269,7 @@ private struct FlattenedPathBuilder {
   mutating func move(to point: SionPoint) {
     finishActivePath(closure: .open)
     activePoints = [point]
+    activeSegmentApproximationTolerances = []
     currentPoint = point
   }
 
@@ -253,6 +280,7 @@ private struct FlattenedPathBuilder {
     }
 
     activePoints.append(point)
+    activeSegmentApproximationTolerances.append(0)
     currentPoint = point
   }
 
@@ -295,6 +323,7 @@ private struct FlattenedPathBuilder {
     return FlattenedPath(
       subpaths: subpaths,
       fillRule: fillRule,
+      approximationTolerance: approximationTolerance,
       truncationTolerance: truncationTolerance,
       dashPhaseUncertainty: dashPhaseUncertainty
     )
@@ -303,8 +332,15 @@ private struct FlattenedPathBuilder {
   private mutating func finishActivePath(closure: SubpathClosure) {
     guard !activePoints.isEmpty else { return }
 
-    subpaths.append(FlattenedSubpath(points: activePoints, closure: closure))
+    subpaths.append(
+      FlattenedSubpath(
+        points: activePoints,
+        segmentApproximationTolerances: activeSegmentApproximationTolerances,
+        closure: closure
+      )
+    )
     activePoints = []
+    activeSegmentApproximationTolerances = []
   }
 
   private mutating func startActivePathIfNeeded() -> SionPoint? {
@@ -315,6 +351,7 @@ private struct FlattenedPathBuilder {
     guard let currentPoint else { return nil }
 
     activePoints = [currentPoint]
+    activeSegmentApproximationTolerances = []
     return currentPoint
   }
 
@@ -327,12 +364,22 @@ private struct FlattenedPathBuilder {
     // De Casteljau subdivision keeps error stable on large canvases.
     let flatness = distance(from: control, toLineFrom: start, to: end)
     guard flatness > HitGeometryDefaults.curveFlatness else {
-      appendQuadraticLeaf(start: start, control: control, end: end)
+      appendQuadraticLeaf(
+        start: start,
+        control: control,
+        end: end,
+        approximationTolerance: flatness
+      )
       return
     }
     guard depth < maximumCurveSubdivisionDepth else {
       truncationTolerance = max(truncationTolerance, flatness)
-      appendQuadraticLeaf(start: start, control: control, end: end)
+      appendQuadraticLeaf(
+        start: start,
+        control: control,
+        end: end,
+        approximationTolerance: flatness
+      )
       return
     }
 
@@ -369,7 +416,8 @@ private struct FlattenedPathBuilder {
         start: start,
         control1: control1,
         control2: control2,
-        end: end
+        end: end,
+        approximationTolerance: flatness
       )
       return
     }
@@ -379,7 +427,8 @@ private struct FlattenedPathBuilder {
         start: start,
         control1: control1,
         control2: control2,
-        end: end
+        end: end,
+        approximationTolerance: flatness
       )
       return
     }
@@ -409,21 +458,26 @@ private struct FlattenedPathBuilder {
   private mutating func appendQuadraticLeaf(
     start: SionPoint,
     control: SionPoint,
-    end: SionPoint
+    end: SionPoint,
+    approximationTolerance: Double
   ) {
+    self.approximationTolerance = max(self.approximationTolerance, approximationTolerance)
     recordDashPhaseUncertainty(
       controlPolygonLength: start.distance(to: control) + control.distance(to: end),
       chordLength: start.distance(to: end)
     )
     activePoints.append(end)
+    activeSegmentApproximationTolerances.append(approximationTolerance)
   }
 
   private mutating func appendCubicLeaf(
     start: SionPoint,
     control1: SionPoint,
     control2: SionPoint,
-    end: SionPoint
+    end: SionPoint,
+    approximationTolerance: Double
   ) {
+    self.approximationTolerance = max(self.approximationTolerance, approximationTolerance)
     recordDashPhaseUncertainty(
       controlPolygonLength: start.distance(to: control1)
         + control1.distance(to: control2)
@@ -431,6 +485,7 @@ private struct FlattenedPathBuilder {
       chordLength: start.distance(to: end)
     )
     activePoints.append(end)
+    activeSegmentApproximationTolerances.append(approximationTolerance)
   }
 
   private mutating func recordDashPhaseUncertainty(
@@ -474,10 +529,7 @@ private struct StrokeHitGeometry {
   func contains(_ point: SionPoint, in subpaths: [FlattenedSubpath]) -> Bool {
     guard let dashPattern = DashPattern(stroke.dashPattern) else {
       return subpaths.contains { subpath in
-        contains(
-          point,
-          in: StrokeRun(points: subpath.points, closure: subpath.closure)
-        )
+        contains(point, in: StrokeRun(subpath: subpath))
       }
     }
 
@@ -555,19 +607,31 @@ private struct StrokeHitGeometry {
 
   private func contains(_ point: SionPoint, in run: StrokeRun) -> Bool {
     let segments = run.segments
-    for (index, segment) in segments.enumerated() {
+    for (index, flattenedSegment) in segments.enumerated() {
       let startsRun = run.closure == .open && index == segments.startIndex
       let endsRun = run.closure == .open && index == segments.index(before: segments.endIndex)
       let startExtension = startsRun && stroke.lineCap == .square ? radius : 0
       let endExtension = endsRun && stroke.lineCap == .square ? radius : 0
       if bodyContains(
         point,
-        segment: segment,
+        segment: flattenedSegment.segment,
         startExtension: startExtension,
         endExtension: endExtension
       ) {
         return true
       }
+
+      // A flattened curve can turn within its positional error near a chord endpoint.
+      if flattenedSegment.approximationTolerance > 0,
+        distance(from: point, to: flattenedSegment.segment)
+          <= radius + tolerance + flattenedSegment.approximationTolerance
+      {
+        return true
+      }
+    }
+
+    if curvedSquareCapContains(point, in: run) {
+      return true
     }
 
     if run.closure == .open, stroke.lineCap == .round,
@@ -581,6 +645,26 @@ private struct StrokeHitGeometry {
     return joinPoints(in: run).contains { join in
       joinContains(point, previous: join.previous, vertex: join.vertex, next: join.next)
     }
+  }
+
+  private func curvedSquareCapContains(_ point: SionPoint, in run: StrokeRun) -> Bool {
+    guard run.closure == .open, stroke.lineCap == .square else { return false }
+
+    let capRadius = hypot(radius, radius)
+    if let first = run.segments.first,
+      first.approximationTolerance > 0,
+      point.distance(to: first.segment.start)
+        <= capRadius + tolerance + first.approximationTolerance
+    {
+      return true
+    }
+
+    guard let last = run.segments.last, last.approximationTolerance > 0 else {
+      return false
+    }
+
+    return point.distance(to: last.segment.end)
+      <= capRadius + tolerance + last.approximationTolerance
   }
 
   private func bodyContains(
@@ -639,6 +723,16 @@ private struct StrokeHitGeometry {
     for span in spans {
       let start = span.range.lowerBound - measuredSegment.startDistance
       let end = span.range.upperBound - measuredSegment.startDistance
+      if curvedPaintEnvelopeContains(
+        point,
+        measuredSegment: measuredSegment,
+        start: start,
+        end: end,
+        span: span
+      ) {
+        return true
+      }
+
       let startExtension = span.startsWithCap && stroke.lineCap == .square ? radius : 0
       let endExtension = span.endsWithCap && stroke.lineCap == .square ? radius : 0
       if bodyContains(
@@ -669,19 +763,51 @@ private struct StrokeHitGeometry {
     return false
   }
 
+  private func curvedPaintEnvelopeContains(
+    _ point: SionPoint,
+    measuredSegment: MeasuredStrokeSegment,
+    start: Double,
+    end: Double,
+    span: DashPaintSpan
+  ) -> Bool {
+    let approximationTolerance = measuredSegment.approximationTolerance
+    guard approximationTolerance > 0 else { return false }
+
+    let vector = measuredSegment.segment.end - measuredSegment.segment.start
+    let direction = vector / measuredSegment.length
+    let paintedSegment = SionLineSegment(
+      start: measuredSegment.segment.start + (direction * start),
+      end: measuredSegment.segment.start + (direction * end)
+    )
+    let hitRadius = radius + tolerance + approximationTolerance
+    if distance(from: point, to: paintedSegment) <= hitRadius {
+      return true
+    }
+
+    guard stroke.lineCap == .square else { return false }
+
+    let squareCapRadius = hypot(radius, radius) + tolerance + approximationTolerance
+    if span.startsWithCap, point.distance(to: paintedSegment.start) <= squareCapRadius {
+      return true
+    }
+
+    return span.endsWithCap && point.distance(to: paintedSegment.end) <= squareCapRadius
+  }
+
   private func measuredSegments(in subpath: FlattenedSubpath) -> [MeasuredStrokeSegment] {
     var distance = 0.0
     var result: [MeasuredStrokeSegment] = []
 
-    for segment in subpath.strokeSegments {
-      let length = segment.length
+    for flattenedSegment in subpath.strokeSegments {
+      let length = flattenedSegment.segment.length
       guard length > HitGeometryDefaults.epsilon else { continue }
 
       result.append(
         MeasuredStrokeSegment(
-          segment: segment,
+          segment: flattenedSegment.segment,
           startDistance: distance,
-          endDistance: distance + length
+          endDistance: distance + length,
+          approximationTolerance: flattenedSegment.approximationTolerance
         )
       )
       distance += length
@@ -828,7 +954,14 @@ private struct StrokeHitGeometry {
 
 private struct StrokeRun {
   let points: [SionPoint]
+  let segments: [FlattenedStrokeSegment]
   let closure: SubpathClosure
+
+  init(subpath: FlattenedSubpath) {
+    points = subpath.points
+    segments = subpath.strokeSegments
+    closure = subpath.closure
+  }
 
   var vertices: [SionPoint] {
     guard closure == .closed, points.count > 1, points.first == points.last else {
@@ -838,20 +971,11 @@ private struct StrokeRun {
     return Array(points.dropLast())
   }
 
-  var segments: [SionLineSegment] {
-    let points = vertices
-    guard points.count >= 2 else { return [] }
+}
 
-    var result = zip(points, points.dropFirst()).map(SionLineSegment.init)
-    if closure == .closed, points.first != points.last,
-      let first = points.first,
-      let last = points.last
-    {
-      result.append(SionLineSegment(start: last, end: first))
-    }
-
-    return result
-  }
+private struct FlattenedStrokeSegment {
+  let segment: SionLineSegment
+  let approximationTolerance: Double
 }
 
 private struct StrokeJoin {
@@ -864,6 +988,7 @@ private struct MeasuredStrokeSegment {
   let segment: SionLineSegment
   let startDistance: Double
   let endDistance: Double
+  let approximationTolerance: Double
 
   var length: Double {
     endDistance - startDistance
@@ -1372,12 +1497,13 @@ extension ElementStyle {
 extension StrokeStyle {
   fileprivate func hitExpansion(tolerance: Double) -> Double {
     let radius = width / 2
+    let capExpansion = lineCap == .square ? hypot(radius, radius) : radius
     let joinExpansion =
       lineJoin == .miter
       ? radius * HitGeometryDefaults.miterLimit
       : radius
 
-    return joinExpansion + tolerance
+    return max(capExpansion, joinExpansion) + tolerance
   }
 }
 

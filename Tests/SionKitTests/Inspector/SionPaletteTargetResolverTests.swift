@@ -8,6 +8,9 @@ import XCTest
 final class InspectorPaletteTests: XCTestCase {
   func testLockedSelectionDisablesAndCanUnlockInspector() throws {
     _ = NSApplication.shared
+    let previousServicesMenu = NSApp.servicesMenu
+    defer { NSApp.servicesMenu = previousServicesMenu }
+
     var shape = SceneElement.shape(
       frame: SionRect(x: 40, y: 40, width: 160, height: 90)
     )
@@ -70,6 +73,9 @@ final class InspectorPaletteTests: XCTestCase {
 
   func testMultipleSelectionExposesNoInspectorMutation() throws {
     _ = NSApplication.shared
+    let previousServicesMenu = NSApp.servicesMenu
+    defer { NSApp.servicesMenu = previousServicesMenu }
+
     var lockedShape = SceneElement.shape(
       frame: SionRect(x: 40, y: 40, width: 160, height: 90)
     )
@@ -113,6 +119,9 @@ final class InspectorPaletteTests: XCTestCase {
 
   func testMixedNamesEditAsOneUndoStep() throws {
     _ = NSApplication.shared
+    let previousServicesMenu = NSApp.servicesMenu
+    defer { NSApp.servicesMenu = previousServicesMenu }
+
     var first = SceneElement.shape(
       frame: SionRect(x: 40, y: 40, width: 160, height: 90)
     )
@@ -180,6 +189,9 @@ final class InspectorPaletteTests: XCTestCase {
 
   func testRejectedInspectorEditRestoresDisplayedValue() throws {
     _ = NSApplication.shared
+    let previousServicesMenu = NSApp.servicesMenu
+    defer { NSApp.servicesMenu = previousServicesMenu }
+
     let connector = SceneElement.connector(
       source: .free(SionPoint(x: 40, y: 80)),
       target: .free(SionPoint(x: 240, y: 80)),
@@ -236,6 +248,9 @@ final class InspectorPaletteTests: XCTestCase {
 
   func testFloatingInspectorObservesDocumentSelection() throws {
     _ = NSApplication.shared
+    let previousServicesMenu = NSApp.servicesMenu
+    defer { NSApp.servicesMenu = previousServicesMenu }
+
     var shape = SceneElement.shape(
       frame: SionRect(x: 40, y: 40, width: 160, height: 90)
     )
@@ -272,6 +287,9 @@ final class InspectorPaletteTests: XCTestCase {
 
   func testCustomAnchorModeEndsWithDoneOrPanelClose() throws {
     _ = NSApplication.shared
+    let previousServicesMenu = NSApp.servicesMenu
+    defer { NSApp.servicesMenu = previousServicesMenu }
+
     let shape = SceneElement.shape(
       frame: SionRect(x: 40, y: 40, width: 160, height: 90)
     )
@@ -331,6 +349,9 @@ final class InspectorPaletteTests: XCTestCase {
 
   func testCustomAnchorOptionPromotesPopoverToPanel() throws {
     _ = NSApplication.shared
+    let previousServicesMenu = NSApp.servicesMenu
+    defer { NSApp.servicesMenu = previousServicesMenu }
+
     let shape = SceneElement.shape(
       frame: SionRect(x: 40, y: 40, width: 160, height: 90)
     )

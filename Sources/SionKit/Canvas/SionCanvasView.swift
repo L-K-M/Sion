@@ -371,6 +371,8 @@
     }
 
     override func mouseDown(with event: NSEvent) {
+      // A new press is the last recovery point when AppKit drops mouse-up.
+      cancelActiveDrag()
       commitTextEditing()
       window?.makeFirstResponder(self)
 

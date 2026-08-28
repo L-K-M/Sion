@@ -656,8 +656,9 @@ AppKit-managed providers. Find and one-shot spelling commands work in the active
 inline text editor; document-wide search/replacement and persistent spelling
 preferences remain open. Window minimum size, localization hooks,
 signing/notarization/update strategy, sandbox/file access, and
-strict-concurrency migration remain open; `Package.swift` uses Swift 5 language
-mode under a Swift 6.3.3 toolchain. Save As now keeps the native display name
+strict-concurrency migration of the AppKit targets remain open. `SionCore` and
+its tests use Swift 6 language mode; the AppKit targets still inherit Swift 5
+mode under the Swift 6.3.3 toolchain. Save As now keeps the native display name
 and archived title synchronized without dirtying the document.
 Revert to Saved now routes through `NSDocument`; archive reads discard pending
 inline edits and restore canvas focus. The Help menu opens a localized bundled
@@ -699,10 +700,15 @@ standalone rewrite PR unless a concrete feature needs the boundary.
 
 ### Q2 Broaden automated robustness coverage
 
-**Evidence.** There is no XCUITest target, accessibility action suite, archive
-property/fuzz suite, launch gate, full renderer matrix, or performance gate.
-Archive generator metadata now crosses a tested SionKit bundle boundary, and
-Core archive tests use fixed provenance.
+**Evidence.** There is no XCUITest target, accessibility action suite,
+generated malformed-model corpus, launch gate, full renderer matrix, or
+performance gate. A fixed-seed editor corpus now applies mixed shape,
+connector, geometry, style, text, canvas, ordering, undo, and redo operations;
+every state validates and canonical checkpoints round-trip deterministically.
+Archive tests reject every truncated prefix and use fixed-seed minimal byte
+mutations to prove deterministic rejection or valid recovery. Archive generator
+metadata crosses a tested SionKit bundle boundary, and Core tests use fixed
+provenance.
 
 **Scope.** Add launch/document lifecycle UI tests, AX action tests, malformed
 archive and model property/fuzz tests, and the renderer/performance fixtures in

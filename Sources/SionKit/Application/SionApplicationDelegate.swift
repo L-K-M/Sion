@@ -93,7 +93,7 @@ private enum SionMainMenu {
     submenu.addItem(item("Close", action: AppAction.close, key: "w"))
     submenu.addItem(item("Save", action: AppAction.save, key: "s"))
     submenu.addItem(item("Save As…", action: AppAction.saveAs, key: "S"))
-    submenu.addItem(item("Revert to Saved", action: AppAction.revertToSaved))
+    submenu.addItem(item("Revert to Saved…", action: AppAction.revertToSaved))
     submenu.addItem(.separator())
     submenu.addItem(
       item("Export SVG…", action: AppAction.exportSVG, key: "e", modifiers: [.command, .shift]))

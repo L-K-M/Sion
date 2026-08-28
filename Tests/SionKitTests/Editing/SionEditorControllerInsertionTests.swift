@@ -123,17 +123,47 @@ final class SionEditorControllerInsertionTests: XCTestCase {
         style A fill:#fff
       """
 
-    let insertedIDs = try controller.insertMermaid(source, at: center)
-    let insertedID = try XCTUnwrap(insertedIDs.first)
+    let result = try controller.insertMermaid(source, at: center)
+    guard case .sourceText(let insertedID, let omissions) = result else {
+      return XCTFail("Expected source-text fallback")
+    }
     let inserted = try XCTUnwrap(controller.document.scene.element(withID: insertedID))
 
-    XCTAssertEqual(insertedIDs, [insertedID])
+    XCTAssertEqual(
+      omissions,
+      [
+        MermaidImportOmission(
+          line: 3,
+          statement: "style A fill:#fff",
+          reason: .unsupportedStatement("style")
+        )
+      ]
+    )
     guard case .text(let text) = inserted.content else {
       return XCTFail("Expected fallback text")
     }
 
     XCTAssertEqual(text.string, source)
     XCTAssertEqual(inserted.geometry.frame.center, center)
+  }
+
+  func testCompleteMermaidImportReportsDiagramElements() throws {
+    let controller = try makeController()
+
+    let result = try controller.insertMermaid(
+      """
+      flowchart LR
+        A --> B
+      """,
+      at: SionPoint(x: 320, y: 240)
+    )
+
+    guard case .diagram(let insertedIDs) = result else {
+      return XCTFail("Expected diagram insertion")
+    }
+
+    XCTAssertEqual(insertedIDs.count, 3)
+    XCTAssertEqual(Set(insertedIDs), controller.selection)
   }
 
   private func makeController() throws -> SionEditorController {

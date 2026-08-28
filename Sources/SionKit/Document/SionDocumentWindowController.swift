@@ -8,8 +8,11 @@
   {
     private let editorController: SionEditorController
     private let canvasView: SionCanvasView
+    private let feedbackPresenter: SionEditorFeedbackPresenter
     private let scrollView = NSScrollView()
     private var toolControl: NSSegmentedControl?
+    private weak var zoomPercentageLabel: NSTextField?
+    private var zoomPercentageObservation: NSKeyValueObservation?
     private var observerID: UUID?
     private var isInitialZoomPending = true
 
@@ -38,7 +41,12 @@
 
     init(editorController: SionEditorController) {
       self.editorController = editorController
-      canvasView = SionCanvasView(editorController: editorController)
+      let feedbackPresenter = SionEditorFeedbackPresenter()
+      self.feedbackPresenter = feedbackPresenter
+      canvasView = SionCanvasView(
+        editorController: editorController,
+        editorFeedback: { feedbackPresenter.handle($0) }
+      )
 
       let window = NSWindow(
         contentRect: NSRect(origin: .zero, size: WindowMetrics.initialSize),
@@ -93,10 +101,15 @@
     }
 
     override func close() {
+      zoomPercentageObservation?.invalidate()
+      zoomPercentageObservation = nil
+      zoomPercentageLabel = nil
+
       if let observerID {
         editorController.removeObserver(observerID)
         self.observerID = nil
       }
+      feedbackPresenter.invalidate()
       canvasView.invalidate()
       super.close()
     }
@@ -118,7 +131,8 @@
       case .tools:
         return toolsItem()
       case .zoom:
-        return zoomItem()
+        let placement: ToolbarItemPlacement = flag ? .installed : .customizationPalette
+        return zoomItem(placement: placement)
       case .inspector:
         return buttonItem(
           identifier: .inspector,
@@ -204,6 +218,7 @@
       scrollView.backgroundColor = .windowBackgroundColor
       scrollView.drawsBackground = true
       window?.contentView = scrollView
+      feedbackPresenter.attach(to: scrollView)
     }
 
     private func configureToolbar() {
@@ -247,7 +262,7 @@
       return item
     }
 
-    private func zoomItem() -> NSToolbarItem {
+    private func zoomItem(placement: ToolbarItemPlacement) -> NSToolbarItem {
       let commands = ZoomCommand.allCases
       let control = NSSegmentedControl(
         labels: commands.map(\.label),
@@ -261,11 +276,25 @@
         control.setToolTip(command.title, forSegment: command.rawValue)
       }
 
+      let percentageLabel = NSTextField(labelWithString: zoomPercentageText)
+      percentageLabel.setAccessibilityLabel("Zoom level")
+      let stack = NSStackView(views: [control, percentageLabel])
+      stack.orientation = .horizontal
+      stack.alignment = .centerY
+
       let item = NSToolbarItem(itemIdentifier: .zoom)
       item.label = "Zoom"
       item.paletteLabel = "Zoom Controls"
       item.toolTip = "Zoom the canvas"
-      item.view = control
+      item.view = stack
+
+      switch placement {
+      case .installed:
+        observeZoomPercentage(with: percentageLabel)
+      case .customizationPalette:
+        break
+      }
+
       return item
     }
 
@@ -317,6 +346,29 @@
 
     private func synchronizeUI() {
       toolControl?.selectedSegment = editorController.tool.rawValue
+    }
+
+    private var zoomPercentageText: String {
+      let percentage = Int((scrollView.magnification * ZoomStatus.percentageScale).rounded())
+      return "\(percentage)%"
+    }
+
+    private func observeZoomPercentage(with label: NSTextField) {
+      zoomPercentageObservation?.invalidate()
+      zoomPercentageLabel = label
+      zoomPercentageObservation = scrollView.observe(\.magnification) { [weak self] _, _ in
+        self?.synchronizeZoomPercentage()
+      }
+    }
+
+    private func synchronizeZoomPercentage() {
+      guard let zoomPercentageLabel else { return }
+      let text = zoomPercentageText
+      guard zoomPercentageLabel.stringValue != text else { return }
+
+      // Notify assistive clients because this static label acts as live status.
+      zoomPercentageLabel.stringValue = text
+      NSAccessibility.post(element: zoomPercentageLabel, notification: .valueChanged)
     }
 
     private func applyInitialZoomIfNeeded() {
@@ -380,6 +432,15 @@
 
   private enum ToolbarIdentifier {
     static let document = NSToolbar.Identifier("SionDocumentToolbar.v2")
+  }
+
+  private enum ToolbarItemPlacement {
+    case installed
+    case customizationPalette
+  }
+
+  private enum ZoomStatus {
+    static let percentageScale: CGFloat = 100
   }
 
   private enum ZoomCommand: Int, CaseIterable {

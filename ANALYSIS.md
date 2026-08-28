@@ -268,10 +268,12 @@ and documented pixel tolerances.
 
 ### P1.8 Replace silent command failures with coherent feedback
 
-**Evidence.** Inspector controls now restore model values after a rejected
-semantic edit. Canvas and other palette paths still often use `try?` plus
-`NSSound.beep()`. Arrange logs and beeps, but most failures have no stable
-user-facing explanation.
+**Evidence.** Inspector controls restore model values after a rejected semantic
+edit. Lossy Mermaid paste returns a typed result, preserves the exact source,
+and shows a dismissible nonmodal banner with a VoiceOver announcement; a
+successful retry clears that scoped warning. Canvas and other palette paths
+still often use `try?` plus `NSSound.beep()`. Arrange logs and beeps, but most
+failures have no stable user-facing explanation.
 
 **Scope.** Add one typed editor-result/feedback channel. Roll controls back to
 model values and show a compact nonmodal banner with details or retry when
@@ -525,11 +527,11 @@ source. Large histories scroll smoothly and cancellation closes all jobs.
 
 ### P2.11 Improve zoom, extent, and ambient status
 
-**Evidence.** Toolbar zoom commands exist, and populated windows apply initial
-Fit synchronously after their first usable layout without overwriting later
-zoom input. Infinite canvas bounds only grow, and there is no live percentage,
-dimensions, selection summary, or explicit fit target. A stray drag can leave
-hundreds of thousands of points of empty space.
+**Evidence.** Toolbar zoom commands expose the live magnification percentage,
+and populated windows apply initial Fit synchronously after their first usable
+layout without overwriting later zoom input. Infinite canvas bounds only grow,
+and there are no dimensions, selection summary, or explicit fit target. A stray
+drag can leave hundreds of thousands of points of empty space.
 
 **Scope.** Apply initial zoom after the first valid layout. Add zoom percentage,
 ⌘-scroll and double-tap smart zoom, selection coordinates/dimensions, and
@@ -630,8 +632,9 @@ order-based grid, but does not rank nodes from graph topology. Its deterministic
 report records invalid headers, unsupported arrows/statements, and unrecognized
 lines with source locations. Any omission rejects editable insertion; paste
 preserves the complete source as one text element instead of silently inserting
-a partial graph. The report is not yet surfaced as nonmodal feedback. Subgraphs
-and arrow variants such as `==>` and `-.->` remain unsupported.
+a partial graph. A typed nonmodal warning reports the omission count and first
+source line. Subgraphs and arrow variants such as `==>` and `-.->` remain
+unsupported.
 
 **Scope.** Build a deterministic layered graph layout: rank by topology, order
 to reduce crossings, honor direction, reserve node/label bounds, and define a

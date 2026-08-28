@@ -1,8 +1,8 @@
 # ANALYSIS.md — Sion review backlog
 
 This document merges the full review originally written in `glm.md` (at
-v0.2.0, commit 4194729) with everything learned during the follow-up
-implementation round. Completed items are archived at the bottom without
+v0.2.0, commit 4194729), the independent `k3.md` review, and everything
+learned during the follow-up implementation rounds. Completed items are archived at the bottom without
 loss of detail; the list above them is the live, shovel-ready backlog.
 Each entry names files and concrete mechanics so an LLM can pick one up
 and implement it without re-deriving the analysis.
@@ -16,21 +16,9 @@ the GLM PR review workflow. Keep UI diffs surgical and land them via PR.
 
 | PR | Branch | Topic |
 |----|--------|-------|
-| #29 | `perf/canvas-drawing` | draw culling + further redraw-cost cuts |
-| #30 | `fix/canvas-interactions` | live-text double-draw, dangling drag after mid-gesture undo |
-| #35 | `feat/grid-and-snap` | grid visibility toggle + snap-to-grid |
-| #37 | `feat/archive-preview` | render archive preview PNG on save |
-| #38 | `fix/painted-bounds` | include painted effects (shadows) in bounds |
+| #45 | `fix/element-compositing` | preserve whole-element compositing (opacity/blend/shadow once per element) |
 
 ## Bugs
-
-### A1 (P1) Self-connecting connectors are still allowed
-Drag a connector from a shape and release over the same shape:
-`insertConnector` (SionEditorController) creates element→itself with no
-validation to stop it, rendering as a zero-length stub. Reject when
-`sourceID == targetID` (beep or no-op), or route a visible loop.
-A `SceneValidationError` case (`.connectorTargetsItself`) is the
-format-level fix; needs a spec note if added to validation.
 
 ### A2 (P1) Shadow direction on canvas vs SVG export needs a visual audit
 Model is y-down; the default elevation shadow (`dy = +2`) renders
@@ -39,13 +27,8 @@ NSView and installs `NSShadow.shadowOffset` verbatim; NSShadow offsets
 follow the unflipped base space, so the canvas shadow may render upward,
 disagreeing with the export. Needs a screenshot on macOS; fix by negating
 y when installing the shadow in flipped drawing. `applyShadow` also
-ignores `ShadowStyle.spread`. (#38 may touch the same drawing path —
-coordinate.)
-
-### A3 (P2) Grid subdivisions are modeled but never rendered
-`CanvasGrid.subdivisions` is validated, schema'd, and ignored by
-`drawGrid` (one line per `spacing`). Render faint subdivision lines, or
-drop the field in a schema version.
+ignores `ShadowStyle.spread`. (#38 touched the same drawing path and
+landed; the audit should re-check against it.)
 
 ### A4 (P2) Corner-radius default inconsistency
 `SceneElementDefaults.cornerRadius = 14` (Scene.swift) vs the editor's
@@ -105,6 +88,26 @@ end when content fits inside the visible rect + margin.
 deletes even if the delete fails on a locked element, leaving clipboard
 content the user believes was moved.
 
+### A14 (P2) Transient inspector popover fights the color panel
+The inspector popover uses `.transient` behavior (Palette.present). Clicking
+a color well opens the shared color panel; the focus change can dismiss the
+popover and discard the user's context. Use `.semitransient` for palettes
+containing color wells (or drive color changes through the detached panel).
+Verify on-device; if confirmed, the fix is one line in `Palette.present`.
+
+### A15 (P3) Window title never reflects the file
+`SionDocumentWindowController.init` sets `window.title` once from
+`document.title` ("Untitled"); the archive also stores that title forever.
+After Save As the title bar may not follow the file name. Let NSDocument's
+display-name synchronization own the title and stamp `document.title` from
+the file URL on save.
+
+### A16 (P3) Selection includes children of hidden parents
+`selectAll` filters `visible && editable`, but a hidden group's visible
+children are still selectable; moving such a selection does not move the
+hidden parent, so the group visually tears. Decide: hide-lock cascades
+(hiding a group hides children) or document the independence.
+
 ## Performance
 
 ### P1 (P1) Full-scene `validate()` on every gesture update
@@ -139,23 +142,22 @@ Inspector `refresh` and history mapping run on every observer
 notification — cheap alone, but during gestures non-canvas observers
 could coalesce to gesture end.
 
-## Missing features (value-ordered)
+### P6 (P2) Save-time cost on the main thread
+`data(ofType:)` runs canonical JSON encode, SVG export, Mermaid export,
+pure-Swift SHA-256 over every entry (including up to 256 MB assets, with
+a whole-file `[UInt8]` copy up front), ZIP write, and then a full
+decode to verify — synchronously, and `autosavesInPlace` makes it fire
+on every autosave tick. Options: hash via CryptoKit on Apple platforms
+(keep the portable one for Linux), skip verify-decode for autosaves, or
+capture state and encode off the main actor.
 
-### M1 (P1) Duplicate (⌘D) and z-order Arrange commands — needs a redo
-A previous implementation (#28, then #33) was closed pending stronger
-semantics. Requirements gathered from review of both:
-- duplicate: copy selection onto itself, fresh IDs, diagonal offset,
-  one undo step, copy becomes selection;
-- z-order bring forward/backward/front/back moving multi-selections as
-  one block (destination measured against the array with the block
-  removed — matches `SceneCommand.reorder`);
-- must handle: group hierarchies (a group+child selection must not
-  double-move descendants), locked/hidden members (fail atomically or
-  skip with feedback), capability checks consistent with execution,
-  anchor-editing state cleared on arrange, and no-op detection at stack
-  edges;
-- `insertSelectionPayload` already accepts an `actionName:` (see git
-  history of #28 for the ready-made controller methods and tests).
+### P7 (P3) Stored ZIP keeps JSON history uncompressed
+By spec every entry is STORED; scene.json plus up to 120 history
+snapshots are highly compressible JSON. Accepted deliberately for
+deterministic, dependency-free recovery — if archive size ever matters,
+deflate for non-asset entries is a format-v2 decision with a spec note.
+
+## Missing features (IDs are stable; work the P1/P2/P3 tags top-down)
 
 ### M2 (P1) Group / Ungroup (⌘G / ⇧⌘G)
 `GroupContent`, `parentID`, `setParent`, `descendantIDs` all exist; no
@@ -163,7 +165,7 @@ UI. Group = transaction [insert group element with union frame +
 setParent members]. Ungroup = [setParent(nil) for children + remove
 group]. Needs selection semantics (group selects whole; ⌘click or
 double-click enters), a visible group outline treatment, and marquee/
-z-order rules from M1. Connectors attached to members must keep working
+z-order rules from the archived M1. Connectors attached to members must keep working
 (they reference element IDs, not groups).
 
 ### M3 (P1) Rotation + corner-radius inspector fields
@@ -223,6 +225,55 @@ keyboard traversal already exists.
 
 ### M14 (P3) Stencils, templates, recent colors.
 Standard diagramming furniture; nothing exists today.
+
+### M15 (P2) Paste step-aside (redo of the #30 idea)
+Paste always lands at the visible center; repeated pastes stack
+invisibly on top of each other. Step successive pastes one grid pitch
+aside (cap ~8). Caveat from the #30 closure review: image paste finishes
+asynchronously, so the offset must advance only after the insert
+actually lands, never when the decode is merely queued.
+
+### M16 (P1) Grid visibility toggle + snap-to-grid (redo of #35)
+The adaptive grid renders (with subdivisions), but nothing in the UI can
+show or hide it, and no interaction snaps. Add View > Show Grid
+(persisted via `scene.canvas`) and View > Snap to Grid (session toggle,
+default on). Closure review of #35 demands: test-first, per-drag
+cumulative snapping (or absolute-origin snapping) so sub-cell deltas are
+not lost, snap inside shared insert paths, and `@objc validateMenuItem`
+for the checkmarks.
+
+### M17 (P2) Click-click connector creation
+Connector creation requires one continuous drag. Click source, move,
+click target is the more forgiving interaction (and trackpad-friendly).
+The connector drag state machine (`Drag.connector`) already keeps a live
+preview; make mouse-down arm it and the second click commit.
+
+### M18 (P2) Copy as PNG/SVG to the pasteboard
+`copy:` writes only the private selection type plus plain text; pasting
+a Sion selection into Keynote yields bare strings. Render the selection
+to PNG (reuse the #37 offscreen render path over selection bounds) and
+the SVG exporter's fragment onto the pasteboard alongside the private
+type. Large interop win for a diagramming tool.
+
+### M19 (P2) On-canvas connector label and route editing
+`ConnectorContent.labelPosition` and `ManualConnectorRoute` (orthogonal
+waypoints, curved/bezier controls) are modeled, routed, and persisted
+with no editing gesture. Drag the label along the route; drag a route
+segment to insert a waypoint; drag bezier handles when a bezier route is
+selected. Anchor editing (endpoints/magnets) landed separately — this is
+the path-shape layer.
+
+### M20 (P2) Mermaid import fidelity
+Import flattens to a fixed 3-column grid and ignores `direction`,
+subgraphs, and arrow variants (`==>`, `-.->` import as plain arrows).
+A layered (Sugiyama-lite) placement honoring direction would transform
+imported diagrams; pairs with N2's live palette.
+
+### M21 (P3) Outline/layers panel
+Elements have `name` (with an unused `rename` command), groups, lock,
+and visibility state. A fourth palette with an NSOutlineView listing
+elements — name editing, eye/lock columns, drag to re-parent — is the
+natural home for several features at once.
 
 ## Visual / aesthetics
 
@@ -292,9 +343,43 @@ exists.
 
 ### N9 Snap tick sound, off by default (P3)
 Subtle tick when alignment guides first engage (needs M5). Opt-in.
+An `NSHapticFeedbackManager` tick is the trackpad-native variant; offer
+either.
 
 ### N10 Print-to-scale for fixed canvases (P3)
 Fixed extent + PDF export (M7) + NSPrintInfo gives real print dialogs.
+
+### N11 Connector crossing hops (P3)
+Orthogonal routes that cross unrelated connectors get small jump arcs —
+the classic "pro diagramming" touch. Renderer-only: detect polyline
+intersections between cached routes, insert arc segments at crossings.
+Cache crossings alongside the route cache.
+
+### N12 Sketch / hand-drawn stroke style (P3)
+A `handDrawn` style flag rendering strokes with deterministic jitter
+seeded by element ID (stable per element and export-stable). Charming
+for wireframes; the SVG exporter can reproduce it with the same seed.
+Format-additive (one style field) — needs a spec note.
+
+### N13 Presentation mode (P3)
+Full-screen, chrome hidden, arrow keys step through saved viewport
+"scenes". Needs a scene-bookmark list in document extensions. A new
+use-case, not just polish.
+
+### N14 Paste-drag positioning (P3)
+Hold after ⌘V to drag the pasted copy into place before committing the
+transaction. Small state machine on top of insertSelectionPayload;
+quirky and satisfying.
+
+### N15 ASCII-art paste (P3)
+Paste a box-drawing/ASCII diagram and get native shapes and connectors.
+The parser is pure SionCore and testable on Linux; a signature quirky
+feature.
+
+### N16 QuickLook extension + Finder thumbnails (P3)
+Generate from `previews/preview.png` now that #37 keeps it fresh. A
+QuickLook preview extension reading the archive's stored PNG avoids any
+render dependency.
 
 ## Code quality
 
@@ -317,7 +402,33 @@ injecting the generator in tests.
 
 ---
 
-## Archived: completed during the glm.md round
+## Archived: completed during the implementation rounds
+
+### k3.md round (this document's second source)
+- **A1 self-loops** (PR #43): `insertConnector` throws
+  `ConnectorInsertionError.selfLoopNotSupported` when source == target.
+  Remaining format-level idea: a `.connectorTargetsItself` validation case
+  (needs a spec note) so hand-edited files reject them too.
+- **A3 grid subdivisions** (PR #39): adaptive major/minor grid lines with
+  legibility-driven collapsing.
+- **Archive preview** (PR #37): `renderPreviewPNG` draws content bounds
+  through a flipped-focus context; `data(ofType:)` refreshes a stale
+  `previewPNG` before archiving; pixel-mapping tests pin origin and
+  y-axis. Unblocks N16.
+- **M1 Arrange + Duplicate** (PR #44): z-order as one block with boundary
+  no-op detection, align/distribute over painted bounds, lock/unlock,
+  hide/reveal (locked+hidden recoverable), power duplicate with offset
+  repeat and cap; group records excluded from arrange semantics.
+- **B6 text double-draw** (main): canvas skips text of the element being
+  inline-edited (shape, standalone, connector label).
+- **B7 dangling drag after mid-gesture undo** (PR #42): externally ended
+  gestures recover the view's drag state.
+- **#27/#29/#30/#35/#36 closed unmerged**: superseded by #22/#31/#38/#41/
+  #42/#43 or deferred for test-first redos (see M15/M16 for the salvaged
+  ideas and their closure caveats). SVG text wrap/parity is parked pending
+  the compositing/export-parity pass (#45 lineage).
+
+### glm.md round
 
 - **PF1/PF2/PF5/PF6 render caches** (PR #22): per-scene-state connector
   route cache shared by bounds/draw/hit-testing (`SionEditorController`
@@ -348,8 +459,9 @@ injecting the generator in tests.
   anchoring, rotation + corner-radius handles, rotated hit testing —
   landed on main via the editor-interactions work; the shape-precise
   remainder is A5 above.
-- **F2/F3 duplicate + z-order** (PR #28, closed pending M1's stronger
-  semantics): ready-made controller methods and tests live in that PR's
+- **F2/F3 duplicate + z-order** (PR #28, closed pending stronger
+  semantics — those semantics landed as #44, see the k3 archive):
+  ready-made controller methods and tests live in that PR's
   history (`duplicateSelection`, `changeSelectionZOrder`,
   `insertSelectionPayload(actionName:)`).
 - Also landed from parallel work (context for future items): creation

@@ -71,6 +71,7 @@ public enum ElementHitGeometry {
 private struct FlattenedPath {
   let subpaths: [FlattenedSubpath]
   let fillRule: PathFillRule
+  let truncationTolerance: Double
 
   func contains(
     _ point: SionPoint,
@@ -79,8 +80,9 @@ private struct FlattenedPath {
   ) -> Bool {
     guard let bounds else { return false }
 
-    let strokeRadius = style.visibleStroke?.hitExpansion(tolerance: tolerance) ?? 0
-    let fillRadius = style.hasVisibleFill ? tolerance : 0
+    let geometryTolerance = tolerance + truncationTolerance
+    let strokeRadius = style.visibleStroke?.hitExpansion(tolerance: geometryTolerance) ?? 0
+    let fillRadius = style.hasVisibleFill ? geometryTolerance : 0
     guard bounds.expanded(by: max(fillRadius, strokeRadius)).contains(point) else {
       return false
     }
@@ -90,18 +92,23 @@ private struct FlattenedPath {
         return true
       }
 
-      if tolerance > 0,
+      if geometryTolerance > 0,
         subpaths.flatMap(\.fillSegments).contains(where: {
-          distance(from: point, to: $0) <= tolerance
+          distance(from: point, to: $0) <= geometryTolerance
         })
       {
         return true
       }
     }
 
-    guard let stroke = style.visibleStroke else { return false }
+    guard var stroke = style.visibleStroke else { return false }
 
-    return StrokeHitGeometry(stroke: stroke, tolerance: tolerance).contains(
+    // Preserve selection with a conservative margin when the path exhausts its budget.
+    if truncationTolerance > 0 {
+      stroke.dashPattern = []
+    }
+
+    return StrokeHitGeometry(stroke: stroke, tolerance: geometryTolerance).contains(
       point,
       in: subpaths
     )
@@ -220,6 +227,14 @@ private struct FlattenedPathBuilder {
   private var subpaths: [FlattenedSubpath] = []
   private var activePoints: [SionPoint] = []
   private var currentPoint: SionPoint?
+  private var truncationTolerance = 0.0
+  private let maximumCurveSubdivisionDepth: Int
+
+  init(
+    maximumCurveSubdivisionDepth: Int = HitGeometryDefaults.maximumCurveSubdivisionDepth
+  ) {
+    self.maximumCurveSubdivisionDepth = maximumCurveSubdivisionDepth
+  }
 
   mutating func move(to point: SionPoint) {
     finishActivePath(closure: .open)
@@ -273,7 +288,11 @@ private struct FlattenedPathBuilder {
   mutating func build(fillRule: PathFillRule = .nonZero) -> FlattenedPath {
     finishActivePath(closure: .open)
 
-    return FlattenedPath(subpaths: subpaths, fillRule: fillRule)
+    return FlattenedPath(
+      subpaths: subpaths,
+      fillRule: fillRule,
+      truncationTolerance: truncationTolerance
+    )
   }
 
   private mutating func finishActivePath(closure: SubpathClosure) {
@@ -301,10 +320,13 @@ private struct FlattenedPathBuilder {
     depth: Int
   ) {
     // De Casteljau subdivision keeps error stable on large canvases.
-    let isFlat =
-      distance(from: control, toLineFrom: start, to: end)
-      <= HitGeometryDefaults.curveFlatness
-    guard !isFlat, depth < HitGeometryDefaults.maximumCurveSubdivisionDepth else {
+    let flatness = distance(from: control, toLineFrom: start, to: end)
+    guard flatness > HitGeometryDefaults.curveFlatness else {
+      activePoints.append(end)
+      return
+    }
+    guard depth < maximumCurveSubdivisionDepth else {
+      truncationTolerance = max(truncationTolerance, flatness)
       activePoints.append(end)
       return
     }
@@ -337,9 +359,12 @@ private struct FlattenedPathBuilder {
       distance(from: control1, toLineFrom: start, to: end),
       distance(from: control2, toLineFrom: start, to: end)
     )
-    guard flatness > HitGeometryDefaults.curveFlatness,
-      depth < HitGeometryDefaults.maximumCurveSubdivisionDepth
-    else {
+    guard flatness > HitGeometryDefaults.curveFlatness else {
+      activePoints.append(end)
+      return
+    }
+    guard depth < maximumCurveSubdivisionDepth else {
+      truncationTolerance = max(truncationTolerance, flatness)
       activePoints.append(end)
       return
     }
@@ -396,11 +421,78 @@ private struct StrokeHitGeometry {
   }
 
   func contains(_ point: SionPoint, in subpaths: [FlattenedSubpath]) -> Bool {
-    subpaths.contains { subpath in
-      strokeRuns(for: subpath).contains { run in
-        contains(point, in: run)
+    guard let dashPattern = DashPattern(stroke.dashPattern) else {
+      return subpaths.contains { subpath in
+        contains(
+          point,
+          in: StrokeRun(points: subpath.points, closure: subpath.closure)
+        )
       }
     }
+
+    return subpaths.contains { subpath in
+      contains(point, in: subpath, dashPattern: dashPattern)
+    }
+  }
+
+  private func contains(
+    _ point: SionPoint,
+    in subpath: FlattenedSubpath,
+    dashPattern: DashPattern
+  ) -> Bool {
+    let segments = measuredSegments(in: subpath)
+    guard let pathLength = segments.last?.endDistance else { return false }
+
+    let joinsAtSeam =
+      subpath.closure == .closed
+      && dashPattern.isPainted(before: pathLength)
+      && dashPattern.isPainted(after: 0)
+
+    for segment in segments {
+      if dashedBodyContains(
+        point,
+        measuredSegment: segment,
+        pathLength: pathLength,
+        closure: subpath.closure,
+        joinsAtSeam: joinsAtSeam,
+        dashPattern: dashPattern
+      ) {
+        return true
+      }
+    }
+
+    for index in segments.indices.dropFirst() {
+      let outgoing = segments[index]
+      guard dashPattern.isPainted(before: outgoing.startDistance),
+        dashPattern.isPainted(after: outgoing.startDistance)
+      else {
+        continue
+      }
+
+      let incoming = segments[segments.index(before: index)]
+      if joinContains(
+        point,
+        previous: incoming.segment.start,
+        vertex: outgoing.segment.start,
+        next: outgoing.segment.end
+      ) {
+        return true
+      }
+    }
+
+    guard joinsAtSeam,
+      let incoming = segments.last,
+      let outgoing = segments.first
+    else {
+      return false
+    }
+
+    return joinContains(
+      point,
+      previous: incoming.segment.start,
+      vertex: outgoing.segment.start,
+      next: outgoing.segment.end
+    )
   }
 
   private func contains(_ point: SionPoint, in run: StrokeRun) -> Bool {
@@ -421,8 +513,8 @@ private struct StrokeHitGeometry {
     }
 
     if run.closure == .open, stroke.lineCap == .round,
-      let start = run.points.first,
-      let end = run.points.last,
+      let start = run.vertices.first,
+      let end = run.vertices.last,
       min(point.distance(to: start), point.distance(to: end)) <= radius + tolerance
     {
       return true
@@ -437,7 +529,9 @@ private struct StrokeHitGeometry {
     _ point: SionPoint,
     segment: SionLineSegment,
     startExtension: Double,
-    endExtension: Double
+    endExtension: Double,
+    paintedStart: Double = 0,
+    paintedEnd: Double? = nil
   ) -> Bool {
     let vector = segment.end - segment.start
     let length = vector.length
@@ -447,11 +541,94 @@ private struct StrokeHitGeometry {
     let offset = point - segment.start
     let along = offset.dot(direction)
     let perpendicular = abs(cross(offset, direction))
-    let outsideAlong = max(0, max((-startExtension) - along, along - length - endExtension))
+    let end = paintedEnd ?? length
+    let outsideAlong = max(
+      0,
+      max(
+        paintedStart - startExtension - along,
+        along - end - endExtension
+      )
+    )
     let outsidePerpendicular = max(0, perpendicular - radius)
 
     return hypot(outsideAlong, outsidePerpendicular) <= tolerance
       + HitGeometryDefaults.epsilon
+  }
+
+  private func dashedBodyContains(
+    _ point: SionPoint,
+    measuredSegment: MeasuredStrokeSegment,
+    pathLength: Double,
+    closure: SubpathClosure,
+    joinsAtSeam: Bool,
+    dashPattern: DashPattern
+  ) -> Bool {
+    let segment = measuredSegment.segment
+    let vector = segment.end - segment.start
+    let length = measuredSegment.length
+    let direction = vector / length
+    let projectedDistance = min(length, max(0, (point - segment.start).dot(direction)))
+    let pathDistance = measuredSegment.startDistance + projectedDistance
+    let spans = dashPattern.paintedSpans(
+      near: pathDistance,
+      within: measuredSegment.startDistance...measuredSegment.endDistance,
+      pathLength: pathLength,
+      closure: closure,
+      joinsAtSeam: joinsAtSeam
+    )
+
+    for span in spans {
+      let start = span.range.lowerBound - measuredSegment.startDistance
+      let end = span.range.upperBound - measuredSegment.startDistance
+      let startExtension = span.startsWithCap && stroke.lineCap == .square ? radius : 0
+      let endExtension = span.endsWithCap && stroke.lineCap == .square ? radius : 0
+      if bodyContains(
+        point,
+        segment: segment,
+        startExtension: startExtension,
+        endExtension: endExtension,
+        paintedStart: start,
+        paintedEnd: end
+      ) {
+        return true
+      }
+
+      guard stroke.lineCap == .round else { continue }
+
+      if span.startsWithCap,
+        point.distance(to: segment.start + (direction * start)) <= radius + tolerance
+      {
+        return true
+      }
+      if span.endsWithCap,
+        point.distance(to: segment.start + (direction * end)) <= radius + tolerance
+      {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private func measuredSegments(in subpath: FlattenedSubpath) -> [MeasuredStrokeSegment] {
+    var distance = 0.0
+    var result: [MeasuredStrokeSegment] = []
+
+    for segment in subpath.strokeSegments {
+      let length = segment.length
+      guard length > HitGeometryDefaults.epsilon else { continue }
+
+      result.append(
+        MeasuredStrokeSegment(
+          segment: segment,
+          startDistance: distance,
+          endDistance: distance + length
+        )
+      )
+      distance += length
+    }
+
+    return result
   }
 
   private func joinContains(
@@ -497,113 +674,25 @@ private struct StrokeHitGeometry {
     return polygonContains(point, polygon: polygon, tolerance: tolerance)
   }
 
-  private func strokeRuns(for subpath: FlattenedSubpath) -> [StrokeRun] {
-    var pattern = stroke.dashPattern.filter { $0.isFinite && $0 > 0 }
-    guard !pattern.isEmpty else {
-      return [StrokeRun(points: subpath.points, closure: subpath.closure)]
-    }
-
-    if !pattern.count.isMultiple(of: 2) {
-      pattern += pattern
-    }
-
-    var patternIndex = pattern.startIndex
-    var patternRemaining = pattern[patternIndex]
-    var draws = true
-    var activePoints: [SionPoint] = []
-    var runs: [StrokeRun] = []
-
-    // Dash phase crosses vertices; only painted runs receive caps.
-    func finishRun() {
-      guard activePoints.count >= 2 else {
-        activePoints = []
-        return
-      }
-
-      runs.append(StrokeRun(points: activePoints, closure: .open))
-      activePoints = []
-    }
-
-    for segment in subpath.strokeSegments {
-      let length = segment.length
-      guard length > HitGeometryDefaults.epsilon else { continue }
-
-      var position = 0.0
-      while position < length - HitGeometryDefaults.epsilon {
-        let step = min(patternRemaining, length - position)
-        let start = segment.start.interpolated(to: segment.end, fraction: position / length)
-        let end = segment.start.interpolated(
-          to: segment.end,
-          fraction: (position + step) / length
-        )
-        if draws {
-          if activePoints.last != start {
-            activePoints.append(start)
-          }
-          activePoints.append(end)
-        }
-
-        position += step
-        patternRemaining -= step
-        guard patternRemaining <= HitGeometryDefaults.epsilon else { continue }
-
-        if draws {
-          finishRun()
-        }
-        patternIndex = pattern.index(after: patternIndex)
-        if patternIndex == pattern.endIndex {
-          patternIndex = pattern.startIndex
-        }
-        patternRemaining = pattern[patternIndex]
-        draws.toggle()
-      }
-    }
-    finishRun()
-
-    mergeClosedSeam(in: subpath, runs: &runs)
-    return runs
-  }
-
-  private func mergeClosedSeam(
-    in subpath: FlattenedSubpath,
-    runs: inout [StrokeRun]
-  ) {
-    guard subpath.closure == .closed,
-      runs.count > 1,
-      let seam = subpath.points.first,
-      runs.first?.points.first == seam,
-      runs.last?.points.last == seam,
-      let first = runs.first,
-      let last = runs.last
-    else { return }
-
-    runs.removeLast()
-    runs.removeFirst()
-    runs.insert(
-      StrokeRun(points: last.points + first.points.dropFirst(), closure: .open),
-      at: 0
-    )
-  }
-
   private func joinPoints(in run: StrokeRun) -> [StrokeJoin] {
-    guard run.points.count >= 3 else { return [] }
+    let points = run.vertices
+    guard points.count >= 3 else { return [] }
 
-    var joins = run.points.indices.dropFirst().dropLast().map { index in
+    var joins = points.indices.dropFirst().dropLast().map { index in
       StrokeJoin(
-        previous: run.points[run.points.index(before: index)],
-        vertex: run.points[index],
-        next: run.points[run.points.index(after: index)]
+        previous: points[points.index(before: index)],
+        vertex: points[index],
+        next: points[points.index(after: index)]
       )
     }
     if run.closure == .closed,
-      let first = run.points.first,
-      let last = run.points.last,
-      run.points.count > 2
+      let first = points.first,
+      let last = points.last
     {
-      joins.append(StrokeJoin(previous: last, vertex: first, next: run.points[1]))
+      joins.append(StrokeJoin(previous: last, vertex: first, next: points[1]))
       joins.append(
         StrokeJoin(
-          previous: run.points[run.points.count - 2],
+          previous: points[points.count - 2],
           vertex: last,
           next: first
         )
@@ -678,7 +767,16 @@ private struct StrokeRun {
   let points: [SionPoint]
   let closure: SubpathClosure
 
+  var vertices: [SionPoint] {
+    guard closure == .closed, points.count > 1, points.first == points.last else {
+      return points
+    }
+
+    return Array(points.dropLast())
+  }
+
   var segments: [SionLineSegment] {
+    let points = vertices
     guard points.count >= 2 else { return [] }
 
     var result = zip(points, points.dropFirst()).map(SionLineSegment.init)
@@ -697,6 +795,139 @@ private struct StrokeJoin {
   let previous: SionPoint
   let vertex: SionPoint
   let next: SionPoint
+}
+
+private struct MeasuredStrokeSegment {
+  let segment: SionLineSegment
+  let startDistance: Double
+  let endDistance: Double
+
+  var length: Double {
+    endDistance - startDistance
+  }
+}
+
+private struct DashPaintSpan {
+  let range: ClosedRange<Double>
+  let startsWithCap: Bool
+  let endsWithCap: Bool
+}
+
+private struct DashPattern {
+  private let cumulativeEnds: [Double]
+  private let period: Double
+
+  init?(_ source: [Double]) {
+    var lengths = source.filter { $0.isFinite && $0 > 0 }
+    guard !lengths.isEmpty else { return nil }
+
+    if !lengths.count.isMultiple(of: 2) {
+      lengths += lengths
+    }
+
+    var total = 0.0
+    var ends: [Double] = []
+    ends.reserveCapacity(lengths.count)
+    for length in lengths {
+      total += length
+      guard total.isFinite else { return nil }
+
+      ends.append(total)
+    }
+    guard total > 0 else { return nil }
+
+    cumulativeEnds = ends
+    period = total
+  }
+
+  func isPainted(after distance: Double) -> Bool {
+    entryIndex(containing: phase(at: distance)).isMultiple(of: 2)
+  }
+
+  func isPainted(before distance: Double) -> Bool {
+    let currentPhase = phase(at: distance)
+    let precedingPhase = currentPhase > 0 ? currentPhase.nextDown : period.nextDown
+    return entryIndex(containing: precedingPhase).isMultiple(of: 2)
+  }
+
+  func paintedSpans(
+    near distance: Double,
+    within segmentRange: ClosedRange<Double>,
+    pathLength: Double,
+    closure: SubpathClosure,
+    joinsAtSeam: Bool
+  ) -> [DashPaintSpan] {
+    candidatePaintRanges(near: distance).compactMap { candidate in
+      let pathStart = max(0, candidate.lowerBound)
+      let pathEnd = min(pathLength, candidate.upperBound)
+      guard pathStart <= pathEnd else { return nil }
+
+      let start = max(segmentRange.lowerBound, pathStart)
+      let end = min(segmentRange.upperBound, pathEnd)
+      // A shared vertex belongs to the segment that contains painted length.
+      guard start < end else { return nil }
+
+      let startsAtPaintBoundary = start == pathStart
+      let endsAtPaintBoundary = end == pathEnd
+      let pathStartNeedsCap = closure == .open || !joinsAtSeam
+      let pathEndNeedsCap = closure == .open || !joinsAtSeam
+      let startsWithCap =
+        startsAtPaintBoundary
+        && (pathStart > 0 || pathStartNeedsCap)
+      let endsWithCap =
+        endsAtPaintBoundary
+        && (pathEnd < pathLength || pathEndNeedsCap)
+
+      return DashPaintSpan(
+        range: start...end,
+        startsWithCap: startsWithCap,
+        endsWithCap: endsWithCap
+      )
+    }
+  }
+
+  private func candidatePaintRanges(near distance: Double) -> [ClosedRange<Double>] {
+    let currentPhase = phase(at: distance)
+    let cycleStart = distance - currentPhase
+    let index = entryIndex(containing: currentPhase)
+    if index.isMultiple(of: 2) {
+      return [paintRange(at: index, cycleStart: cycleStart)]
+    }
+
+    let previous = paintRange(at: index - 1, cycleStart: cycleStart)
+    let nextIndex = index + 1
+    if nextIndex < cumulativeEnds.count {
+      return [previous, paintRange(at: nextIndex, cycleStart: cycleStart)]
+    }
+
+    return [previous, paintRange(at: 0, cycleStart: cycleStart + period)]
+  }
+
+  private func paintRange(at index: Int, cycleStart: Double) -> ClosedRange<Double> {
+    let start = index == cumulativeEnds.startIndex ? 0 : cumulativeEnds[index - 1]
+    return (cycleStart + start)...(cycleStart + cumulativeEnds[index])
+  }
+
+  private func entryIndex(containing phase: Double) -> Int {
+    var lower = cumulativeEnds.startIndex
+    var upper = cumulativeEnds.endIndex
+    while lower < upper {
+      let midpoint = lower + ((upper - lower) / 2)
+      if phase < cumulativeEnds[midpoint] {
+        upper = midpoint
+        continue
+      }
+
+      lower = midpoint + 1
+    }
+
+    return min(lower, cumulativeEnds.index(before: cumulativeEnds.endIndex))
+  }
+
+  private func phase(at distance: Double) -> Double {
+    let remainder = distance.truncatingRemainder(dividingBy: period)
+    return remainder >= 0 ? remainder : remainder + period
+  }
 }
 
 extension ShapeKind {
@@ -909,7 +1140,19 @@ extension VectorPath {
   }
 
   fileprivate func flattened(in frame: SionRect) -> FlattenedPath {
-    var builder = FlattenedPathBuilder()
+    let curveCount = commands.reduce(into: 0) { count, command in
+      switch command {
+      case .quadratic, .cubic:
+        count += 1
+      case .move, .line, .close:
+        break
+      }
+    }
+    var builder = FlattenedPathBuilder(
+      maximumCurveSubdivisionDepth: HitGeometryDefaults.subdivisionDepth(
+        curveCount: curveCount
+      )
+    )
 
     func resolve(_ point: SionPoint) -> SionPoint {
       switch coordinateSpace {
@@ -1016,7 +1259,27 @@ private enum HitGeometryDefaults {
   static let arcControlFactor = 0.552_284_749_8
   static let curveFlatness = 0.25
   static let epsilon = 1e-9
+  // Share a fixed traversal budget across every curve in one valid path.
+  static let flattenedSegmentsPerPathCommand = 16
+  static let maximumFlattenedCurveSegmentCount =
+    SceneLimits.maximumPathCommandCount * flattenedSegmentsPerPathCommand
   static let maximumCurveSubdivisionDepth = 12
   // StrokeStyle has no override, so mirror NSBezierPath's default.
   static let miterLimit = 10.0
+
+  static func subdivisionDepth(curveCount: Int) -> Int {
+    guard curveCount > 0 else { return maximumCurveSubdivisionDepth }
+
+    let segmentsPerCurve = max(1, maximumFlattenedCurveSegmentCount / curveCount)
+    var depth = 0
+    var segmentCount = 1
+    while depth < maximumCurveSubdivisionDepth,
+      segmentCount <= segmentsPerCurve / 2
+    {
+      depth += 1
+      segmentCount *= 2
+    }
+
+    return depth
+  }
 }

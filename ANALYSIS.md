@@ -219,11 +219,12 @@ labels, rotations, and Canvas/SVG/bounds parity.
 ### P1.5 Use shape-aware hit testing and obstacle geometry
 
 **Evidence.** Point selection now uses platform-neutral `ElementHitGeometry`
-after rotation, with path bounds, fill rules, adaptive curves, fill tolerance,
-and dashed stroke cap/join geometry. Conservative label content bounds keep
-unpainted labeled shapes selectable. Portable fixtures cover transparent
-nonrectangular corners, visible fills, stroke-only and open paths, nonzero
-origins, and rotation. Click selection still has no overlap cycling. Routing
+after rotation, with path bounds, fill rules, budgeted adaptive curves, fill
+tolerance, and bounded dashed stroke cap/join geometry. Conservative label
+content bounds keep unpainted labeled shapes selectable. Portable fixtures
+cover transparent nonrectangular corners, visible fills, stroke-only and open
+paths, nonzero origins, and rotation. Click selection still has no overlap
+cycling. Routing
 protects painted protrusions with conservative rotated bounds, but over-avoids
 transparent corners of nonrectangular shapes.
 

@@ -292,12 +292,12 @@ private enum MermaidDirection {
       return
     }
 
-    let separatorIndex = firstToken.firstIndex(of: MermaidSyntax.statementSeparator)
-    guard separatorIndex != nil || declarationTokens.dropFirst().isEmpty else {
+    guard declarationTokens.dropFirst().isEmpty else {
       return nil
     }
 
-    let directionToken = separatorIndex.map { firstToken[..<$0] } ?? firstToken[...]
+    let directionToken =
+      firstToken.last == MermaidSyntax.statementSeparator ? firstToken.dropLast() : firstToken[...]
     switch directionToken.lowercased() {
     case "tb", "td":
       self = .topToBottom

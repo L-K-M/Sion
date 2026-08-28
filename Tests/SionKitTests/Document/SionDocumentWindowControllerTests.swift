@@ -187,8 +187,13 @@ final class SionDocumentWindowControllerTests: XCTestCase {
 
     window.setContentSize(.zero)
     windowController.showWindow(nil)
+    XCTAssertEqual(scrollView.contentSize, .zero)
+
     windowController.actualSize(nil)
     window.setContentSize(InitialFitTestGeometry.windowContentSize)
+    windowController.windowDidResize(
+      Notification(name: NSWindow.didResizeNotification, object: window)
+    )
 
     XCTAssertEqual(
       scrollView.magnification,

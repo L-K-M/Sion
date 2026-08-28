@@ -75,9 +75,47 @@ final class MermaidImporterTests: XCTestCase {
     }
   }
 
+  func testDefaultsDirectionlessHeadersToTopToBottom() throws {
+    for header in ImportedHeader.allCases {
+      let step = try primaryStep(
+        in: """
+          \(header.rawValue)
+            A
+            B
+          """
+      )
+
+      XCTAssertEqual(step, .south, header.rawValue)
+    }
+  }
+
+  func testHonorsSemicolonTerminatedFlowchartDirections() throws {
+    for direction in ImportedDirection.allCases {
+      let step = try primaryStep(
+        in: """
+          flowchart \(direction.rawValue);
+            A
+            B
+          """
+      )
+
+      XCTAssertEqual(step, direction.expectedStep, direction.rawValue)
+    }
+  }
+
   func testRejectsUnknownFlowchartDirection() {
     let source = """
       flowchart XY
+        A
+      """
+
+    XCTAssertTrue(MermaidImporter.looksLikeMermaid(source))
+    XCTAssertTrue(MermaidImporter.elements(from: source, centeredAt: .zero).isEmpty)
+  }
+
+  func testRejectsTrailingFlowchartHeaderTokenWithoutSeparator() {
+    let source = """
+      flowchart LR unexpected
         A
       """
 
@@ -108,6 +146,20 @@ final class MermaidImporterTests: XCTestCase {
     XCTAssertEqual(imported.filter { $0.content.connector == nil }.count, 2)
     XCTAssertEqual(imported.compactMap(\.content.connector).count, 1)
   }
+
+  private func primaryStep(in source: String) throws -> SionVector {
+    let nodes = MermaidImporter.elements(from: source, centeredAt: .zero)
+    XCTAssertEqual(nodes.count, 2)
+
+    let first = try XCTUnwrap(nodes.first)
+    let second = try XCTUnwrap(nodes.dropFirst().first)
+    return (second.geometry.frame.center - first.geometry.frame.center).normalized
+  }
+}
+
+private enum ImportedHeader: String, CaseIterable {
+  case flowchart
+  case graph
 }
 
 private enum ImportedDirection: String, CaseIterable {

@@ -137,7 +137,7 @@ final class InspectorPaletteTests: XCTestCase {
       undoManagerProvider: { undoManager },
       didChange: { _ in }
     )
-    editor.select(elements.map(\.id))
+    editor.select(Set(elements.map(\.id)))
     let documentController = SionDocumentWindowController(editorController: editor)
 
     let documentWindow = try XCTUnwrap(documentController.window)

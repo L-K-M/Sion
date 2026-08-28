@@ -33,10 +33,89 @@ final class SionOpenRecentMenuTests: XCTestCase {
     XCTAssertTrue(fileMenu.item(at: openRecentIndex + 1)?.isSeparatorItem == true)
     XCTAssertNotNil(openRecent.submenu?.delegate)
   }
+
+  func testRecentMenuUsesCurrentDocumentURLs() throws {
+    let urls = [TestDocument.diagram, TestDocument.notes]
+    let controller = makeController(recentDocumentURLs: { urls })
+    let menu = NSMenu(title: TestMenu.openRecent)
+
+    controller.menuNeedsUpdate(menu)
+
+    let recentItems = Array(menu.items.prefix(urls.count))
+    XCTAssertEqual(recentItems.map(\.title), urls.map(\.lastPathComponent))
+    XCTAssertEqual(recentItems.compactMap { $0.representedObject as? URL }, urls)
+    XCTAssertTrue(menu.items[urls.count].isSeparatorItem)
+
+    let clear = try XCTUnwrap(menu.items.last)
+    XCTAssertEqual(clear.title, TestMenu.clear)
+    XCTAssertTrue(clear.isEnabled)
+  }
+
+  func testRecentMenuRoutesOpenAndClearActions() throws {
+    var urls = [TestDocument.diagram]
+    var openedURLs: [URL] = []
+    var clearCount = 0
+    let controller = makeController(
+      recentDocumentURLs: { urls },
+      openDocument: { openedURLs.append($0) },
+      clearRecentDocuments: {
+        urls.removeAll()
+        clearCount += 1
+      }
+    )
+    let menu = NSMenu(title: TestMenu.openRecent)
+
+    controller.menuNeedsUpdate(menu)
+
+    let recent = try XCTUnwrap(menu.items.first)
+    XCTAssertTrue(
+      NSApp.sendAction(try XCTUnwrap(recent.action), to: recent.target, from: recent)
+    )
+    XCTAssertEqual(openedURLs, [TestDocument.diagram])
+
+    let clear = try XCTUnwrap(menu.items.last)
+    XCTAssertTrue(
+      NSApp.sendAction(try XCTUnwrap(clear.action), to: clear.target, from: clear)
+    )
+    XCTAssertEqual(clearCount, 1)
+  }
+
+  func testRecentMenuRebuildRemovesStaleItems() throws {
+    var urls = [TestDocument.diagram, TestDocument.notes]
+    let controller = makeController(recentDocumentURLs: { urls })
+    let menu = NSMenu(title: TestMenu.openRecent)
+    controller.menuNeedsUpdate(menu)
+
+    urls.removeAll()
+    controller.menuNeedsUpdate(menu)
+
+    let clear = try XCTUnwrap(menu.items.first)
+    XCTAssertEqual(menu.items.count, 1)
+    XCTAssertEqual(clear.title, TestMenu.clear)
+    XCTAssertFalse(clear.isEnabled)
+  }
+
+  private func makeController(
+    recentDocumentURLs: @escaping () -> [URL],
+    openDocument: @escaping (URL) -> Void = { _ in },
+    clearRecentDocuments: @escaping () -> Void = {}
+  ) -> SionRecentDocumentsMenuController {
+    SionRecentDocumentsMenuController(
+      recentDocumentURLs: recentDocumentURLs,
+      openDocument: openDocument,
+      clearRecentDocuments: clearRecentDocuments
+    )
+  }
 }
 
 private enum TestMenu {
+  static let clear = "Clear Menu"
   static let file = "File"
   static let open = "Open…"
   static let openRecent = "Open Recent"
+}
+
+private enum TestDocument {
+  static let diagram = URL(fileURLWithPath: "/tmp/diagram.sion")
+  static let notes = URL(fileURLWithPath: "/tmp/notes.sion")
 }

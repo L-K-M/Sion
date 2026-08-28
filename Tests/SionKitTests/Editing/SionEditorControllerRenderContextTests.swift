@@ -63,15 +63,15 @@
       try controller.beginMove()
 
       try controller.moveSelection(by: SionVector(dx: 200, dy: 0))
-      let duplicate = try XCTUnwrap(
-        controller.document.scene.element(withID: duplicateID)
-      )
       try controller.endMove()
 
+      let settledDuplicate = try XCTUnwrap(
+        controller.document.scene.element(withID: duplicateID)
+      )
       XCTAssertEqual(controller.selection, [duplicateID])
       controller.select(original.id)
       let query = controller.elementsForRendering(
-        intersecting: duplicate.geometry.frame
+        intersecting: settledDuplicate.geometry.frame
       )
 
       XCTAssertTrue(query.contains { $0.id == duplicateID })

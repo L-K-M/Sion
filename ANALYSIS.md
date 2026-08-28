@@ -521,10 +521,11 @@ source. Large histories scroll smoothly and cancellation closes all jobs.
 
 ### P2.11 Improve zoom, extent, and ambient status
 
-**Evidence.** Toolbar zoom commands exist, but initial Fit uses a deferred
-`showWindow` timing flag, infinite canvas bounds only grow, and there is no
-live percentage, dimensions, selection summary, or explicit fit target. A
-stray drag can leave hundreds of thousands of points of empty space.
+**Evidence.** Toolbar zoom commands exist, and populated windows apply initial
+Fit synchronously after their first usable layout without overwriting later
+zoom input. Infinite canvas bounds only grow, and there is no live percentage,
+dimensions, selection summary, or explicit fit target. A stray drag can leave
+hundreds of thousands of points of empty space.
 
 **Scope.** Apply initial zoom after the first valid layout. Add zoom percentage,
 ⌘-scroll and double-tap smart zoom, selection coordinates/dimensions, and

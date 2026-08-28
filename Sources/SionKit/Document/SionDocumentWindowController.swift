@@ -11,7 +11,7 @@
     private let scrollView = NSScrollView()
     private var toolControl: NSSegmentedControl?
     private var observerID: UUID?
-    private var didApplyInitialZoom = false
+    private var isInitialZoomPending = true
 
     var paletteEditorController: SionEditorController { editorController }
     var canvasVisibleCenter: SionPoint { canvasView.visibleCenter }
@@ -78,17 +78,18 @@
       canvasView.cancelActiveDrag()
     }
 
+    func windowDidResize(_ notification: Notification) {
+      guard window?.isVisible == true else { return }
+
+      // A zero-sized restored viewport can become usable after its first show.
+      applyInitialZoomIfNeeded()
+    }
+
     override func showWindow(_ sender: Any?) {
       super.showWindow(sender)
       window?.makeFirstResponder(canvasView)
 
-      guard !didApplyInitialZoom else { return }
-      didApplyInitialZoom = true
-      guard !editorController.document.scene.elements.isEmpty else { return }
-
-      DispatchQueue.main.async { [weak self] in
-        self?.zoomToFit(nil)
-      }
+      applyInitialZoomIfNeeded()
     }
 
     override func close() {
@@ -145,18 +146,22 @@
     }
 
     @objc func zoomIn(_ sender: Any?) {
+      resolveInitialZoom()
       setMagnification(scrollView.magnification * WindowMetrics.zoomStep)
     }
 
     @objc func zoomOut(_ sender: Any?) {
+      resolveInitialZoom()
       setMagnification(scrollView.magnification / WindowMetrics.zoomStep)
     }
 
     @objc func actualSize(_ sender: Any?) {
+      resolveInitialZoom()
       setMagnification(1)
     }
 
     @objc func zoomToFit(_ sender: Any?) {
+      resolveInitialZoom()
       let bounds = editorController.contentBounds()
       let available = scrollView.contentSize
       guard bounds.width > 0, bounds.height > 0 else { return }
@@ -312,6 +317,25 @@
 
     private func synchronizeUI() {
       toolControl?.selectedSegment = editorController.tool.rawValue
+    }
+
+    private func applyInitialZoomIfNeeded() {
+      guard isInitialZoomPending else { return }
+
+      // Fit only after AppKit exposes a usable viewport; a later show can retry.
+      window?.contentView?.layoutSubtreeIfNeeded()
+      let available = scrollView.contentSize
+      guard available.width > 0, available.height > 0 else { return }
+
+      resolveInitialZoom()
+      guard !editorController.document.scene.elements.isEmpty else { return }
+
+      zoomToFit(nil)
+    }
+
+    private func resolveInitialZoom() {
+      // A later resize must not replace the first usable layout or explicit zoom.
+      isInitialZoomPending = false
     }
 
     private func setMagnification(_ requested: CGFloat) {

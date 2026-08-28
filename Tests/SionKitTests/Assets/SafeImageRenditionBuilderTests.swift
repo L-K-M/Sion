@@ -26,7 +26,7 @@ final class SafeImageRenditionBuilderTests: XCTestCase {
     )
   }
 
-  func testRasterizesAwayFromTheMainActor() async throws {
+  func testServiceRasterizesAnImage() async throws {
     let image = NSImage(size: NSSize(width: 12, height: 8), flipped: false) { bounds in
       NSColor.systemBlue.setFill()
       bounds.fill()
@@ -34,9 +34,7 @@ final class SafeImageRenditionBuilderTests: XCTestCase {
     }
     let sourceData = try XCTUnwrap(image.tiffRepresentation)
 
-    let rendition = await Task.detached {
-      SafeImageRenditionBuilder.make(from: sourceData)
-    }.value
+    let rendition = await SafeImageRenditionService().make(from: sourceData)
 
     XCTAssertNotNil(rendition)
   }

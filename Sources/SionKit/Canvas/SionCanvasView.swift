@@ -64,8 +64,10 @@
     private let creationFailureFeedback: @MainActor () -> Void
     private let editorFeedback: @MainActor (SionEditorFeedbackRequest) -> Void
     private let pasteboard: NSPasteboard
+    private let imageRenditionService: SafeImageRenditionService
     private var observerID: UUID?
     private var magnificationObservation: NSKeyValueObservation?
+    private var imagePasteTasks: [UUID: Task<Void, Never>] = [:]
     private var drag: Drag?
     private var textEditor: NSScrollView?
     private var editedElementID: ElementID?
@@ -103,7 +105,8 @@
       creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() },
       editorFeedback: @escaping @MainActor (SionEditorFeedbackRequest) -> Void = { _ in },
       pasteboard: NSPasteboard = .general,
-      connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
+      connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil,
+      imageRenditionService: SafeImageRenditionService = SafeImageRenditionService()
     ) {
       self.editorController = editorController
       self.connectorRouteProvider =
@@ -112,6 +115,7 @@
       self.creationFailureFeedback = creationFailureFeedback
       self.editorFeedback = editorFeedback
       self.pasteboard = pasteboard
+      self.imageRenditionService = imageRenditionService
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
         of: scene,
@@ -327,6 +331,12 @@
     }
 
     func invalidate() {
+      // Canvas teardown must prevent late rendition results from editing the document.
+      for task in imagePasteTasks.values {
+        task.cancel()
+      }
+      imagePasteTasks.removeAll()
+
       cancelActiveDrag()
       guard let observerID else { return }
 
@@ -365,7 +375,7 @@
       NSGraphicsContext.saveGraphicsState()
       applyCanvasTransform()
       drawGrid()
-      drawElements()
+      drawElements(in: dirtyRect)
       drawConnectionMagnets()
       drawCreationPreview()
       drawConnectorPreview()
@@ -1437,11 +1447,15 @@
         return false
       }
 
-      Task { @MainActor [weak self] in
-        let display = await Task.detached(priority: .userInitiated) {
-          SafeImageRenditionBuilder.make(from: data)
-        }.value
-        guard let self, let display else {
+      let taskID = UUID()
+      let service = imageRenditionService
+      let task = Task { @MainActor [weak self] in
+        let display = await service.make(from: data)
+        guard let self else { return }
+
+        self.imagePasteTasks.removeValue(forKey: taskID)
+        guard !Task.isCancelled else { return }
+        guard let display else {
           NSSound.beep()
           return
         }
@@ -1461,6 +1475,7 @@
           NSSound.beep()
         }
       }
+      imagePasteTasks[taskID] = task
 
       return true
     }
@@ -1578,10 +1593,14 @@
       return firstIndex...lastIndex
     }
 
-    private func drawElements() {
-      let scene = editorController.document.scene
+    private func drawElements(in dirtyRect: NSRect) {
+      let visibleDirtyRect = visibleModelRect().intersection(modelRect(from: dirtyRect))
+      guard !visibleDirtyRect.isEmpty else { return }
 
-      for element in scene.elements where element.visibility == .visible {
+      let elements = editorController.elementsForRendering(
+        intersecting: sionRect(visibleDirtyRect)
+      )
+      for element in elements {
         draw(element)
       }
     }
@@ -2657,6 +2676,15 @@
       )
     }
 
+    private func modelRect(from viewRect: NSRect) -> NSRect {
+      NSRect(
+        x: viewRect.minX + editingCanvasBounds.minX,
+        y: viewRect.minY + editingCanvasBounds.minY,
+        width: viewRect.width,
+        height: viewRect.height
+      )
+    }
+
     private func visibleModelRect() -> NSRect {
       let visible = visibleRect
       return NSRect(
@@ -3011,6 +3039,10 @@
   private func nsRect(_ rect: SionRect) -> NSRect {
     NSRect(
       x: rect.minX, y: rect.minY, width: rect.standardized.width, height: rect.standardized.height)
+  }
+
+  private func sionRect(_ rect: NSRect) -> SionRect {
+    SionRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height)
   }
 
   private func nsColor(_ color: SionColor) -> NSColor {

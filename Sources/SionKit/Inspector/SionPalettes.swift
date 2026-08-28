@@ -100,13 +100,38 @@
   }
 
   @MainActor
-  private final class InspectorPaletteController: NSViewController, PaletteContent {
+  private final class InspectorPaletteController: NSViewController, NSTextFieldDelegate,
+    PaletteContent
+  {
     typealias Target = SionEditorController
+
+    private enum NameFieldPresentation {
+      case noSelection
+      case value(String)
+      case mixed
+
+      func matches(_ value: String) -> Bool {
+        switch self {
+        case .noSelection, .mixed:
+          value.isEmpty
+        case .value(let displayedValue):
+          value == displayedValue
+        }
+      }
+    }
+
+    private enum NameEditState {
+      case unchanged
+      case changed
+    }
 
     private weak var target: SionEditorController?
     private var observerID: UUID?
     private var presentation: PalettePresentation?
+    private var nameFieldPresentation = NameFieldPresentation.noSelection
+    private var nameEditState = NameEditState.unchanged
     private let selectionLabel = NSTextField(labelWithString: "No selection")
+    private let nameField = NSTextField()
     private let lockButton = NSButton(
       checkboxWithTitle: "Locked",
       target: nil,
@@ -139,7 +164,9 @@
       configureAnchorEditingControls()
       configureAppearanceControls()
       configureLockButton()
+      configureNameField()
       stack.addArrangedSubview(selectionLabel)
+      stack.addArrangedSubview(row(label: "Name", control: nameField))
       stack.addArrangedSubview(lockButton)
       stack.addArrangedSubview(separator())
       stack.addArrangedSubview(row(label: "Fill", control: fillColorWell))
@@ -223,6 +250,13 @@
       lockButton.setAccessibilityLabel("Element lock")
     }
 
+    private func configureNameField() {
+      nameField.delegate = self
+      nameField.target = self
+      nameField.action = #selector(changeName(_:))
+      nameField.setAccessibilityLabel("Element name")
+    }
+
     private func configureMagnetPopup() {
       for option in MagnetOption.allCases {
         magnetPopup.addItem(withTitle: option.title)
@@ -254,6 +288,9 @@
     }
 
     private func refresh() {
+      let selectedElements = target?.selectedElements ?? []
+      refreshNameField(for: selectedElements)
+
       guard let element = target?.selectedElement else {
         let hasMultipleSelection = target?.selection.isEmpty == false
         selectionLabel.stringValue =
@@ -312,6 +349,40 @@
       routePopup.selectItem(withTitle: connector.routingStyle.displayName)
     }
 
+    private func refreshNameField(for elements: [SceneElement]) {
+      nameField.isEnabled = target?.canRenameSelection == true
+
+      guard !elements.isEmpty else {
+        presentNameField(.noSelection)
+        return
+      }
+
+      let names = Set(elements.map(\.name))
+      guard names.count == 1 else {
+        presentNameField(.mixed)
+        return
+      }
+
+      presentNameField(.value(names.first.flatMap { $0 } ?? ""))
+    }
+
+    private func presentNameField(_ presentation: NameFieldPresentation) {
+      nameFieldPresentation = presentation
+      nameEditState = .unchanged
+
+      switch presentation {
+      case .noSelection:
+        nameField.stringValue = ""
+        nameField.placeholderString = nil
+      case .value(let name):
+        nameField.stringValue = name
+        nameField.placeholderString = nil
+      case .mixed:
+        nameField.stringValue = ""
+        nameField.placeholderString = InspectorCopy.mixedValue
+      }
+    }
+
     @objc private func changeLock(_ sender: NSButton) {
       guard let target, let id = target.selectedElement?.id else { return }
 
@@ -321,6 +392,51 @@
       }
 
       attemptEdit { try target.setLockState(lockState, on: id) }
+    }
+
+    @objc private func changeName(_ sender: NSTextField) {
+      commitNameIfNeeded(sender)
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+      guard let field = notification.object as? NSTextField, field === nameField else { return }
+
+      nameEditState = .changed
+    }
+
+    func control(
+      _ control: NSControl,
+      textView: NSTextView,
+      doCommandBy commandSelector: Selector
+    ) -> Bool {
+      // Escape reverts the field; dropping the pending edit keeps the cancel
+      // from being committed when editing ends.
+      if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+        nameEditState = .unchanged
+      }
+      return false
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+      guard let field = notification.object as? NSTextField, field === nameField else { return }
+
+      commitNameIfNeeded(field)
+    }
+
+    private func commitNameIfNeeded(_ sender: NSTextField) {
+      guard let target else { return }
+      guard nameEditState == .changed || !nameFieldPresentation.matches(sender.stringValue) else {
+        return
+      }
+
+      // Blank means unnamed; surrounding whitespace never becomes a name.
+      let trimmed = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+      let name = trimmed.isEmpty ? nil : trimmed
+      nameEditState = .unchanged
+      attemptEdit { try target.renameSelection(name) }
+
+      // Model state wins after rejected, duplicate, or observer-driven edits.
+      refreshNameField(for: target.selectedElements)
     }
 
     @objc private func changeRoute(_ sender: NSPopUpButton) {
@@ -720,6 +836,10 @@
     static let minimumStrokeWidth = 0.0
     static let maximumStrokeWidth = 12.0
     static let strokeWidthTickCount = 13
+  }
+
+  private enum InspectorCopy {
+    static let mixedValue = "Mixed"
   }
 
   private enum AnchorEditingCopy {

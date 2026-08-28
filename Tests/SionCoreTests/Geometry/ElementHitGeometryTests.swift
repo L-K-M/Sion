@@ -879,6 +879,41 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testSubepsilonTurnPreservesBevelGeometry() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 1, y: 0)),
+        .line(to: SionPoint(x: 0, y: 5e-10)),
+      ]
+    )
+    let dashPatterns: [[Double]] = [[], [1_000, 1]]
+
+    for dashPattern in dashPatterns {
+      for lineJoin in [StrokeLineJoin.bevel, .miter] {
+        var element = SceneElement.path(
+          frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+          path: path
+        )
+        element.style = ElementStyle(
+          fill: .none,
+          stroke: StrokeStyle(
+            color: .black,
+            width: 1_000_000,
+            dashPattern: dashPattern,
+            lineCap: .butt,
+            lineJoin: lineJoin
+          )
+        )
+
+        XCTAssertTrue(
+          ElementHitGeometry.contains(SionPoint(x: 1.000_1, y: 0), in: element)
+        )
+      }
+    }
+  }
+
   func testOpenPathHitsStrokeOnly() {
     let frame = SionRect(x: 100, y: 200, width: 200, height: 100)
     let path = VectorPath(commands: [

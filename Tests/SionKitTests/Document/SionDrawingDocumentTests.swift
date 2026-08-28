@@ -128,7 +128,7 @@ final class SionDrawingDocumentTests: XCTestCase {
     )
   }
 
-  func testControllerOpensThroughDocumentConvenienceInitializer() throws {
+  func testContentsInitializerOpensArchiveWithApplicationGenerator() throws {
     let package = SionPackage(
       document: SionDocument(title: DocumentArchiveFixture.openedTitle)
     )
@@ -147,12 +147,9 @@ final class SionDrawingDocumentTests: XCTestCase {
     let url = directory.appendingPathComponent(DocumentArchiveFixture.filename)
     try archive.data.write(to: url)
 
-    let controller = SionDocumentController()
-    let document = try XCTUnwrap(
-      try controller.makeDocument(
-        withContentsOf: url,
-        ofType: SionDrawingDocument.typeIdentifier
-      ) as? SionDrawingDocument
+    let document = try SionDrawingDocument(
+      contentsOf: url,
+      ofType: SionDrawingDocument.typeIdentifier
     )
     defer { document.close() }
 

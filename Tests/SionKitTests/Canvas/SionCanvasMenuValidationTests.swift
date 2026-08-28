@@ -6,7 +6,7 @@ import XCTest
 
 @MainActor
 final class SionCanvasMenuValidationTests: XCTestCase {
-  func testFindValidationRequiresInlineTextEditor() throws {
+  func testTextCommandValidationRequiresInlineTextEditor() throws {
     _ = NSApplication.shared
     let controller = try makeController(elements: [])
     let canvas = SionCanvasView(editorController: controller)
@@ -17,7 +17,28 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     )
     find.tag = NSTextFinder.Action.showFindInterface.rawValue
 
-    XCTAssertFalse(canvas.validateMenuItem(find))
+    let textItems = [
+      find,
+      NSMenuItem(
+        title: "Jump to Selection",
+        action: #selector(NSTextView.centerSelectionInVisibleArea(_:)),
+        keyEquivalent: "j"
+      ),
+      NSMenuItem(
+        title: "Show Spelling and Grammar",
+        action: #selector(NSText.showGuessPanel(_:)),
+        keyEquivalent: ":"
+      ),
+      NSMenuItem(
+        title: "Check Document Now",
+        action: #selector(NSText.checkSpelling(_:)),
+        keyEquivalent: ";"
+      ),
+    ]
+
+    for item in textItems {
+      XCTAssertFalse(canvas.validateMenuItem(item), item.title)
+    }
   }
 
   func testInlineEditorHandlesFindAndSpellingCommands() throws {

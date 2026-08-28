@@ -128,7 +128,11 @@ final class SionEditorControllerInsertionTests: XCTestCase {
     let inserted = try XCTUnwrap(controller.document.scene.element(withID: insertedID))
 
     XCTAssertEqual(insertedIDs, [insertedID])
-    XCTAssertEqual(inserted.editableText, source)
+    guard case .text(let text) = inserted.content else {
+      return XCTFail("Expected fallback text")
+    }
+
+    XCTAssertEqual(text.string, source)
     XCTAssertEqual(inserted.geometry.frame.center, center)
   }
 

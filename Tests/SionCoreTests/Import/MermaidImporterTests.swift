@@ -315,6 +315,27 @@ final class MermaidImporterTests: XCTestCase {
     }
   }
 
+  func testPreservesEdgeIdentifiersAsConnectorNames() throws {
+    let source = "flowchart LR\n  A edge_one@--> B"
+    let report = MermaidImporter.importReport(
+      from: source,
+      centeredAt: .zero
+    )
+    let connector = try XCTUnwrap(
+      report.elements.first { $0.content.connector != nil }
+    )
+
+    XCTAssertTrue(report.omissions.isEmpty)
+    XCTAssertEqual(connector.name, "edge_one")
+    XCTAssertEqual(
+      MermaidImporter.elements(
+        from: source,
+        centeredAt: .zero
+      ).count,
+      3
+    )
+  }
+
   func testGeneratedMermaidCanBeImportedAgain() throws {
     let first = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 160, height: 80),
@@ -372,6 +393,8 @@ private enum UnsupportedNodeDecoration: String, CaseIterable {
   case circle = "A((Circle))"
   case hexagon = "A{{Hexagon}}"
   case parallelogram = "A[/Parallelogram/]"
+  case reversedParallelogram = "A[\\Reversed\\]"
+  case trapezoid = "A[/Trapezoid\\]"
 }
 
 private enum ImportedDirection: String, CaseIterable {

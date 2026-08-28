@@ -101,6 +101,76 @@ final class SionCanvasRenderingTests: XCTestCase {
     }
   }
 
+  func testClosedConnectorDecorationsUseStrokeColorAsFill() throws {
+    let strokeColor = SionColor(red: 0.8, green: 0.1, blue: 0.2)
+    let expectedColor = NSColor(srgbRed: 0.8, green: 0.1, blue: 0.2, alpha: 1)
+    let fixtures: [(ConnectorDecoration, SionPoint)] = [
+      (.filledArrow, SionPoint(x: 230, y: 122)),
+      (.circle, SionPoint(x: 240, y: 122)),
+      (.diamond, SionPoint(x: 235, y: 123)),
+    ]
+
+    for (decoration, sample) in fixtures {
+      try XCTContext.runActivity(named: decoration.rawValue) { _ in
+        let connector = decorationConnector(
+          decoration,
+          stroke: StrokeStyle(color: strokeColor, width: 2)
+        )
+        let color = try pixel(in: render(elements: [connector]), at: sample)
+
+        assertEqual(color, expectedColor, file: #filePath, line: #line)
+      }
+    }
+  }
+
+  func testClosedConnectorDecorationsDoNotAddAnOutline() throws {
+    let fixtures: [(ConnectorDecoration, SionPoint)] = [
+      (.filledArrow, SionPoint(x: 232, y: 113)),
+      (.circle, SionPoint(x: 240, y: 112)),
+      (.diamond, SionPoint(x: 235, y: 111)),
+    ]
+    let white = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+
+    for (decoration, sample) in fixtures {
+      try XCTContext.runActivity(named: decoration.rawValue) { _ in
+        let connector = decorationConnector(
+          decoration,
+          stroke: StrokeStyle(color: .black, width: 8)
+        )
+        let color = try pixel(in: render(elements: [connector]), at: sample)
+
+        assertEqual(color, white, file: #filePath, line: #line)
+      }
+    }
+  }
+
+  func testOpenConnectorArrowRemainsHollow() throws {
+    let connector = decorationConnector(
+      .openArrow,
+      stroke: StrokeStyle(color: .black, width: 2)
+    )
+    let color = try pixel(
+      in: render(elements: [connector]),
+      at: SionPoint(x: 232, y: 118)
+    )
+
+    assertEqual(color, NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+  }
+
+  func testConnectorDecorationsRequireAVisibleStroke() throws {
+    let blank = try renderedPixels(render(elements: []))
+    let strokes: [StrokeStyle?] = [
+      nil,
+      StrokeStyle(color: .black, width: 0),
+    ]
+
+    for stroke in strokes {
+      let connector = decorationConnector(.circle, stroke: stroke)
+
+      XCTAssertEqual(try renderedPixels(render(elements: [connector])), blank)
+    }
+  }
+
   func testGroupShadowHasUniformAlphaAcrossFillAndStroke() throws {
     var shape = SceneElement.shape(
       frame: SionRect(x: 60, y: 70, width: 80, height: 100),
@@ -579,6 +649,30 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
 
     return [shape, text, image, connector]
+  }
+
+  private func decorationConnector(
+    _ decoration: ConnectorDecoration,
+    stroke: StrokeStyle?
+  ) -> SceneElement {
+    let source = ConnectionEndpoint.free(SionPoint(x: 80, y: 120))
+    let target = ConnectionEndpoint.free(SionPoint(x: 240, y: 120))
+    var connector = SceneElement.connector(
+      source: source,
+      target: target,
+      routingStyle: .straight
+    )
+    connector.style = ElementStyle(fill: .none, stroke: stroke)
+    connector.content = .connector(
+      ConnectorContent(
+        source: source,
+        target: target,
+        routingStyle: .straight,
+        targetDecoration: decoration
+      )
+    )
+
+    return connector
   }
 
   private func render(

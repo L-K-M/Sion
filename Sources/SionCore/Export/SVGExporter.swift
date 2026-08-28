@@ -165,7 +165,14 @@ public enum SVGExporter {
     var content =
       "<path d=\"\(path)\"\(fillRule) \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
-    if case .cylinder = shape.kind {
+    // The rim is a stroke detail; Canvas paints it only under drawStroke's
+    // visible-stroke guard, so match that contract here.
+    let stroke = element.style.stroke
+    if case .cylinder = shape.kind,
+      let stroke,
+      stroke.width.isFinite,
+      stroke.width > 0
+    {
       for detail in ShapeGeometryRecipe.cylinder.detailStrokes {
         content +=
           "<path d=\"\(vectorPath(detail, frame: frame))\" fill=\"none\" \(strokeAttributes(element.style))/>"

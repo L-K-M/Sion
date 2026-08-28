@@ -302,6 +302,21 @@ final class SionArchiveTests: XCTestCase {
     XCTAssertTrue(svg.contains("stroke-width=\"4\""))
   }
 
+  func testSVGFillOnlyCylinderOmitsRimStroke() throws {
+    var cylinder = SceneElement.shape(
+      frame: SionRect(x: 60, y: 40, width: 200, height: 80),
+      kind: .cylinder
+    )
+    cylinder.style = ElementStyle(fill: .solid(.black))
+    let document = SionDocument(scene: SionScene(elements: [cylinder]))
+
+    let svg = try SVGExporter.export(document: document, assets: [:])
+
+    // The rim is a stroke detail; a fill-only cylinder exports only the body.
+    XCTAssertTrue(svg.contains("M60 50C60 44.477"))
+    XCTAssertFalse(svg.contains("M60 50C60 55.523"))
+  }
+
   func testSVGTilesImagesAndHandlesExtremeShapeValues() throws {
     let fixture = try makeFixture()
     let tiledImage = SceneElement(

@@ -95,7 +95,8 @@ package struct ShapeGeometryRecipe: Equatable, Sendable {
 private enum CylinderPoint {
   // Half-arcs use the standard quarter-ellipse cubic approximation.
   private static let curveControlFactor = 0.552_284_749_8
-  private static let rim = ShapeGeometryDefaults.cylinderArcFraction
+  // Keep the front rim (2 * rim) inside the body even for large fractions.
+  private static let rim = min(ShapeGeometryDefaults.cylinderArcFraction, 0.5)
   private static let verticalControl = rim * curveControlFactor
   private static let horizontalControl = 0.5 * curveControlFactor
 

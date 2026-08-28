@@ -70,20 +70,41 @@ final class ElementHitGeometryTests: XCTestCase {
           stroke: StrokeStyle(color: .black, width: 4)
         )
         let arcHeight = frame.height * ShapeGeometryDefaults.cylinderArcFraction
-        let localRimPoint = SionPoint(
-          x: frame.center.x,
-          y: frame.minY + (2 * arcHeight)
-        )
-        let rimPoint = InteractionGeometry.rotated(
-          localRimPoint,
-          around: frame.center,
-          by: rotation
-        )
+        // Sample the front arc at its start, quarter points, and apex by
+        // evaluating the shared cubic's left half, then mirroring for the
+        // right half. Controls follow CylinderPoint: start (0, rim),
+        // c1 (0, rim + v), c2 (0.5 - h, 2·rim), end (0.5, 2·rim).
+        let rim = min(ShapeGeometryDefaults.cylinderArcFraction, 0.5)
+        let v = rim * 0.552_284_749_8
+        let h = 0.5 * 0.552_284_749_8
+        for fraction in [0.0, 0.25, 0.5, 0.75, 1.0] {
+          let mirrored = fraction > 0.5
+          let t = mirrored ? (1 - fraction) : fraction
+          let unitX =
+            (1 - t) * (1 - t) * (1 - t) * 0
+            + 3 * (1 - t) * (1 - t) * t * 0
+            + 3 * (1 - t) * t * t * (0.5 - h)
+            + t * t * t * 0.5
+          let unitY =
+            (1 - t) * (1 - t) * (1 - t) * rim
+            + 3 * (1 - t) * (1 - t) * t * (rim + v)
+            + 3 * (1 - t) * t * t * (2 * rim)
+            + t * t * t * (2 * rim)
+          let localRimPoint = SionPoint(
+            x: frame.minX + (mirrored ? (1 - unitX) : unitX) * frame.width,
+            y: frame.minY + unitY * frame.height
+          )
+          let rimPoint = InteractionGeometry.rotated(
+            localRimPoint,
+            around: frame.center,
+            by: rotation
+          )
 
-        XCTAssertTrue(
-          ElementHitGeometry.contains(rimPoint, in: cylinder),
-          "Missing front rim hit for \(size), rotation \(rotation)"
-        )
+          XCTAssertTrue(
+            ElementHitGeometry.contains(rimPoint, in: cylinder),
+            "Missing front rim hit for \(size), rotation \(rotation), fraction \(fraction)"
+          )
+        }
       }
     }
   }

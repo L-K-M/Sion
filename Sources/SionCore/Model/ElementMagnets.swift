@@ -7,6 +7,8 @@ extension SceneElement {
       case .cylinder = shape.kind,
       case .preset(.vertices) = magnetConfiguration
     {
+      // Cylinder vertices intentionally re-anchor to the rim silhouette;
+      // legacy magnet IDs (vertex-0…5) stay stable for saved connectors.
       return ShapeGeometryRecipe.cylinder.vertexMagnets
     }
 

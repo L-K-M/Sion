@@ -2940,7 +2940,6 @@
     static let decorationRadius = 5.0
     static let minimumConnectorLength = 4.0
     static let curveControlFactor: CGFloat = 0.552_284_749_8
-    static let defaultConnectorWidth = 1.5
     static let textEditClickCount = 2
     static let connectorLabelSize = SionSize(width: 120, height: 36)
     static let nudgeDistance = 1.0

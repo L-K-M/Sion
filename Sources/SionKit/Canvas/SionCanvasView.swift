@@ -906,7 +906,7 @@
           samplesPerPixel: PreviewMetrics.samplesPerPixel,
           hasAlpha: true,
           isPlanar: false,
-          colorSpaceName: .sRGB,
+          colorSpaceName: .calibratedRGB,
           bytesPerRow: 0,
           bitsPerPixel: 0
         ),
@@ -942,7 +942,16 @@
       }
 
       renderContext.flushGraphics()
-      return bitmap.representation(using: .png, properties: [:])
+      let encodedBitmap =
+        bitmap.converting(
+          to: NSColorSpace.sRGB,
+          renderingIntent: NSColorRenderingIntent.default
+        ) ?? bitmap
+
+      return encodedBitmap.representation(
+        using: NSBitmapImageRep.FileType.png,
+        properties: [:]
+      )
     }
 
     private func beginSelection(at point: SionPoint, event: NSEvent) {

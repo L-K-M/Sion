@@ -317,10 +317,10 @@
       switch canvas.grid.visibility {
       case .hidden:
         canvas.grid.visibility = .visible
-        actionName = "Show Grid"
+        actionName = EditorActionName.showGrid
       case .visible:
         canvas.grid.visibility = .hidden
-        actionName = "Hide Grid"
+        actionName = EditorActionName.hideGrid
       }
 
       try perform(name: actionName, command: .setCanvas(canvas))
@@ -1699,6 +1699,8 @@
 
   private enum EditorActionName {
     static let editText = "Edit Text"
+    static let hideGrid = "Hide Grid"
+    static let showGrid = "Show Grid"
   }
 
   private struct PendingTextEdit {

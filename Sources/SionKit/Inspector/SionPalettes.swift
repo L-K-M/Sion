@@ -429,7 +429,9 @@
         return
       }
 
-      let name = sender.stringValue.isEmpty ? nil : sender.stringValue
+      // Blank means unnamed; surrounding whitespace never becomes a name.
+      let trimmed = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+      let name = trimmed.isEmpty ? nil : trimmed
       nameEditState = .unchanged
       attemptEdit { try target.renameSelection(name) }
 

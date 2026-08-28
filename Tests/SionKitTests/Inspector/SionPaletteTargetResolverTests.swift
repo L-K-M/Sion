@@ -273,6 +273,37 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertEqual(nameField.stringValue, "")
   }
 
+  func testBlankNameEditClearsEverySelectedName() throws {
+    var first = SceneElement.shape(
+      frame: SionRect(x: 40, y: 40, width: 160, height: 90)
+    )
+    first.name = "First"
+    var second = SceneElement.shape(
+      frame: SionRect(x: 240, y: 40, width: 160, height: 90)
+    )
+    second.name = "Second"
+    let fixture = try makeNameFieldFixture(elements: [first, second])
+    defer { fixture.teardown() }
+    let editor = fixture.editor
+    let undoManager = fixture.undoManager
+    let nameField = fixture.nameField
+
+    nameField.stringValue = "   "
+    undoManager.beginUndoGrouping()
+    XCTAssertTrue(
+      NSApp.sendAction(try XCTUnwrap(nameField.action), to: nameField.target, from: nameField))
+    undoManager.endUndoGrouping()
+
+    XCTAssertNil(editor.document.scene.element(withID: first.id)?.name)
+    XCTAssertNil(editor.document.scene.element(withID: second.id)?.name)
+    XCTAssertEqual(undoManager.undoActionName, "Rename Elements")
+
+    undoManager.undo()
+
+    XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")
+    XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Second")
+  }
+
   func testSingleNameClearsAndCommitsOnFocusLoss() throws {
     var shape = SceneElement.shape(
       frame: SionRect(x: 40, y: 40, width: 160, height: 90)

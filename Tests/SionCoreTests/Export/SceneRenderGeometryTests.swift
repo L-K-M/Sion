@@ -225,11 +225,34 @@ final class SceneRenderGeometryTests: XCTestCase {
     )
 
     let bounds = SceneRenderGeometry.paintedBounds(of: shape)
+    let contentBounds = SceneRenderGeometry.contentBounds(
+      of: SionScene(elements: [shape])
+    )
 
     XCTAssertEqual(bounds.minX, 80, accuracy: rotatedBoundsAccuracy)
     XCTAssertEqual(bounds.minY, 100, accuracy: rotatedBoundsAccuracy)
     XCTAssertEqual(bounds.maxX, 240, accuracy: rotatedBoundsAccuracy)
     XCTAssertEqual(bounds.maxY, 140, accuracy: rotatedBoundsAccuracy)
+    XCTAssertEqual(
+      contentBounds.minX,
+      bounds.minX - contentPadding,
+      accuracy: rotatedBoundsAccuracy
+    )
+    XCTAssertEqual(
+      contentBounds.minY,
+      bounds.minY - contentPadding,
+      accuracy: rotatedBoundsAccuracy
+    )
+    XCTAssertEqual(
+      contentBounds.maxX,
+      bounds.maxX + contentPadding,
+      accuracy: rotatedBoundsAccuracy
+    )
+    XCTAssertEqual(
+      contentBounds.maxY,
+      bounds.maxY + contentPadding,
+      accuracy: rotatedBoundsAccuracy
+    )
   }
 
   func testContentBoundsIncludeLocalPathCommandsOutsideFrame() {

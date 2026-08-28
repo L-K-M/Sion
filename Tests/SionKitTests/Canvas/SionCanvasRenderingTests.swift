@@ -166,6 +166,73 @@ final class SionCanvasRenderingTests: XCTestCase {
     XCTAssertGreaterThan(lower.redComponent, 0.8)
   }
 
+  func testGradientHonorsAuthoredStartAndEndPoints() throws {
+    let frame = SionRect(x: 80, y: 60, width: 160, height: 120)
+    let start = SionPoint(x: 0.25, y: 0.5)
+    let end = SionPoint(x: 0.75, y: 0.5)
+    var shape = SceneElement.shape(frame: frame, kind: .rectangle)
+    shape.style = ElementStyle(
+      fill: .linearGradient(
+        LinearGradientFill(
+          stops: [
+            GradientStop(color: SionColor(red: 1, green: 0, blue: 0), location: 0),
+            GradientStop(color: SionColor(red: 0, green: 0, blue: 1), location: 1),
+          ],
+          start: start,
+          end: end
+        )
+      )
+    )
+
+    let image = try render(elements: [shape])
+
+    assertEqual(
+      try pixel(in: image, at: point(in: frame, normalized: start)),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
+    assertEqual(
+      try pixel(in: image, at: point(in: frame, normalized: end)),
+      NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
+    )
+  }
+
+  func testShortTransparentGradientExtendsItsEndpointColors() throws {
+    let frame = SionRect(x: 80, y: 60, width: 160, height: 120)
+    var shape = SceneElement.shape(frame: frame, kind: .rectangle)
+    shape.style = ElementStyle(
+      fill: .linearGradient(
+        LinearGradientFill(
+          stops: [
+            GradientStop(
+              color: SionColor(red: 1, green: 0, blue: 0, alpha: 0),
+              location: 0
+            ),
+            GradientStop(color: SionColor(red: 1, green: 0, blue: 0), location: 1),
+          ],
+          start: SionPoint(x: 0.4, y: 0.5),
+          end: SionPoint(x: 0.6, y: 0.5)
+        )
+      )
+    )
+
+    let image = try render(elements: [shape])
+
+    assertEqual(
+      try pixel(
+        in: image,
+        at: point(in: frame, normalized: SionPoint(x: 0.25, y: 0.5))
+      ),
+      NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+    )
+    assertEqual(
+      try pixel(
+        in: image,
+        at: point(in: frame, normalized: SionPoint(x: 0.75, y: 0.5))
+      ),
+      NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    )
+  }
+
   func testSelectionChromeEscapesElementOpacity() throws {
     var connector = SceneElement.connector(
       source: .free(SionPoint(x: 80, y: 120)),
@@ -360,6 +427,13 @@ final class SionCanvasRenderingTests: XCTestCase {
       image.colorAt(x: Int(point.x), y: Int(point.y))
     )
     return try XCTUnwrap(color.usingColorSpace(.sRGB))
+  }
+
+  private func point(in frame: SionRect, normalized: SionPoint) -> SionPoint {
+    SionPoint(
+      x: frame.minX + (frame.width * normalized.x),
+      y: frame.minY + (frame.height * normalized.y)
+    )
   }
 
   private func assertEqual(

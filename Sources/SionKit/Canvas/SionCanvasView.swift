@@ -1679,7 +1679,8 @@
       }
       let locations = gradient.stops.map { CGFloat($0.location) }
       guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return }
-      let renderedGradient = components.withUnsafeBufferPointer { componentBuffer in
+      let renderedGradient: CGGradient? = components.withUnsafeBufferPointer {
+        componentBuffer in
         guard let componentAddress = componentBuffer.baseAddress else { return nil }
 
         locations.withUnsafeBufferPointer { locationBuffer in

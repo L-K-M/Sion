@@ -294,22 +294,6 @@ duplicate announcements.
 
 **Depends.** Reuse typed model errors; accessibility delivery joins P2.7.
 
-### P1.10 Correct the cylinder primitive
-
-**Evidence.** Canvas and SVG cylinder paths bulge the top rim upward and bottom
-rim downward but omit the front arc of the top ellipse dipping into the body,
-so the database symbol reads as a barrel.
-
-**Scope.** Define one platform-neutral cylinder outline/rim recipe, then map it
-to Canvas and SVG paths. Keep fill, stroke, hit testing, magnets, and bounds in
-agreement.
-
-**Accept.** Geometry tests pin the body and both visible rim arcs at wide,
-square, and tall aspect ratios; Canvas pixels and SVG commands agree under
-rotation and thick strokes.
-
-**Depends.** Reuse P1.5 shape geometry and P1.7 fixtures.
-
 ### P1.11 Define connector decoration appearance once
 
 **Evidence.** Canvas and SVG now share the same paint rule: open arrows are

@@ -274,6 +274,49 @@ final class SionArchiveTests: XCTestCase {
     XCTAssertTrue(svg.contains("fill-rule=\"evenodd\""))
   }
 
+  func testSVGCylinderPaintsFrontRimFromSharedGeometry() throws {
+    var cylinder = SceneElement.shape(
+      frame: SionRect(x: 60, y: 40, width: 200, height: 80),
+      kind: .cylinder
+    )
+    cylinder.geometry.rotationRadians = .pi / 2
+    cylinder.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 4)
+    )
+    let document = SionDocument(scene: SionScene(elements: [cylinder]))
+
+    let svg = try SVGExporter.export(document: document, assets: [:])
+
+    XCTAssertTrue(
+      svg.contains(
+        "<path d=\"M60 50C60 44.477 104.772 40 160 40C215.228 40 260 44.477 260 50L260 110C260 115.523 215.228 120 160 120C104.772 120 60 115.523 60 110Z\""
+      )
+    )
+    XCTAssertTrue(
+      svg.contains(
+        "<path d=\"M60 50C60 55.523 104.772 60 160 60C215.228 60 260 55.523 260 50\" fill=\"none\""
+      )
+    )
+    XCTAssertTrue(svg.contains("transform=\"rotate(90 160 80)\""))
+    XCTAssertTrue(svg.contains("stroke-width=\"4\""))
+  }
+
+  func testSVGFillOnlyCylinderOmitsRimStroke() throws {
+    var cylinder = SceneElement.shape(
+      frame: SionRect(x: 60, y: 40, width: 200, height: 80),
+      kind: .cylinder
+    )
+    cylinder.style = ElementStyle(fill: .solid(.black))
+    let document = SionDocument(scene: SionScene(elements: [cylinder]))
+
+    let svg = try SVGExporter.export(document: document, assets: [:])
+
+    // The rim is a stroke detail; a fill-only cylinder exports only the body.
+    XCTAssertTrue(svg.contains("M60 50C60 44.477"))
+    XCTAssertFalse(svg.contains("M60 50C60 55.523"))
+  }
+
   func testSVGTilesImagesAndHandlesExtremeShapeValues() throws {
     let fixture = try makeFixture()
     let tiledImage = SceneElement(

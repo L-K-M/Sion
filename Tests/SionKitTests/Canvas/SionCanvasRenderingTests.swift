@@ -284,6 +284,40 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
   }
 
+  func testCylinderPaintsFrontRim() throws {
+    let fixtures = [
+      SionRect(x: 60, y: 40, width: 200, height: 80),
+      SionRect(x: 110, y: 60, width: 100, height: 100),
+      SionRect(x: 130, y: 30, width: 60, height: 180),
+    ]
+
+    for frame in fixtures {
+      var cylinder = SceneElement.shape(frame: frame, kind: .cylinder)
+      cylinder.geometry.rotationRadians = .pi / 2
+      cylinder.style = ElementStyle(
+        fill: .none,
+        stroke: StrokeStyle(color: .black, width: 8)
+      )
+      let arcHeight = frame.height * ShapeGeometryDefaults.cylinderArcFraction
+      let localRimPoint = SionPoint(
+        x: frame.center.x,
+        y: frame.minY + (2 * arcHeight)
+      )
+      let rimPoint = InteractionGeometry.rotated(
+        localRimPoint,
+        around: frame.center,
+        by: cylinder.geometry.rotationRadians
+      )
+
+      let image = try render(elements: [cylinder])
+      let rim = try pixel(in: image, at: rimPoint)
+
+      XCTAssertLessThan(rim.redComponent, 0.2, "Missing rim for \(frame.size)")
+      XCTAssertLessThan(rim.greenComponent, 0.2, "Missing rim for \(frame.size)")
+      XCTAssertLessThan(rim.blueComponent, 0.2, "Missing rim for \(frame.size)")
+    }
+  }
+
   func testPixelSamplerUsesExactCoordinatesAndChannels() throws {
     let graphics = try bitmapContext(width: 3, height: 2)
     graphics.setFillColor(NSColor.white.cgColor)

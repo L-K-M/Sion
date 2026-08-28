@@ -1675,6 +1675,12 @@
       case .shape(let shape):
         let path = shapePath(shape.kind, frame: element.geometry.frame)
         drawStyle(element.style, path: path)
+        if case .cylinder = shape.kind {
+          let detailPaths = ShapeGeometryRecipe.cylinder.detailStrokes.map {
+            vectorPath($0, frame: element.geometry.frame)
+          }
+          drawStroke(element.style.stroke, paths: detailPaths)
+        }
         if let label = shape.label, element.id != editedElementID {
           drawText(label, frame: element.geometry.frame)
         }
@@ -1707,20 +1713,30 @@
         drawLinearGradient(gradient, in: path)
       }
 
-      if let stroke = style.stroke, stroke.width.isFinite, stroke.width > 0 {
-        nsColor(stroke.color).setStroke()
+      drawStroke(style.stroke, paths: [path])
+
+      NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private func drawStroke(_ stroke: StrokeStyle?, paths: [NSBezierPath]) {
+      guard let stroke, stroke.width.isFinite, stroke.width > 0 else { return }
+
+      NSGraphicsContext.saveGraphicsState()
+      defer { NSGraphicsContext.restoreGraphicsState() }
+
+      nsColor(stroke.color).setStroke()
+      // Validation guarantees finite non-negative entries; filtering here
+      // could only silently flip dash/gap parity.
+      let dashPattern = stroke.dashPattern.map { CGFloat($0) }
+
+      for path in paths {
         path.lineWidth = CGFloat(stroke.width)
-        // Validation guarantees finite non-negative entries; filtering here
-        // could only silently flip dash/gap parity.
-        let dashPattern = stroke.dashPattern.map { CGFloat($0) }
         path.setLineDash(dashPattern, count: dashPattern.count, phase: 0)
         path.lineCapStyle = lineCap(stroke.lineCap)
         path.lineJoinStyle = lineJoin(stroke.lineJoin)
         path.miterLimit = CGFloat(StrokeGeometryDefaults.miterLimit)
         path.stroke()
       }
-
-      NSGraphicsContext.restoreGraphicsState()
     }
 
     private func drawLinearGradient(_ gradient: LinearGradientFill, in path: NSBezierPath) {
@@ -2453,7 +2469,7 @@
           NSPoint(x: rect.minX, y: rect.midY),
         ])
       case .cylinder:
-        return cylinderPath(in: rect)
+        return vectorPath(ShapeGeometryRecipe.cylinder.outerOutline, frame: frame)
       case .custom(let path):
         return vectorPath(path, frame: frame)
       }
@@ -2535,41 +2551,6 @@
       for point in points.dropFirst() {
         path.line(to: point)
       }
-      path.close()
-      return path
-    }
-
-    private func cylinderPath(in rect: NSRect) -> NSBezierPath {
-      let arcHeight = min(
-        rect.height * CGFloat(ShapeGeometryDefaults.cylinderArcFraction),
-        rect.height / 2
-      )
-      let horizontalControl = (rect.width / 2) * CanvasMetrics.curveControlFactor
-      let verticalControl = arcHeight * CanvasMetrics.curveControlFactor
-      let path = NSBezierPath()
-
-      path.move(to: NSPoint(x: rect.minX, y: rect.minY + arcHeight))
-      path.curve(
-        to: NSPoint(x: rect.midX, y: rect.minY),
-        controlPoint1: NSPoint(x: rect.minX, y: rect.minY + arcHeight - verticalControl),
-        controlPoint2: NSPoint(x: rect.midX - horizontalControl, y: rect.minY)
-      )
-      path.curve(
-        to: NSPoint(x: rect.maxX, y: rect.minY + arcHeight),
-        controlPoint1: NSPoint(x: rect.midX + horizontalControl, y: rect.minY),
-        controlPoint2: NSPoint(x: rect.maxX, y: rect.minY + arcHeight - verticalControl)
-      )
-      path.line(to: NSPoint(x: rect.maxX, y: rect.maxY - arcHeight))
-      path.curve(
-        to: NSPoint(x: rect.midX, y: rect.maxY),
-        controlPoint1: NSPoint(x: rect.maxX, y: rect.maxY - arcHeight + verticalControl),
-        controlPoint2: NSPoint(x: rect.midX + horizontalControl, y: rect.maxY)
-      )
-      path.curve(
-        to: NSPoint(x: rect.minX, y: rect.maxY - arcHeight),
-        controlPoint1: NSPoint(x: rect.midX - horizontalControl, y: rect.maxY),
-        controlPoint2: NSPoint(x: rect.minX, y: rect.maxY - arcHeight + verticalControl)
-      )
       path.close()
       return path
     }

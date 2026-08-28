@@ -139,6 +139,35 @@ final class SceneModelTests: XCTestCase {
       ])
   }
 
+  func testCylinderVertexMagnetsFollowOuterSilhouette() {
+    var cylinder = SceneElement.shape(
+      frame: SionRect(x: 0, y: 0, width: 200, height: 80),
+      kind: .cylinder
+    )
+    cylinder.magnetConfiguration = .preset(.vertices)
+    let arcFraction = ShapeGeometryDefaults.cylinderArcFraction
+
+    XCTAssertEqual(
+      cylinder.expandedMagnets.map(\.normalizedPosition),
+      [
+        SionPoint(x: 0, y: arcFraction),
+        SionPoint(x: 1, y: arcFraction),
+        SionPoint(x: 1, y: 1 - arcFraction),
+        SionPoint(x: 0, y: 1 - arcFraction),
+        SionPoint(x: 0.5, y: 0),
+        SionPoint(x: 0.5, y: 1),
+      ]
+    )
+    XCTAssertEqual(
+      cylinder.expandedMagnets.map(\.id.rawValue),
+      ["vertex-0", "vertex-1", "vertex-2", "vertex-3", "vertex-4", "vertex-5"]
+    )
+    assertDirections(
+      cylinder.expandedMagnets.map(\.outwardDirection),
+      equal: [.west, .east, .east, .west, .north, .south]
+    )
+  }
+
   func testExpandedDirectionalMagnetsFollowElementOutlines() {
     var triangle = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 200, height: 100),
@@ -429,6 +458,32 @@ final class SceneModelTests: XCTestCase {
       XCTAssertEqual(
         actualPoint.y,
         expectedPoint.y,
+        accuracy: magnetPositionAccuracy,
+        file: file,
+        line: line
+      )
+    }
+  }
+
+  private func assertDirections(
+    _ actual: [SionVector],
+    equal expected: [SionVector],
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    XCTAssertEqual(actual.count, expected.count, file: file, line: line)
+
+    for (actualDirection, expectedDirection) in zip(actual, expected) {
+      XCTAssertEqual(
+        actualDirection.dx,
+        expectedDirection.dx,
+        accuracy: magnetPositionAccuracy,
+        file: file,
+        line: line
+      )
+      XCTAssertEqual(
+        actualDirection.dy,
+        expectedDirection.dy,
         accuracy: magnetPositionAccuracy,
         file: file,
         line: line

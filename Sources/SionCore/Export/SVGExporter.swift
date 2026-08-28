@@ -165,6 +165,20 @@ public enum SVGExporter {
     var content =
       "<path d=\"\(path)\"\(fillRule) \(paintAttributes(element.style, id: element.id, definitions: &definitions))/>"
 
+    // The rim is a stroke detail; Canvas paints it only under drawStroke's
+    // visible-stroke guard, so match that contract here.
+    let stroke = element.style.stroke
+    if case .cylinder = shape.kind,
+      let stroke,
+      stroke.width.isFinite,
+      stroke.width > 0
+    {
+      for detail in ShapeGeometryRecipe.cylinder.detailStrokes {
+        content +=
+          "<path d=\"\(vectorPath(detail, frame: frame))\" fill=\"none\" \(strokeAttributes(element.style))/>"
+      }
+    }
+
     if let label = shape.label {
       content += renderText(label, in: frame)
     }
@@ -571,9 +585,7 @@ public enum SVGExporter {
       return
         "M\(number(x + inset)) \(number(y))H\(number(frame.maxX - inset))L\(number(frame.maxX)) \(number(centerY))L\(number(frame.maxX - inset)) \(number(frame.maxY))H\(number(x + inset))L\(number(x)) \(number(centerY))Z"
     case .cylinder:
-      let arcHeight = min(height * ShapeGeometryDefaults.cylinderArcFraction, height / 2)
-      return
-        "M\(number(x)) \(number(y + arcHeight))A\(number(width / 2)) \(number(arcHeight)) 0 0 1 \(number(frame.maxX)) \(number(y + arcHeight))V\(number(frame.maxY - arcHeight))A\(number(width / 2)) \(number(arcHeight)) 0 0 1 \(number(x)) \(number(frame.maxY - arcHeight))Z"
+      return vectorPath(ShapeGeometryRecipe.cylinder.outerOutline, frame: frame)
     case .custom(let path):
       return vectorPath(path, frame: frame)
     }

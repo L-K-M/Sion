@@ -637,8 +637,8 @@ The same engine can seed X1.
 
 ### P2.17 Complete native app integration
 
-**Evidence.** Standard Settings, Help, Page Setup, and Print flows are
-incomplete. `NSDocumentController` documents automatic Open Recent
+**Evidence.** Standard Settings, Page Setup, and Print flows are incomplete.
+`NSDocumentController` documents automatic Open Recent
 insertion, but a native finished-launch probe found that a plain programmatic
 submenu is not populated. A retained menu delegate now reads AppKit's document
 history at display time and routes opening and clearing through the document
@@ -652,7 +652,8 @@ strict-concurrency migration remain open; `Package.swift` uses Swift 5 language
 mode under a Swift 6.3.3 toolchain. Save As now keeps the native display name
 and archived title synchronized without dirtying the document.
 Revert to Saved now routes through `NSDocument`; archive reads discard pending
-inline edits and restore canvas focus.
+inline edits and restore canvas focus. The Help menu opens a localized bundled
+help book; packaging generates and verifies its search index.
 
 **Scope.** Add responder-chain menus and native panels in small PRs. Decide the
 sandbox/security-scoped bookmark model, then configure Developer ID signing,

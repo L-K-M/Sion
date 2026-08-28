@@ -240,8 +240,9 @@ clearance around rotated diamond, ellipse, and custom-path fixtures.
 
 **Evidence.** Core coverage is broad, and recent compositing/bounds work
 established deterministic offscreen Canvas pixel tests plus focused SVG
-structure tests. There is still no complete enum matrix, direct Canvas/SVG
-comparison, XCUITest suite, or performance threshold gate.
+structure tests. Focused Canvas coverage now verifies quadratic continuation
+after a closed subpath. There is still no complete enum matrix, direct
+Canvas/SVG comparison, XCUITest suite, or performance threshold gate.
 
 **Scope.** Extend those harnesses with compact portable SVG and deterministic
 offscreen macOS pixel fixtures for every shape, path, fill, stroke, shadow,

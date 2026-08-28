@@ -11,7 +11,7 @@
     private let scrollView = NSScrollView()
     private var toolControl: NSSegmentedControl?
     private var observerID: UUID?
-    private var didApplyInitialZoom = false
+    private var isInitialZoomPending = true
 
     var paletteEditorController: SionEditorController { editorController }
     var canvasVisibleCenter: SionPoint { canvasView.visibleCenter }
@@ -146,18 +146,22 @@
     }
 
     @objc func zoomIn(_ sender: Any?) {
+      resolveInitialZoom()
       setMagnification(scrollView.magnification * WindowMetrics.zoomStep)
     }
 
     @objc func zoomOut(_ sender: Any?) {
+      resolveInitialZoom()
       setMagnification(scrollView.magnification / WindowMetrics.zoomStep)
     }
 
     @objc func actualSize(_ sender: Any?) {
+      resolveInitialZoom()
       setMagnification(1)
     }
 
     @objc func zoomToFit(_ sender: Any?) {
+      resolveInitialZoom()
       let bounds = editorController.contentBounds()
       let available = scrollView.contentSize
       guard bounds.width > 0, bounds.height > 0 else { return }
@@ -316,7 +320,7 @@
     }
 
     private func applyInitialZoomIfNeeded() {
-      guard !didApplyInitialZoom else { return }
+      guard isInitialZoomPending else { return }
       guard !editorController.document.scene.elements.isEmpty else { return }
 
       // Fit only after AppKit exposes a usable viewport; a later show can retry.
@@ -324,8 +328,12 @@
       let available = scrollView.contentSize
       guard available.width > 0, available.height > 0 else { return }
 
-      didApplyInitialZoom = true
       zoomToFit(nil)
+    }
+
+    private func resolveInitialZoom() {
+      // A later resize must not replace an automatic or explicit zoom choice.
+      isInitialZoomPending = false
     }
 
     private func setMagnification(_ requested: CGFloat) {

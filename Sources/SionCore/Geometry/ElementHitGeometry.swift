@@ -585,6 +585,12 @@ private enum SubpathClosure {
   case closed
 }
 
+private enum DashSeamState {
+  case disconnected
+  case possiblyConnected
+  case connected
+}
+
 private struct StrokeHitGeometry {
   let stroke: StrokeStyle
   let tolerance: Double
@@ -628,24 +634,18 @@ private struct StrokeHitGeometry {
     let segments = measuredSegments(in: subpath)
     guard let pathLength = segments.last?.endDistance else { return false }
 
-    let joinsAtSeam =
-      subpath.closure == .closed
-      && dashPattern.mayBePainted(
-        before: pathLength,
-        uncertainty: subpath.dashPhaseUncertainty
-      )
-      && dashPattern.mayBePainted(
-        after: 0,
-        uncertainty: subpath.dashPhaseUncertainty
-      )
+    let seamState = dashSeamState(
+      in: subpath,
+      pathLength: pathLength,
+      dashPattern: dashPattern
+    )
 
     for segment in segments {
       if dashedBodyContains(
         point,
         measuredSegment: segment,
         pathLength: pathLength,
-        closure: subpath.closure,
-        joinsAtSeam: joinsAtSeam,
+        seamState: seamState,
         dashPattern: dashPattern,
         phaseUncertainty: subpath.dashPhaseUncertainty
       ) {
@@ -679,7 +679,7 @@ private struct StrokeHitGeometry {
       }
     }
 
-    guard joinsAtSeam,
+    guard seamState != .disconnected,
       let incoming = segments.last,
       let outgoing = segments.first
     else {
@@ -692,6 +692,33 @@ private struct StrokeHitGeometry {
       vertex: outgoing.segment.start,
       next: outgoing.segment.end
     )
+  }
+
+  private func dashSeamState(
+    in subpath: FlattenedSubpath,
+    pathLength: Double,
+    dashPattern: DashPattern
+  ) -> DashSeamState {
+    guard subpath.closure == .closed,
+      dashPattern.isPainted(after: 0),
+      dashPattern.mayBePainted(
+        before: pathLength,
+        uncertainty: subpath.dashPhaseUncertainty
+      )
+    else {
+      return .disconnected
+    }
+
+    guard
+      dashPattern.isDefinitelyPainted(
+        before: pathLength,
+        throughForwardUncertainty: subpath.dashPhaseUncertainty
+      )
+    else {
+      return .possiblyConnected
+    }
+
+    return .connected
   }
 
   private func contains(_ point: SionPoint, in run: StrokeRun) -> Bool {
@@ -806,8 +833,7 @@ private struct StrokeHitGeometry {
     _ point: SionPoint,
     measuredSegment: MeasuredStrokeSegment,
     pathLength: Double,
-    closure: SubpathClosure,
-    joinsAtSeam: Bool,
+    seamState: DashSeamState,
     dashPattern: DashPattern,
     phaseUncertainty: Double
   ) -> Bool {
@@ -821,8 +847,7 @@ private struct StrokeHitGeometry {
       near: pathDistance,
       within: measuredSegment.startDistance...measuredSegment.endDistance,
       pathLength: pathLength,
-      closure: closure,
-      joinsAtSeam: joinsAtSeam,
+      seamState: seamState,
       uncertainty: phaseUncertainty
     )
 
@@ -1134,12 +1159,27 @@ private struct DashPattern {
     return paintMayOccur(near: distance, uncertainty: uncertainty)
   }
 
+  func isDefinitelyPainted(
+    before distance: Double,
+    throughForwardUncertainty uncertainty: Double
+  ) -> Bool {
+    guard isPainted(before: distance) else { return false }
+    guard uncertainty > 0 else { return true }
+
+    let currentPhase = phase(at: distance)
+    let precedingPhase = currentPhase > 0 ? currentPhase.nextDown : period.nextDown
+    let index = entryIndex(containing: precedingPhase)
+    guard index.isMultiple(of: 2) else { return false }
+
+    // Flattening underestimates curve length, so the true seam only moves forward.
+    return uncertainty < cumulativeEnds[index] - currentPhase
+  }
+
   func paintedSpans(
     near distance: Double,
     within segmentRange: ClosedRange<Double>,
     pathLength: Double,
-    closure: SubpathClosure,
-    joinsAtSeam: Bool,
+    seamState: DashSeamState,
     uncertainty: Double
   ) -> [DashPaintSpan] {
     candidatePaintRanges(near: distance).compactMap { candidate in
@@ -1154,14 +1194,14 @@ private struct DashPattern {
 
       let startsAtPaintBoundary = start == pathStart
       let endsAtPaintBoundary = end == pathEnd
-      let pathStartNeedsCap = closure == .open || !joinsAtSeam
-      let pathEndNeedsCap = closure == .open || !joinsAtSeam
+      // An uncertain seam needs both possible caps and the possible join.
+      let pathEndsNeedCaps = seamState != .connected
       let startsWithCap =
         startsAtPaintBoundary
-        && (pathStart > 0 || pathStartNeedsCap)
+        && (pathStart > 0 || pathEndsNeedCaps)
       let endsWithCap =
         endsAtPaintBoundary
-        && (pathEnd < pathLength || pathEndNeedsCap)
+        && (pathEnd < pathLength || pathEndsNeedCaps)
 
       return DashPaintSpan(
         range: start...end,

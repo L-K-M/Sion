@@ -87,6 +87,31 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testThinCurvedStrokeIncludesFlatteningMargin() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .quadratic(
+          control: SionPoint(x: 50, y: -0.24),
+          to: SionPoint(x: 100, y: 0)
+        ),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(color: .black, width: 0.1, lineCap: .butt)
+    )
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 50, y: -0.12), in: element)
+    )
+  }
+
   func testLabelOnlyShapeHitsLabelAreaButNotFrameCorner() {
     let frame = SionRect(x: 40, y: 70, width: 120, height: 80)
     var ellipse = SceneElement.shape(frame: frame, kind: .ellipse, text: "Label")
@@ -215,6 +240,36 @@ final class ElementHitGeometryTests: XCTestCase {
     let distantGapPoint = SionPoint(x: 38.602_581_7, y: -45.924_853_2)
 
     XCTAssertFalse(ElementHitGeometry.contains(distantGapPoint, in: element, tolerance: 2))
+  }
+
+  func testCurvedButtDashKeepsVisibleGapClear() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .quadratic(
+          control: SionPoint(x: 50, y: 0.1),
+          to: SionPoint(x: 100, y: 0)
+        ),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 10,
+        dashPattern: [20, 5],
+        lineCap: .butt
+      )
+    )
+
+    let curvePointInGap = SionPoint(x: 22.5, y: 0.034_875)
+
+    XCTAssertFalse(ElementHitGeometry.contains(curvePointInGap, in: element, tolerance: 2))
   }
 
   func testClosedDashSpanningPerimeterKeepsMiterAtSeam() {

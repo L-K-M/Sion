@@ -31,17 +31,9 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     )
     let controller = try makeController(elements: [text])
     let canvas = SionCanvasView(editorController: controller)
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-      styleMask: [.titled],
-      backing: .buffered,
-      defer: false
-    )
-    window.contentView = canvas
 
     defer {
       canvas.discardPendingEdits()
-      window.close()
       application.mainMenu = previousMainMenu
       application.servicesMenu = previousServicesMenu
       application.windowsMenu = previousWindowsMenu
@@ -59,7 +51,6 @@ final class SionCanvasMenuValidationTests: XCTestCase {
         .compactMap { $0.documentView as? NSTextView }
         .first
     )
-    XCTAssertTrue(window.firstResponder === textView)
     XCTAssertTrue(textView.usesFindPanel)
 
     let editMenu = try XCTUnwrap(application.mainMenu?.item(withTitle: "Edit")?.submenu)

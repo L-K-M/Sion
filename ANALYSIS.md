@@ -175,10 +175,10 @@ fixture.
 
 ### P1.3 Complete shadow semantics
 
-**Evidence.** Canvas and SVG render only the first `ShadowStyle`; `spread` and
-later shadows are ignored. Rotated Canvas shadows use base-space offsets while
-SVG rotates offsets with the element. Shared bounds conservatively cover both
-offset interpretations but still ignore spread; the pictures disagree.
+**Evidence.** Canvas and SVG render only the first `ShadowStyle`; later shadows
+and spread are ignored during painting. Rotated Canvas shadows use base-space
+offsets while SVG rotates offsets with the element. Shared bounds conservatively
+cover both offset interpretations and positive spread, but the pictures disagree.
 
 **Scope.** Define one shadow coordinate rule, then implement all shadows in
 array order and spread in Canvas, SVG, and
@@ -235,25 +235,6 @@ clearance around rotated diamond, ellipse, and custom-path fixtures.
 
 **Depends.** Share artifact/index work with P0.2/P0.3; do not expose AppKit
 `NSBezierPath` through the controller.
-
-### P1.6 Close gesture lifecycle gaps
-
-**Evidence.** Escape cancellation and external-undo recovery are covered, but
-view-local creation/connector/marquee drags and editor-backed geometry drags do
-not have one capture-loss policy. Window deactivation, responder changes, or a
-missed mouse-up can strand preview state.
-
-**Scope.** Centralize drag state transitions. On Escape cancel inward: text,
-anchor editing, drag, selection. On focus/window/capture loss, either cancel or
-commit according to one documented policy; always clear the view preview and
-end the matching editor gesture exactly once.
-
-**Accept.** Event tests cover every drag kind under Escape, external undo,
-window resign, responder change, and missing mouse-up. Document, selection,
-cursor, preview, and undo state recover without a later click.
-
-**Depends.** Keep `SceneEditor.hasPendingGesture` scoped to geometry gestures;
-P0.1 may replace the underlying preview mechanics.
 
 ### P1.7 Establish renderer conformance and performance gates
 

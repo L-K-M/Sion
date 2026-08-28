@@ -135,11 +135,9 @@
       observerID = editorController.observeChanges { [weak self] in
         guard let self else { return }
 
-        // Undo or document replacement can end the model gesture first.
-        if self.drag?.requiresEditorGesture == true,
-          !self.editorController.hasPendingEditorGesture
-        {
-          self.drag = nil
+        // External edits end model gestures and invalidate view-only previews.
+        if self.drag != nil, !self.editorController.hasPendingEditorGesture {
+          _ = self.takeActiveDrag()
         }
 
         self.synchronizeCanvasBounds()
@@ -159,6 +157,13 @@
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+
+    override func resignFirstResponder() -> Bool {
+      guard super.resignFirstResponder() else { return false }
+
+      cancelActiveDrag()
+      return true
+    }
 
     override func resetCursorRects() {
       super.resetCursorRects()
@@ -191,6 +196,7 @@
     }
 
     override func mouseMoved(with event: NSEvent) {
+      cancelActiveDrag()
       updateCursor(at: modelPoint(from: event))
     }
 
@@ -318,6 +324,7 @@
     }
 
     func invalidate() {
+      cancelActiveDrag()
       guard let observerID else { return }
 
       editorController.removeObserver(observerID)
@@ -364,6 +371,8 @@
     }
 
     override func mouseDown(with event: NSEvent) {
+      // A new press is the last recovery point when AppKit drops mouse-up.
+      cancelActiveDrag()
       commitTextEditing()
       window?.makeFirstResponder(self)
 
@@ -466,8 +475,7 @@
     }
 
     override func mouseUp(with event: NSEvent) {
-      guard let drag else { return }
-      self.drag = nil
+      guard let drag = takeActiveDrag() else { return }
       updateCursor(at: modelPoint(from: event))
 
       switch drag {
@@ -513,11 +521,7 @@
 
     override func keyDown(with event: NSEvent) {
       if event.keyCode == CanvasKeyCode.escape {
-        if editorController.anchorEditingState != .inactive {
-          editorController.endAnchorEditing()
-        } else {
-          cancelInteraction()
-        }
+        cancelInteraction()
         return
       }
 
@@ -561,7 +565,7 @@
       try? editorController.deleteSelection()
     }
 
-    /// Escape cancels inwards: text editing, then a live gesture, then selection.
+    /// Escape cancels inwards: text, anchors, a live gesture, then selection.
     /// keyDown covers the canvas as first responder; cancelOperation catches
     /// Escape bubbling from a hosted text editor.
     @objc override func cancelOperation(_ sender: Any?) {
@@ -574,20 +578,37 @@
         return
       }
 
-      if let activeDrag = drag {
-        switch activeDrag {
-        case .move, .resize, .rotate, .cornerRadius:
-          editorController.cancelActiveGesture()
-        case .create, .connector, .marquee:
-          break
-        }
+      if editorController.anchorEditingState != .inactive {
+        editorController.endAnchorEditing()
+        return
+      }
 
-        drag = nil
-        needsDisplay = true
+      if drag != nil {
+        cancelActiveDrag()
         return
       }
 
       editorController.select(nil)
+    }
+
+    /// Only mouse-up commits; every other terminal path cancels the drag.
+    func cancelActiveDrag() {
+      guard let activeDrag = takeActiveDrag() else { return }
+      guard activeDrag.requiresEditorGesture else { return }
+
+      editorController.cancelActiveGesture()
+    }
+
+    /// Clear view state before controller callbacks can synchronously notify us.
+    private func takeActiveDrag() -> Drag? {
+      guard let activeDrag = drag else { return nil }
+
+      drag = nil
+      needsDisplay = true
+      window?.invalidateCursorRects(for: self)
+      NSCursor.arrow.set()
+      refreshCursorForCurrentPointer()
+      return activeDrag
     }
 
     @objc override func selectAll(_ sender: Any?) {

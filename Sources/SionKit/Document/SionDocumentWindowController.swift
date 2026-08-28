@@ -3,7 +3,9 @@
   import SionCore
 
   @MainActor
-  final class SionDocumentWindowController: NSWindowController, NSToolbarDelegate {
+  final class SionDocumentWindowController: NSWindowController, NSWindowDelegate,
+    NSToolbarDelegate
+  {
     private let editorController: SionEditorController
     private let canvasView: SionCanvasView
     private let scrollView = NSScrollView()
@@ -52,6 +54,7 @@
 
       super.init(window: window)
 
+      window.delegate = self
       configureContent()
       configureToolbar()
       registerPalettes()
@@ -69,6 +72,10 @@
       super.windowDidLoad()
 
       window?.makeFirstResponder(canvasView)
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+      canvasView.cancelActiveDrag()
     }
 
     override func showWindow(_ sender: Any?) {

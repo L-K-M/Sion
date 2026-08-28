@@ -1727,8 +1727,8 @@
       let span = upperBound - lowerBound
       guard span > 0 else { return nil }
 
-      // Bake SVG's endpoint padding into the sRGB gradient domain. Quartz can
-      // omit its before-start extension in wide-gamut contexts.
+      // Extend the sRGB domain across the clip, matching SVG's constant colors
+      // before the first point and after the last.
       var stops = gradient.stops.map { stop in
         GradientStop(
           color: stop.color,

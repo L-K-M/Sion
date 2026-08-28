@@ -87,6 +87,28 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testImplicitlyClosedShallowCurveHitsFill() {
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .quadratic(
+          control: SionPoint(x: 50, y: -0.24),
+          to: SionPoint(x: 100, y: 0)
+        ),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(fill: .solid(.black))
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 50, y: -0.05), in: element)
+    )
+  }
+
   func testThinCurvedStrokeIncludesFlatteningMargin() {
     let path = VectorPath(
       coordinateSpace: .localPoints,
@@ -240,6 +262,82 @@ final class ElementHitGeometryTests: XCTestCase {
     let distantGapPoint = SionPoint(x: 38.602_581_7, y: -45.924_853_2)
 
     XCTAssertFalse(ElementHitGeometry.contains(distantGapPoint, in: element, tolerance: 2))
+  }
+
+  func testTruncatedCurveDoesNotFillDashGapInSeparateSubpath() throws {
+    let curveCount = 513
+    let distantY = SceneLimits.maximumCoordinateMagnitude / 2
+    var commands: [PathCommand] = [
+      .move(to: .zero),
+      .line(to: SionPoint(x: 100, y: 0)),
+      .move(to: SionPoint(x: 0, y: distantY)),
+    ]
+    for index in 0..<curveCount {
+      let endX =
+        index.isMultiple(of: 2)
+        ? SceneLimits.maximumCoordinateMagnitude : 0
+      commands.append(
+        .quadratic(
+          control: SionPoint(
+            x: SceneLimits.maximumCoordinateMagnitude / 2,
+            y: SceneLimits.maximumCoordinateMagnitude
+          ),
+          to: SionPoint(x: endX, y: distantY)
+        )
+      )
+    }
+    let path = VectorPath(coordinateSpace: .localPoints, commands: commands)
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.magnetConfiguration = .preset(.none)
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 2,
+        dashPattern: [20, 20],
+        lineCap: .butt
+      )
+    )
+
+    XCTAssertNoThrow(try SionScene(elements: [element]).validate())
+    XCTAssertFalse(
+      ElementHitGeometry.contains(SionPoint(x: 25, y: 0), in: element)
+    )
+  }
+
+  func testOversizedDashPatternUsesBoundedConservativeStroke() {
+    let repeatedPatternCount = (SceneLimits.maximumPathCommandCount / 2) + 1
+    let dashPattern = Array(
+      repeating: [20.0, 20.0],
+      count: repeatedPatternCount
+    ).flatMap { $0 }
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: SionPoint(x: 100, y: 0)),
+      ]
+    )
+    var element = SceneElement.path(
+      frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+      path: path
+    )
+    element.style = ElementStyle(
+      fill: .none,
+      stroke: StrokeStyle(
+        color: .black,
+        width: 2,
+        dashPattern: dashPattern,
+        lineCap: .butt
+      )
+    )
+
+    XCTAssertTrue(
+      ElementHitGeometry.contains(SionPoint(x: 30, y: 0), in: element)
+    )
   }
 
   func testCurvedButtDashKeepsVisibleGapClear() {
@@ -642,7 +740,7 @@ final class ElementHitGeometryTests: XCTestCase {
     )
     var ellipse = SceneElement.shape(frame: frame, kind: .ellipse)
     ellipse.style = ElementStyle(fill: .solid(.black))
-    let largeCurvedShapeCount = 256
+    let largeCurvedShapeCount = 25_000
 
     let started = ContinuousClock.now
     for _ in 0..<largeCurvedShapeCount {

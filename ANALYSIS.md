@@ -269,10 +269,12 @@ and documented pixel tolerances.
 
 ### P1.8 Replace silent command failures with coherent feedback
 
-**Evidence.** Inspector controls now restore model values after a rejected
-semantic edit. Canvas and other palette paths still often use `try?` plus
-`NSSound.beep()`. Arrange logs and beeps, but most failures have no stable
-user-facing explanation.
+**Evidence.** Inspector controls restore model values after a rejected semantic
+edit. Lossy Mermaid paste returns a typed result, preserves the exact source,
+and shows a dismissible nonmodal banner with a VoiceOver announcement; a
+successful retry clears that scoped warning. Canvas and other palette paths
+still often use `try?` plus `NSSound.beep()`. Arrange logs and beeps, but most
+failures have no stable user-facing explanation.
 
 **Scope.** Add one typed editor-result/feedback channel. Roll controls back to
 model values and show a compact nonmodal banner with details or retry when
@@ -627,18 +629,20 @@ and D3 framing terms.
 ### P2.16 Honor Mermaid direction and topology
 
 **Evidence.** `MermaidImporter` honors TB/TD/BT/LR/RL direction in its simple
-order-based grid, but does not rank nodes from graph topology. Unsupported,
-malformed, and unparsed statements are skipped without import diagnostics.
-Subgraphs and arrow variants such as `==>` and `-.->` are ignored or flattened.
-Valid same-line statements after a header are rejected as a whole rather than
-partially imported.
+order-based grid, but does not rank nodes from graph topology. Its deterministic
+report records invalid headers, unsupported arrows/statements, and unrecognized
+lines with source locations. Any omission rejects editable insertion; paste
+preserves the complete source as one text element instead of silently inserting
+a partial graph. A typed nonmodal warning reports the omission count and first
+source line. Subgraphs and arrow variants such as `==>` and `-.->` remain
+unsupported.
 
 **Scope.** Build a deterministic layered graph layout: rank by topology, order
 to reduce crossings, honor direction, reserve node/label bounds, and define a
 stable strongly-connected-component fallback. Keep parsing and layout separate.
-Return a structured deterministic import report and warn or reject before
-partial insertion. Preserve supported arrow semantics and include every
-ignored statement/type and count in the structured omission report.
+Surface the import report through P1.8 feedback. Preserve supported arrow
+semantics, and either import each remaining syntax faithfully or retain its
+exact omission under D4.
 
 **Accept.** Fixtures cover every direction, branches, joins, disconnected
 components, cycles, long labels, and stable repeated import. No nodes overlap;

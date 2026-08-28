@@ -42,6 +42,32 @@ final class MermaidImporterTests: XCTestCase {
     )
   }
 
+  func testHonorsEachFlowchartDirection() throws {
+    let center = SionPoint(x: 500, y: 400)
+
+    for direction in ImportedDirection.allCases {
+      let nodes = MermaidImporter.elements(
+        from: """
+          flowchart \(direction.rawValue)
+            A
+            B
+          """,
+        centeredAt: center
+      )
+
+      let first = try XCTUnwrap(nodes.first)
+      let second = try XCTUnwrap(nodes.dropFirst().first)
+      let step = (second.geometry.frame.center - first.geometry.frame.center).normalized
+
+      XCTAssertEqual(step, direction.expectedStep, direction.rawValue)
+      XCTAssertEqual(
+        first.geometry.frame.union(second.geometry.frame).center,
+        center,
+        direction.rawValue
+      )
+    }
+  }
+
   func testGeneratedMermaidCanBeImportedAgain() throws {
     let first = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 160, height: 80),
@@ -64,5 +90,26 @@ final class MermaidImporterTests: XCTestCase {
 
     XCTAssertEqual(imported.filter { $0.content.connector == nil }.count, 2)
     XCTAssertEqual(imported.compactMap(\.content.connector).count, 1)
+  }
+}
+
+private enum ImportedDirection: String, CaseIterable {
+  case topToBottom = "TB"
+  case topDown = "TD"
+  case bottomToTop = "BT"
+  case leftToRight = "LR"
+  case rightToLeft = "RL"
+
+  var expectedStep: SionVector {
+    switch self {
+    case .topToBottom, .topDown:
+      return .south
+    case .bottomToTop:
+      return .north
+    case .leftToRight:
+      return .east
+    case .rightToLeft:
+      return .west
+    }
   }
 }

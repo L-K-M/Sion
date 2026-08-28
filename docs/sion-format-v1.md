@@ -127,6 +127,7 @@ semantics from unknown fields.
 
 - Coordinates are points with a top-left origin, positive x rightward, and
   positive y downward.
+- Shadow offset components use canvas axes and do not rotate with an element.
 - Numbers MUST be finite and geometry MUST remain inside ±1,000,000 points.
 - IDs are lowercase UUID strings. Element array order is back-to-front z-order.
 - Group membership uses stable IDs; coordinates remain absolute.

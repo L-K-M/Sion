@@ -1712,7 +1712,7 @@
         path.lineWidth = CGFloat(stroke.width)
         // Validation guarantees finite non-negative entries; filtering here
         // could only silently flip dash/gap parity.
-        let dashPattern = stroke.dashPattern.map(CGFloat.init)
+        let dashPattern = stroke.dashPattern.map { CGFloat($0) }
         path.setLineDash(dashPattern, count: dashPattern.count, phase: 0)
         path.lineCapStyle = lineCap(stroke.lineCap)
         path.lineJoinStyle = lineJoin(stroke.lineJoin)

@@ -283,7 +283,14 @@ public enum SVGExporter {
       route: route,
       definitions: &definitions
     )
-    return "<g id=\"element-\(element.id)\"\(transform) \(effects)>\(content)</g>"
+
+    guard !element.style.shadows.isEmpty, !transform.isEmpty else {
+      return "<g id=\"element-\(element.id)\"\(transform) \(effects)>\(content)</g>"
+    }
+
+    // Keep the filter in canvas space while rotating only its source artwork.
+    let transformedContent = "<g\(transform)>\(content)</g>"
+    return "<g id=\"element-\(element.id)\" \(effects)>\(transformedContent)</g>"
   }
 
   private static func paintAttributes(
@@ -339,7 +346,7 @@ public enum SVGExporter {
         shadow: shadow
       )
       definitions.append(
-        "<filter id=\"\(filterID)\" filterUnits=\"userSpaceOnUse\" x=\"\(number(filterBounds.minX))\" y=\"\(number(filterBounds.minY))\" width=\"\(number(filterBounds.width))\" height=\"\(number(filterBounds.height))\"><feDropShadow dx=\"\(number(shadow.offset.dx))\" dy=\"\(number(shadow.offset.dy))\" stdDeviation=\"\(number(shadow.blurRadius / 2))\" flood-color=\"\(shadow.color.hex)\"/></filter>"
+        "<filter id=\"\(filterID)\" filterUnits=\"\(SVGDefaults.userSpaceUnits)\" primitiveUnits=\"\(SVGDefaults.userSpaceUnits)\" x=\"\(number(filterBounds.minX))\" y=\"\(number(filterBounds.minY))\" width=\"\(number(filterBounds.width))\" height=\"\(number(filterBounds.height))\"><feDropShadow dx=\"\(number(shadow.offset.dx))\" dy=\"\(number(shadow.offset.dy))\" stdDeviation=\"\(number(shadow.blurRadius / 2))\" flood-color=\"\(shadow.color.hex)\"/></filter>"
       )
       filter = " filter=\"url(#\(filterID))\""
     }
@@ -362,9 +369,17 @@ public enum SVGExporter {
       artworkBounds = artworkBounds.union(textBounds)
     }
 
-    return SceneRenderGeometry.boundsIncludingShadows(
+    guard element.content.connector == nil else {
+      return SceneRenderGeometry.boundsIncludingShadows(
+        [shadow],
+        around: artworkBounds
+      )
+    }
+
+    return SceneRenderGeometry.boundsIncludingCanvasSpaceShadows(
       [shadow],
-      around: artworkBounds
+      around: artworkBounds,
+      geometry: element.geometry
     )
   }
 
@@ -725,6 +740,7 @@ private enum SVGDefaults {
   static let numberPrecision = 1_000.0
   static let fallbackImageSize = SionSize(width: 1, height: 1)
   static let envelopeByteAllowance = 4_096
+  static let userSpaceUnits = "userSpaceOnUse"
 }
 
 extension SionColor {

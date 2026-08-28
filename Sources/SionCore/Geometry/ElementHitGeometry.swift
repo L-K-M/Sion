@@ -807,7 +807,7 @@ private struct StrokeHitGeometry {
   ) -> Bool {
     let vector = segment.end - segment.start
     let length = vector.length
-    guard length > HitGeometryDefaults.epsilon else { return false }
+    guard length > 0 else { return false }
 
     let direction = vector / length
     let offset = point - segment.start
@@ -898,7 +898,7 @@ private struct StrokeHitGeometry {
 
     for flattenedSegment in subpath.strokeSegments {
       let length = flattenedSegment.segment.length
-      guard length > HitGeometryDefaults.epsilon else { continue }
+      guard length > 0 else { continue }
 
       result.append(
         MeasuredStrokeSegment(
@@ -1059,7 +1059,7 @@ private struct StrokeRun {
     points = subpath.points
     // Zero-length segments do not replace neighboring cap or join tangents.
     segments = subpath.strokeSegments.filter {
-      $0.segment.length > HitGeometryDefaults.epsilon
+      $0.segment.length > 0
     }
     closure = subpath.closure
   }

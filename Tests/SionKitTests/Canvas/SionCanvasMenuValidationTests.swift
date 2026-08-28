@@ -180,7 +180,7 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     _ = NSApplication.shared
     let controller = try makeController(elements: [])
     let pasteboard = testPasteboard()
-    var feedback: [SionEditorFeedback] = []
+    var feedback: [SionEditorFeedbackRequest] = []
     let canvas = SionCanvasView(
       editorController: controller,
       editorFeedback: { feedback.append($0) },
@@ -192,7 +192,7 @@ final class SionCanvasMenuValidationTests: XCTestCase {
 
     XCTAssertEqual(
       feedback,
-      [.mermaidSourcePreserved(.omissions(firstLine: 3, count: 1))]
+      [.show(.mermaidSourcePreserved(.omissions(firstLine: 3, count: 1)))]
     )
     let inserted = try XCTUnwrap(controller.document.scene.elements.first)
     guard case .text(let text) = inserted.content else {
@@ -201,11 +201,11 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     XCTAssertEqual(text.string, TestPasteboard.lossyMermaid)
   }
 
-  func testCompleteMermaidPasteDoesNotReportFeedback() throws {
+  func testCompleteMermaidPasteClearsPriorFeedback() throws {
     _ = NSApplication.shared
     let controller = try makeController(elements: [])
     let pasteboard = testPasteboard()
-    var feedback: [SionEditorFeedback] = []
+    var feedback: [SionEditorFeedbackRequest] = []
     let canvas = SionCanvasView(
       editorController: controller,
       editorFeedback: { feedback.append($0) },
@@ -215,8 +215,31 @@ final class SionCanvasMenuValidationTests: XCTestCase {
 
     canvas.paste(nil)
 
-    XCTAssertTrue(feedback.isEmpty)
+    XCTAssertEqual(feedback, [.clear(.mermaidPaste)])
     XCTAssertEqual(controller.document.scene.elements.count, 3)
+  }
+
+  func testRejectedMermaidPasteReportsCommandFailure() throws {
+    _ = NSApplication.shared
+    let selected = shape(id: "00000000-0000-0000-0000-000000000001")
+    let controller = try makeController(elements: [selected])
+    let pasteboard = testPasteboard()
+    var feedback: [SionEditorFeedbackRequest] = []
+    let canvas = SionCanvasView(
+      editorController: controller,
+      editorFeedback: { feedback.append($0) },
+      pasteboard: pasteboard
+    )
+    pasteboard.setString(TestPasteboard.completeMermaid, forType: .string)
+    controller.select(selected.id)
+    try controller.beginMove()
+    defer { controller.cancelActiveGesture() }
+    let document = controller.document
+
+    canvas.paste(nil)
+
+    XCTAssertEqual(feedback, [.show(.commandFailed(.pasteMermaid))])
+    XCTAssertEqual(controller.document, document)
   }
 
   func testCutDoesNotReplaceClipboardWhenDeletionCannotRun() throws {

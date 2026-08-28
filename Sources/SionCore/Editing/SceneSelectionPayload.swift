@@ -94,6 +94,69 @@ public struct SceneSelectionPayload: Equatable, Sendable {
     )
   }
 
+  /// Rejects selections whose unique assets alone exhaust an encoded payload.
+  package static func assetsCouldFitEncodedByteBudget(
+    package: SionPackage,
+    selectedElementIDs: Set<ElementID>,
+    maximumByteCount: Int
+  ) -> Bool {
+    guard !selectedElementIDs.isEmpty, maximumByteCount > 0 else { return false }
+
+    let scene = package.document.scene
+    var includedIDs = selectedElementIDs
+    includedIDs.formUnion(scene.descendantIDs(of: selectedElementIDs))
+    var foundSelectedIDs = Set<ElementID>()
+    var assetIDs = Set<AssetID>()
+
+    // One scene pass finds roots and image assets in their selected subtrees.
+    for element in scene.elements {
+      if selectedElementIDs.contains(element.id) {
+        foundSelectedIDs.insert(element.id)
+      }
+
+      guard includedIDs.contains(element.id), case .image(let image) = element.content else {
+        continue
+      }
+
+      assetIDs.insert(image.assetID)
+      assetIDs.insert(image.displayAssetID)
+    }
+
+    guard foundSelectedIDs == selectedElementIDs else { return false }
+
+    var remainingByteCount = maximumByteCount
+    for id in assetIDs {
+      guard let asset = package.assets[id],
+        consumeBase64Budget(
+          rawByteCount: asset.data.count,
+          remainingByteCount: &remainingByteCount
+        )
+      else {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  private static func consumeBase64Budget(
+    rawByteCount: Int,
+    remainingByteCount: inout Int
+  ) -> Bool {
+    let completeBlocks = rawByteCount / Base64Encoding.inputBlockByteCount
+    let partialBlocks = rawByteCount.isMultiple(of: Base64Encoding.inputBlockByteCount) ? 0 : 1
+    let encodedBlocks = completeBlocks + partialBlocks
+    guard remainingByteCount > 0 else { return false }
+
+    // Leave at least one byte for required JSON structure.
+    let maximumBlocks =
+      (remainingByteCount - 1) / Base64Encoding.outputBlockByteCount
+    guard encodedBlocks <= maximumBlocks else { return false }
+
+    remainingByteCount -= encodedBlocks * Base64Encoding.outputBlockByteCount
+    return true
+  }
+
   public func insertion(
     centeredAt targetCenter: SionPoint,
     excluding occupiedIDs: Set<ElementID> = []
@@ -157,6 +220,11 @@ public struct SceneSelectionPayload: Equatable, Sendable {
     }
 
     return includedIDs
+  }
+
+  private enum Base64Encoding {
+    static let inputBlockByteCount = 3
+    static let outputBlockByteCount = 4
   }
 
   private static func detachedCopy(

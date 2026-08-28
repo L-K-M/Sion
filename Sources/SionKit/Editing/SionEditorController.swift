@@ -314,7 +314,11 @@
     }
 
     var canCopySelection: Bool {
-      !selection.isEmpty
+      SceneSelectionPayload.assetsCouldFitEncodedByteBudget(
+        package: packageForArchiving(),
+        selectedElementIDs: selection,
+        maximumByteCount: SionArchiveConstants.maximumEntryByteCount
+      )
     }
 
     var canDeleteSelection: Bool {

@@ -739,11 +739,18 @@
     }
 
     @objc func copy(_ sender: Any?) {
+      guard editorController.canCopySelection else { return }
+
       _ = copySelection(to: pasteboard)
     }
 
     @objc func cut(_ sender: Any?) {
-      guard editorController.canDeleteSelection else { return }
+      guard editorController.canCopySelection,
+        editorController.canDeleteSelection
+      else {
+        return
+      }
+
       guard copySelection(to: pasteboard) else { return }
 
       try? editorController.deleteSelection()

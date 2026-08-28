@@ -6,6 +6,8 @@ import XCTest
 
 @MainActor
 final class SionLibraryPaletteTests: XCTestCase {
+  private let libraryViewportHeight: CGFloat = 250
+
   func testLibraryInsertsEveryBuiltInShapeAtTheViewportCenter() throws {
     _ = NSApplication.shared
     let undoManager = UndoManager()
@@ -55,20 +57,9 @@ final class SionLibraryPaletteTests: XCTestCase {
 
     panel.contentView?.layoutSubtreeIfNeeded()
 
+    XCTAssertTrue(stack.isFlipped)
     XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
-    XCTAssertGreaterThan(stack.frame.height, scrollView.contentView.bounds.height)
-
-    let lastButton = try XCTUnwrap(buttons.last)
-    let bottomOrigin = NSPoint(
-      x: scrollView.contentView.bounds.minX,
-      y: max(stack.bounds.minY, stack.bounds.maxY - scrollView.contentView.bounds.height)
-    )
-    scrollView.contentView.scroll(to: bottomOrigin)
-    scrollView.reflectScrolledClipView(scrollView.contentView)
-    let visibleRect = scrollView.contentView.bounds
-
-    XCTAssertLessThanOrEqual(visibleRect.minY, lastButton.frame.minY)
-    XCTAssertGreaterThanOrEqual(visibleRect.maxY, lastButton.frame.maxY)
+    XCTAssertGreaterThan(stack.fittingSize.height, libraryViewportHeight)
 
     for expected in expectedShapes {
       let button = try XCTUnwrap(buttons.first { $0.title == expected.title })

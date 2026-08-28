@@ -3,6 +3,8 @@ import AppKit
 @MainActor
 public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
   private let documentController = SionDocumentController()
+  private lazy var recentDocumentsMenuController =
+    SionRecentDocumentsMenuController(documentController: documentController)
 
   public override init() {
     super.init()
@@ -10,7 +12,7 @@ public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
 
   public func applicationWillFinishLaunching(_ notification: Notification) {
     // Install before AppKit discovers system-managed menu roles.
-    SionMainMenu.install()
+    SionMainMenu.install(recentDocumentsMenuController: recentDocumentsMenuController)
   }
 
   public func applicationDidFinishLaunching(_ notification: Notification) {
@@ -49,10 +51,10 @@ public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 private enum SionMainMenu {
-  static func install() {
+  static func install(recentDocumentsMenuController: SionRecentDocumentsMenuController) {
     let menu = NSMenu()
     menu.addItem(applicationMenu())
-    menu.addItem(fileMenu())
+    menu.addItem(fileMenu(recentDocumentsMenuController: recentDocumentsMenuController))
     menu.addItem(editMenu())
     menu.addItem(arrangeMenu())
     menu.addItem(viewMenu())
@@ -84,11 +86,15 @@ private enum SionMainMenu {
     return parentItem(title: "Sion", submenu: submenu)
   }
 
-  private static func fileMenu() -> NSMenuItem {
+  private static func fileMenu(
+    recentDocumentsMenuController: SionRecentDocumentsMenuController
+  ) -> NSMenuItem {
     let submenu = NSMenu(title: "File")
     submenu.addItem(item("New", action: #selector(NSDocumentController.newDocument(_:)), key: "n"))
     submenu.addItem(
       item("Open…", action: #selector(NSDocumentController.openDocument(_:)), key: "o"))
+    let recentMenu = recentDocumentsMenuController.makeMenu()
+    submenu.addItem(parentItem(title: recentMenu.title, submenu: recentMenu))
     submenu.addItem(.separator())
     submenu.addItem(item("Close", action: AppAction.close, key: "w"))
     submenu.addItem(item("Save", action: AppAction.save, key: "s"))

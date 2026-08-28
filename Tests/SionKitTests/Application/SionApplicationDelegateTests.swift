@@ -142,6 +142,8 @@ final class SionApplicationDelegateTests: XCTestCase {
       line: line
     )
     XCTAssertEqual(item?.tag, action.rawValue, file: file, line: line)
+    // A nil target routes the command to the active text responder.
+    XCTAssertNil(item?.target, file: file, line: line)
     XCTAssertEqual(item?.keyEquivalent, key, file: file, line: line)
     XCTAssertEqual(item?.keyEquivalentModifierMask, modifiers, file: file, line: line)
   }
@@ -158,6 +160,7 @@ final class SionApplicationDelegateTests: XCTestCase {
     let item = menu.item(withTitle: title)
 
     XCTAssertEqual(item?.action, action, file: file, line: line)
+    XCTAssertNil(item?.target, file: file, line: line)
     XCTAssertEqual(item?.keyEquivalent, key, file: file, line: line)
     XCTAssertEqual(item?.keyEquivalentModifierMask, modifiers, file: file, line: line)
   }

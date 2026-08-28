@@ -89,6 +89,13 @@ final class SionCanvasMenuValidationTests: XCTestCase {
     let checkSpelling = try XCTUnwrap(spellingMenu.item(withTitle: "Check Document Now"))
     XCTAssertTrue(textView.validateMenuItem(showSpelling))
     XCTAssertTrue(textView.validateMenuItem(checkSpelling))
+
+    canvas.discardPendingEdits()
+    for item in findMenu.items where !item.isSeparatorItem {
+      XCTAssertFalse(canvas.validateMenuItem(item), item.title)
+    }
+    XCTAssertFalse(canvas.validateMenuItem(showSpelling))
+    XCTAssertFalse(canvas.validateMenuItem(checkSpelling))
   }
 
   func testEditValidationMatchesExecutableSelection() throws {

@@ -111,24 +111,47 @@ final class SionCanvasRenderingTests: XCTestCase {
     ]
 
     for (decoration, sample) in fixtures {
-      let connector = decorationConnector(
-        decoration,
-        stroke: StrokeStyle(color: strokeColor, width: 2)
-      )
-      let color = try pixel(in: render(elements: [connector]), at: sample)
+      try XCTContext.runActivity(named: decoration.rawValue) { _ in
+        let connector = decorationConnector(
+          decoration,
+          stroke: StrokeStyle(color: strokeColor, width: 2)
+        )
+        let color = try pixel(in: render(elements: [connector]), at: sample)
 
-      assertEqual(color, expectedColor, file: #filePath, line: #line)
+        assertEqual(color, expectedColor, file: #filePath, line: #line)
+      }
     }
   }
 
   func testClosedConnectorDecorationsDoNotAddAnOutline() throws {
+    let fixtures: [(ConnectorDecoration, SionPoint)] = [
+      (.filledArrow, SionPoint(x: 232, y: 113)),
+      (.circle, SionPoint(x: 240, y: 112)),
+      (.diamond, SionPoint(x: 235, y: 111)),
+    ]
+    let white = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+
+    for (decoration, sample) in fixtures {
+      try XCTContext.runActivity(named: decoration.rawValue) { _ in
+        let connector = decorationConnector(
+          decoration,
+          stroke: StrokeStyle(color: .black, width: 8)
+        )
+        let color = try pixel(in: render(elements: [connector]), at: sample)
+
+        assertEqual(color, white, file: #filePath, line: #line)
+      }
+    }
+  }
+
+  func testOpenConnectorArrowRemainsHollow() throws {
     let connector = decorationConnector(
-      .filledArrow,
-      stroke: StrokeStyle(color: .black, width: 8)
+      .openArrow,
+      stroke: StrokeStyle(color: .black, width: 2)
     )
     let color = try pixel(
       in: render(elements: [connector]),
-      at: SionPoint(x: 232, y: 113)
+      at: SionPoint(x: 232, y: 118)
     )
 
     assertEqual(color, NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))

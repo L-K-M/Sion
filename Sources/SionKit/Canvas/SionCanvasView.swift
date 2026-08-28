@@ -2010,6 +2010,7 @@
       toward previous: SionPoint?,
       style: ElementStyle
     ) {
+      // SVG decorations inherit a visible connector stroke; never synthesize one.
       guard decoration != .none,
         let previous,
         let stroke = style.stroke,

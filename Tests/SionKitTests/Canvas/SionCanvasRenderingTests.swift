@@ -105,7 +105,7 @@ final class SionCanvasRenderingTests: XCTestCase {
     let strokeColor = SionColor(red: 0.8, green: 0.1, blue: 0.2)
     let expectedColor = NSColor(srgbRed: 0.8, green: 0.1, blue: 0.2, alpha: 1)
     let fixtures: [(ConnectorDecoration, SionPoint)] = [
-      (.filledArrow, SionPoint(x: 232, y: 123)),
+      (.filledArrow, SionPoint(x: 230, y: 122)),
       (.circle, SionPoint(x: 240, y: 122)),
       (.diamond, SionPoint(x: 235, y: 123)),
     ]

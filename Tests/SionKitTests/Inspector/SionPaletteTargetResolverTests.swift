@@ -164,6 +164,19 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertEqual(nameField.stringValue, "")
     XCTAssertEqual(nameField.placeholderString, "Mixed")
 
+    undoManager.beginUndoGrouping()
+    let sentUntouchedAction = NSApp.sendAction(
+      try XCTUnwrap(nameField.action),
+      to: nameField.target,
+      from: nameField
+    )
+    undoManager.endUndoGrouping()
+
+    XCTAssertTrue(sentUntouchedAction)
+    XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")
+    XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Second")
+    XCTAssertFalse(undoManager.canUndo)
+
     nameField.stringValue = "Shared"
     undoManager.beginUndoGrouping()
     let sentAction = NSApp.sendAction(
@@ -185,6 +198,74 @@ final class InspectorPaletteTests: XCTestCase {
 
     XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")
     XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Second")
+  }
+
+  func testSingleNameClearsAndCommitsOnFocusLoss() throws {
+    _ = NSApplication.shared
+    let previousServicesMenu = NSApp.servicesMenu
+    defer { NSApp.servicesMenu = previousServicesMenu }
+
+    var shape = SceneElement.shape(
+      frame: SionRect(x: 40, y: 40, width: 160, height: 90)
+    )
+    shape.name = "First"
+    let undoManager = UndoManager()
+    undoManager.groupsByEvent = false
+    let editor = try SionEditorController(
+      package: SionPackage(
+        document: SionDocument(scene: SionScene(elements: [shape]))
+      ),
+      undoManagerProvider: { undoManager },
+      didChange: { _ in }
+    )
+    editor.select(shape.id)
+    let documentController = SionDocumentWindowController(editorController: editor)
+    defer { documentController.close() }
+
+    let documentWindow = try XCTUnwrap(documentController.window)
+    documentWindow.orderFrontRegardless()
+    let inspector = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.inspector.paletteKind)
+    )
+    defer { inspector.close() }
+    inspector.showPanel()
+
+    let panel = try XCTUnwrap(
+      NSApp.windows.first { $0.title == "Inspector" && $0.isVisible }
+    )
+    let descendants = try XCTUnwrap(panel.contentView).inspectorTestDescendants
+    let nameField = try XCTUnwrap(
+      descendants.compactMap { $0 as? NSTextField }.first {
+        $0.accessibilityLabel() == "Element name"
+      }
+    )
+    let lockButton = try XCTUnwrap(
+      descendants.compactMap { $0 as? NSButton }.first { $0.title == "Locked" }
+    )
+
+    nameField.stringValue = ""
+    undoManager.beginUndoGrouping()
+    XCTAssertTrue(
+      NSApp.sendAction(try XCTUnwrap(nameField.action), to: nameField.target, from: nameField)
+    )
+    undoManager.endUndoGrouping()
+
+    XCTAssertNil(editor.document.scene.element(withID: shape.id)?.name)
+
+    undoManager.undo()
+
+    XCTAssertEqual(editor.document.scene.element(withID: shape.id)?.name, "First")
+
+    undoManager.beginUndoGrouping()
+    XCTAssertTrue(panel.makeFirstResponder(nameField))
+    let fieldEditor = try XCTUnwrap(nameField.currentEditor() as? NSTextView)
+    fieldEditor.selectAll(nil)
+    fieldEditor.insertText("Tabbed", replacementRange: fieldEditor.selectedRange())
+    XCTAssertTrue(panel.makeFirstResponder(lockButton))
+    undoManager.endUndoGrouping()
+
+    XCTAssertEqual(editor.document.scene.element(withID: shape.id)?.name, "Tabbed")
+    XCTAssertEqual(undoManager.undoActionName, "Rename Element")
   }
 
   func testRejectedInspectorEditRestoresDisplayedValue() throws {

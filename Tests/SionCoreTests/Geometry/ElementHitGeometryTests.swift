@@ -516,6 +516,80 @@ final class ElementHitGeometryTests: XCTestCase {
     )
   }
 
+  func testMoveOnlyPathMissesEveryStrokeCap() {
+    let point = SionPoint(x: 20, y: 20)
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [.move(to: point)]
+    )
+    let dashPatterns: [[Double]] = [[], [20, 20]]
+
+    for dashPattern in dashPatterns {
+      for lineCap in StrokeLineCap.allCases {
+        var element = SceneElement.path(
+          frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+          path: path
+        )
+        element.style = ElementStyle(
+          fill: .none,
+          stroke: StrokeStyle(
+            color: .black,
+            width: 10,
+            dashPattern: dashPattern,
+            lineCap: lineCap
+          )
+        )
+
+        XCTAssertFalse(
+          ElementHitGeometry.contains(point, in: element),
+          "Unexpected \(lineCap) cap for dash \(dashPattern)"
+        )
+      }
+    }
+  }
+
+  func testZeroLengthLineHonorsSolidAndDashedCaps() {
+    let point = SionPoint(x: 20, y: 20)
+    let squareCorner = SionPoint(x: 24, y: 24)
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: point),
+        .line(to: point),
+      ]
+    )
+    let dashPatterns: [[Double]] = [[], [20, 20]]
+
+    for dashPattern in dashPatterns {
+      func element(lineCap: StrokeLineCap) -> SceneElement {
+        var element = SceneElement.path(
+          frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+          path: path
+        )
+        element.style = ElementStyle(
+          fill: .none,
+          stroke: StrokeStyle(
+            color: .black,
+            width: 10,
+            dashPattern: dashPattern,
+            lineCap: lineCap
+          )
+        )
+        return element
+      }
+
+      XCTAssertFalse(ElementHitGeometry.contains(point, in: element(lineCap: .butt)))
+      XCTAssertTrue(ElementHitGeometry.contains(point, in: element(lineCap: .round)))
+      XCTAssertFalse(
+        ElementHitGeometry.contains(squareCorner, in: element(lineCap: .round))
+      )
+      XCTAssertTrue(ElementHitGeometry.contains(point, in: element(lineCap: .square)))
+      XCTAssertTrue(
+        ElementHitGeometry.contains(squareCorner, in: element(lineCap: .square))
+      )
+    }
+  }
+
   func testCurvedButtCapUsesEndpointTangent() {
     let path = VectorPath(
       coordinateSpace: .localPoints,

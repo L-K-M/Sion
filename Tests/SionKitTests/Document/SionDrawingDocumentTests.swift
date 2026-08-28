@@ -180,10 +180,17 @@ final class SionDrawingDocumentTests: XCTestCase {
     let windowController = try XCTUnwrap(
       document.windowControllers.first as? SionDocumentWindowController
     )
-    defer { windowController.close() }
+    let window = try XCTUnwrap(windowController.window)
+    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    let canvas = try XCTUnwrap(scrollView.documentView as? SionCanvasView)
+    defer {
+      // Do not let a stale responder turn this assertion into a test hang.
+      window.makeFirstResponder(canvas)
+      windowController.close()
+    }
 
     windowController.beginTextEditing(savedElement.id)
-    let textView = try XCTUnwrap(windowController.window?.firstResponder as? NSTextView)
+    let textView = try XCTUnwrap(window.firstResponder as? NSTextView)
     textView.string = RevertFixture.unsavedText
     textView.didChangeText()
 
@@ -205,7 +212,7 @@ final class SionDrawingDocumentTests: XCTestCase {
     XCTAssertFalse(document.isDocumentEdited)
     XCTAssertFalse(document.undoManager?.canUndo ?? true)
     XCTAssertNil(textView.window)
-    XCTAssertTrue(windowController.window?.firstResponder is SionCanvasView)
+    XCTAssertTrue(window.firstResponder === canvas)
   }
 }
 

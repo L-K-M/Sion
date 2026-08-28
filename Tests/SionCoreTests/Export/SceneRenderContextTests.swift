@@ -102,6 +102,31 @@ final class SceneRenderContextTests: XCTestCase {
     )
 
     XCTAssertEqual(query.elements.map(\.id), [moved.id])
+    XCTAssertTrue(
+      context.elements(
+        intersecting: SionRect(x: 3_990, y: 3_990, width: 60, height: 60)
+      ).elements.isEmpty
+    )
+  }
+
+  func testHugeFiniteQueryUsesTheOverflowFallback() {
+    let shape = SceneElement.shape(
+      frame: SionRect(x: 0, y: 0, width: 40, height: 40),
+      kind: .rectangle
+    )
+    let context = SceneRenderContext(scene: SionScene(elements: [shape]))
+    let coordinateMagnitude = 4e21
+
+    let query = context.elements(
+      intersecting: SionRect(
+        x: -coordinateMagnitude,
+        y: -coordinateMagnitude,
+        width: coordinateMagnitude * 2,
+        height: coordinateMagnitude * 2
+      )
+    )
+
+    XCTAssertEqual(query.elements.map(\.id), [shape.id])
   }
 
   func testConnectorRouteResolvesOncePerContextState() throws {

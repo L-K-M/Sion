@@ -153,7 +153,7 @@
       previewPNG = package.previewPNG
       pendingTextEdit = nil
       pendingDuplicateMove = nil
-      renderContext = renderContextBuilder(package.document.scene)
+      renderContext = renderContextBuilder(editor.document.scene)
       imageCache = NSCache()
       imageCache.countLimit = EditorDefaults.imageCacheLimit
       imageCache.totalCostLimit = EditorDefaults.imageCacheTotalCostLimit
@@ -586,7 +586,7 @@
       lastDuplicate = nil
       pendingDuplicateMove = nil
       anchorEditingState = .inactive
-      renderContext = renderContextBuilder(package.document.scene)
+      renderContext = renderContextBuilder(editor.document.scene)
       imageCache.removeAllObjects()
       selection.removeAll()
       undoManagerProvider()?.removeAllActions(withTarget: self)

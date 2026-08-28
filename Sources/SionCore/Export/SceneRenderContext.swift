@@ -77,6 +77,7 @@ package struct SceneRenderContext {
   }
 
   /// Updates in-place gesture changes without rebuilding the scene-wide index.
+  /// Structural commands must rebuild because element order is the z-order key.
   package mutating func update(
     scene updatedScene: SionScene,
     changedElementIDs: Set<ElementID>
@@ -250,9 +251,19 @@ private struct SceneSpatialIndex {
       return nil
     }
 
-    let columnCount = maximumX - minimumX + 1
-    let rowCount = maximumY - minimumY + 1
-    guard columnCount <= limit, rowCount <= limit / columnCount else {
+    let (columnSpan, columnOverflow) = maximumX.subtractingReportingOverflow(minimumX)
+    let (rowSpan, rowOverflow) = maximumY.subtractingReportingOverflow(minimumY)
+    guard !columnOverflow,
+      !rowOverflow,
+      columnSpan < limit,
+      rowSpan < limit
+    else {
+      return nil
+    }
+
+    let columnCount = columnSpan + 1
+    let rowCount = rowSpan + 1
+    guard rowCount <= limit / columnCount else {
       return nil
     }
 

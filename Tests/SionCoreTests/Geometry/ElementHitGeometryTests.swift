@@ -686,6 +686,45 @@ final class ElementHitGeometryTests: XCTestCase {
     }
   }
 
+  func testSubepsilonLineRetainsStrokeBodyAndDirection() {
+    let endpoint = SionPoint(x: 1e-10, y: 1e-10)
+    let path = VectorPath(
+      coordinateSpace: .localPoints,
+      commands: [
+        .move(to: .zero),
+        .line(to: endpoint),
+      ]
+    )
+    let dashPatterns: [[Double]] = [[], [1_000, 1]]
+
+    for dashPattern in dashPatterns {
+      func element(lineCap: StrokeLineCap) -> SceneElement {
+        var element = SceneElement.path(
+          frame: SionRect(x: 0, y: 0, width: 1, height: 1),
+          path: path
+        )
+        element.style = ElementStyle(
+          fill: .none,
+          stroke: StrokeStyle(
+            color: .black,
+            width: 10,
+            dashPattern: dashPattern,
+            lineCap: lineCap
+          )
+        )
+        return element
+      }
+
+      XCTAssertTrue(
+        ElementHitGeometry.contains(
+          endpoint.interpolated(to: .zero, fraction: 0.5), in: element(lineCap: .butt))
+      )
+      XCTAssertTrue(
+        ElementHitGeometry.contains(SionPoint(x: 6, y: 0), in: element(lineCap: .square))
+      )
+    }
+  }
+
   func testClosedZeroLengthPathsHonorSolidAndDashedCaps() {
     let point = SionPoint(x: 20, y: 20)
     let paths = [

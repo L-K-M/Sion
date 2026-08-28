@@ -369,7 +369,7 @@ public enum SVGExporter {
       artworkBounds = artworkBounds.union(textBounds)
     }
 
-    guard route == nil else {
+    guard element.content.connector == nil else {
       return SceneRenderGeometry.boundsIncludingShadows(
         [shadow],
         around: artworkBounds

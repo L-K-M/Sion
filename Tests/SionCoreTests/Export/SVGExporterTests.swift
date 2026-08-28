@@ -168,6 +168,10 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertTrue(
       filter.text.contains("primitiveUnits=\"\(SVGFilterSpec.userSpaceUnits)\"")
     )
+    XCTAssertEqual(numberAttribute(SVGFilterSpec.xAttribute, in: filter.text), 80)
+    XCTAssertEqual(numberAttribute(SVGFilterSpec.yAttribute, in: filter.text), 100)
+    XCTAssertEqual(numberAttribute(SVGFilterSpec.widthAttribute, in: filter.text), 160)
+    XCTAssertEqual(numberAttribute(SVGFilterSpec.heightAttribute, in: filter.text), 40)
   }
 
   func testConnectorResolutionUsesRotatedMagnets() throws {
@@ -563,5 +567,9 @@ final class SVGExporterTests: XCTestCase {
 }
 
 private enum SVGFilterSpec {
+  static let heightAttribute = "height"
   static let userSpaceUnits = "userSpaceOnUse"
+  static let widthAttribute = "width"
+  static let xAttribute = "x"
+  static let yAttribute = "y"
 }

@@ -188,6 +188,31 @@ final class SionCanvasRenderingTests: XCTestCase {
     )
   }
 
+  func testRouteLessConnectorStillShowsSelectionChrome() throws {
+    var connector = SceneElement.connector(
+      source: .free(SionPoint(x: 80, y: 80)),
+      target: .free(SionPoint(x: 240, y: 160)),
+      routingStyle: .straight
+    )
+    connector.geometry.frame = SionRect(x: 80, y: 80, width: 160, height: 80)
+    let unavailableRoute: SceneRenderGeometry.ConnectorRouteProvider = { _ in nil }
+
+    let unselected = try render(
+      elements: [connector],
+      connectorRouteProvider: unavailableRoute
+    )
+    let selected = try render(
+      elements: [connector],
+      selection: [connector.id],
+      connectorRouteProvider: unavailableRoute
+    )
+
+    XCTAssertNotEqual(
+      try renderedPixels(selected),
+      try renderedPixels(unselected)
+    )
+  }
+
   private func zeroOpacityElements(displayAssetID: AssetID) throws -> [SceneElement] {
     var shape = SceneElement.shape(
       frame: SionRect(x: 80, y: 80, width: 160, height: 80),
@@ -232,7 +257,8 @@ final class SionCanvasRenderingTests: XCTestCase {
   private func render(
     elements: [SceneElement],
     assets: [AssetID: SionAsset] = [:],
-    selection: Set<ElementID> = []
+    selection: Set<ElementID> = [],
+    connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
   ) throws -> NSBitmapImageRep {
     _ = NSApplication.shared
     let scene = SionScene(
@@ -251,7 +277,10 @@ final class SionCanvasRenderingTests: XCTestCase {
       didChange: { _ in }
     )
     controller.select(selection)
-    let canvas = SionCanvasView(editorController: controller)
+    let canvas = SionCanvasView(
+      editorController: controller,
+      connectorRouteProvider: connectorRouteProvider
+    )
     canvas.frame = NSRect(
       origin: .zero,
       size: NSSize(width: canvasSize.width, height: canvasSize.height)
@@ -347,6 +376,13 @@ final class SionCanvasRenderingTests: XCTestCase {
     XCTAssertEqual(
       actual.blueComponent,
       expected.blueComponent,
+      accuracy: colorAccuracy,
+      file: file,
+      line: line
+    )
+    XCTAssertEqual(
+      actual.alphaComponent,
+      expected.alphaComponent,
       accuracy: colorAccuracy,
       file: file,
       line: line

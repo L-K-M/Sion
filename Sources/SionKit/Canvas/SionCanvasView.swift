@@ -60,6 +60,7 @@
     }
 
     private let editorController: SionEditorController
+    private let connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider
     private let creationFailureFeedback: @MainActor () -> Void
     private var observerID: UUID?
     private var magnificationObservation: NSKeyValueObservation?
@@ -91,9 +92,13 @@
 
     init(
       editorController: SionEditorController,
-      creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() }
+      creationFailureFeedback: @escaping @MainActor () -> Void = { NSSound.beep() },
+      connectorRouteProvider: SceneRenderGeometry.ConnectorRouteProvider? = nil
     ) {
       self.editorController = editorController
+      self.connectorRouteProvider =
+        connectorRouteProvider
+        ?? { editorController.connectorRoute(for: $0) }
       self.creationFailureFeedback = creationFailureFeedback
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
@@ -1322,7 +1327,7 @@
       let isSelected = editorController.selection.contains(element.id)
       guard drawsArtwork || isSelected else { return }
 
-      let route = editorController.connectorRoute(for: element)
+      let route = connectorRouteProvider(element)
       guard element.content.connector == nil || route != nil else {
         return
       }

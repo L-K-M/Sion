@@ -198,6 +198,61 @@ final class InspectorPaletteTests: XCTestCase {
     XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Second")
   }
 
+  func testEscapeCancelsMixedNameEdit() throws {
+    _ = NSApplication.shared
+    let previousServicesMenu = NSApp.servicesMenu
+    defer { NSApp.servicesMenu = previousServicesMenu }
+
+    var first = SceneElement.shape(frame: SionRect(x: 40, y: 40, width: 160, height: 90))
+    first.name = "First"
+    var second = SceneElement.shape(frame: SionRect(x: 60, y: 60, width: 160, height: 90))
+    second.name = "Second"
+    let undoManager = UndoManager()
+    undoManager.groupsByEvent = false
+    let editor = try SionEditorController(
+      package: SionPackage(
+        document: SionDocument(scene: SionScene(elements: [first, second]))
+      ),
+      undoManagerProvider: { undoManager },
+      didChange: { _ in }
+    )
+    editor.select([first.id, second.id])
+    let documentController = SionDocumentWindowController(editorController: editor)
+    defer { documentController.close() }
+
+    let documentWindow = try XCTUnwrap(documentController.window)
+    documentWindow.orderFrontRegardless()
+    let inspector = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.inspector.paletteKind)
+    )
+    defer { inspector.close() }
+    inspector.showPanel()
+
+    let panel = try XCTUnwrap(
+      NSApp.windows.first { $0.title == "Inspector" && $0.isVisible }
+    )
+    let nameField = try XCTUnwrap(
+      try XCTUnwrap(panel.contentView).inspectorTestDescendants
+        .compactMap { $0 as? NSTextField }
+        .first { $0.accessibilityLabel() == "Element name" }
+    )
+
+    XCTAssertTrue(panel.makeFirstResponder(nameField))
+    let fieldEditor = try XCTUnwrap(nameField.currentEditor() as? NSTextView)
+    fieldEditor.selectAll(nil)
+    fieldEditor.insertText("Shared", replacementRange: fieldEditor.selectedRange())
+
+    // Escape cancels the edit: the field reverts and editing ends.
+    fieldEditor.doCommandBy(#selector(NSResponder.cancelOperation(_:)))
+    XCTAssertTrue(panel.makeFirstResponder(nil))
+
+    XCTAssertEqual(editor.document.scene.element(withID: first.id)?.name, "First")
+    XCTAssertEqual(editor.document.scene.element(withID: second.id)?.name, "Second")
+    XCTAssertFalse(undoManager.canUndo)
+    XCTAssertEqual(nameField.stringValue, "")
+    XCTAssertEqual(nameField.placeholderString, "Mixed")
+  }
+
   func testSingleNameClearsAndCommitsOnFocusLoss() throws {
     _ = NSApplication.shared
     let previousServicesMenu = NSApp.servicesMenu

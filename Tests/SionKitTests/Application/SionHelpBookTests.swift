@@ -35,9 +35,12 @@ final class SionHelpBookTests: XCTestCase {
       at: localizedResources.appendingPathComponent("InfoPlist.strings")
     )
     let startPage = localizedResources.appendingPathComponent(HelpBookContract.startPageName)
+    let metadata = try pageMetadata(at: startPage)
 
     XCTAssertEqual(localizedInfo[HelpBookContract.titleKey] as? String, HelpBookContract.title)
     XCTAssertTrue(FileManager.default.fileExists(atPath: startPage.path))
+    XCTAssertEqual(metadata[HelpBookContract.appleTitleName], bookName)
+    XCTAssertNil(metadata[HelpBookContract.robotsName])
   }
 
   private func propertyList(at url: URL) throws -> [String: Any] {
@@ -45,6 +48,15 @@ final class SionHelpBookTests: XCTestCase {
     return try XCTUnwrap(
       PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
     )
+  }
+
+  private func pageMetadata(at url: URL) throws -> [String: String] {
+    let parser = XMLParser(data: try Data(contentsOf: url))
+    let delegate = HelpPageMetadataParser()
+    parser.delegate = delegate
+
+    XCTAssertTrue(parser.parse(), parser.parserError?.localizedDescription ?? "Invalid help page")
+    return delegate.metadata
   }
 
   private var resourcesDirectory: URL {
@@ -57,6 +69,27 @@ final class SionHelpBookTests: XCTestCase {
   }
 }
 
+private final class HelpPageMetadataParser: NSObject, XMLParserDelegate {
+  private(set) var metadata: [String: String] = [:]
+
+  func parser(
+    _ parser: XMLParser,
+    didStartElement elementName: String,
+    namespaceURI: String?,
+    qualifiedName qName: String?,
+    attributes attributeDict: [String: String]
+  ) {
+    guard elementName == HelpBookContract.metaElement,
+      let name = attributeDict[HelpBookContract.metaNameAttribute],
+      let content = attributeDict[HelpBookContract.metaContentAttribute]
+    else {
+      return
+    }
+
+    metadata[name] = content
+  }
+}
+
 private enum HelpBookContract {
   static let folderKey = "CFBundleHelpBookFolder"
   static let nameKey = "CFBundleHelpBookName"
@@ -65,6 +98,11 @@ private enum HelpBookContract {
   static let accessPathKey = "HPDBookAccessPath"
   static let indexPathKey = "HPDBookIndexPath"
   static let titleKey = "HPDBookTitle"
+  static let metaElement = "meta"
+  static let metaNameAttribute = "name"
+  static let metaContentAttribute = "content"
+  static let appleTitleName = "AppleTitle"
+  static let robotsName = "robots"
 
   static let folderName = "Sion.help"
   static let identifier = "ch.lkmc.Sion.help"

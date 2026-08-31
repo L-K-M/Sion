@@ -8,6 +8,8 @@ import XCTest
 final class SionMermaidImportTests: XCTestCase {
   func testMermaidFileReadsUTF8SourceAndRejectsUnreadableFiles() throws {
     let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
     let readable = directory.appendingPathComponent("flow.mmd")
     try Data(MermaidFixture.diagram.utf8).write(to: readable)
 
@@ -40,11 +42,13 @@ final class SionMermaidImportTests: XCTestCase {
     let undoManager = try XCTUnwrap(document.undoManager)
     undoManager.groupsByEvent = false
     let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
     let url = directory.appendingPathComponent("flow.mmd")
     try Data(MermaidFixture.diagram.utf8).write(to: url)
 
     undoManager.beginUndoGrouping()
-    let result = document.importMermaid(contentsOf: url)
+    let result = try XCTUnwrap(document.importMermaid(contentsOf: url))
     undoManager.endUndoGrouping()
 
     guard case .diagram(let elementIDs) = result else {
@@ -63,7 +67,7 @@ final class SionMermaidImportTests: XCTestCase {
   func testLossyMermaidImportKeepsTheSourceAsText() throws {
     let document = makeDocument()
 
-    let result = document.insertMermaid(MermaidFixture.lossyDiagram)
+    let result = try XCTUnwrap(document.insertMermaid(MermaidFixture.lossyDiagram))
 
     guard case .sourceText(let elementID, let omissions) = result else {
       return XCTFail("Expected the source-text fallback")
@@ -83,9 +87,9 @@ final class SionMermaidImportTests: XCTestCase {
   func testImportingAnUnreadableFileLeavesTheDocumentUnchanged() throws {
     let document = makeDocument()
     let directory = try makeTemporaryDirectory()
-    let missing = directory.appendingPathComponent("missing.mmd")
+    defer { try? FileManager.default.removeItem(at: directory) }
 
-    XCTAssertNil(document.importMermaid(contentsOf: missing))
+    XCTAssertNil(document.importMermaid(contentsOf: directory.appendingPathComponent("gone.mmd")))
     XCTAssertTrue(document.editingController.document.scene.elements.isEmpty)
   }
 
@@ -106,12 +110,11 @@ final class SionMermaidImportTests: XCTestCase {
   }
 
   private func makeTemporaryDirectory() throws -> URL {
-    let directory = FileManager.default.temporaryDirectory
-      .appendingPathComponent("SionMermaidImportTests-\(UUID().uuidString)", isDirectory: true)
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString,
+      isDirectory: true
+    )
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    addTeardownBlock {
-      try? FileManager.default.removeItem(at: directory)
-    }
     return directory
   }
 }

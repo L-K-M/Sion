@@ -93,15 +93,7 @@ final class SionLibraryPaletteTests: XCTestCase {
     _ = NSApplication.shared
     SionPalettes.shared.registerIfNeeded()
 
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
-      styleMask: [.titled, .closable],
-      backing: .buffered,
-      defer: false
-    )
-    let anchor = NSView(frame: NSRect(x: 20, y: 20, width: 80, height: 24))
-    try XCTUnwrap(window.contentView).addSubview(anchor)
-    window.orderFrontRegardless()
+    let (window, anchor) = try makeAnchorWindow()
     defer { window.close() }
 
     let library = try XCTUnwrap(
@@ -142,15 +134,7 @@ final class SionLibraryPaletteTests: XCTestCase {
     _ = NSApplication.shared
     SionPalettes.shared.registerIfNeeded()
 
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
-      styleMask: [.titled, .closable],
-      backing: .buffered,
-      defer: false
-    )
-    let anchor = NSView(frame: NSRect(x: 20, y: 20, width: 80, height: 24))
-    try XCTUnwrap(window.contentView).addSubview(anchor)
-    window.orderFrontRegardless()
+    let (window, anchor) = try makeAnchorWindow()
     defer { window.close() }
 
     let history = try XCTUnwrap(
@@ -168,6 +152,22 @@ final class SionLibraryPaletteTests: XCTestCase {
     XCTAssertTrue(scrollView.hasVerticalScroller)
     XCTAssertFalse(scrollView.drawsBackground)
     XCTAssertEqual(scrollView.borderType, .noBorder)
+  }
+
+  /// A programmatically created window is released when it closes, which would
+  /// over-release the strong reference the caller holds.
+  private func makeAnchorWindow() throws -> (window: NSWindow, anchor: NSView) {
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+      styleMask: [.titled, .closable],
+      backing: .buffered,
+      defer: false
+    )
+    window.isReleasedWhenClosed = false
+    let anchor = NSView(frame: NSRect(x: 20, y: 20, width: 80, height: 24))
+    try XCTUnwrap(window.contentView).addSubview(anchor)
+    window.orderFrontRegardless()
+    return (window, anchor)
   }
 
   /// A popover closes asynchronously, and a palette is app global, so a leaked

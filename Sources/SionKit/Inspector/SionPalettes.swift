@@ -416,10 +416,13 @@
     }
 
     /// The color and blur controls only mean something once a shadow exists.
+    /// Content that does not take a shadow but arrived carrying one keeps a
+    /// live checkbox so the shadow can be switched off; the controls that would
+    /// restyle it stay dark, since the command refuses to set one there.
     private func refreshShadowControls(for element: SceneElement, isEditable: Bool) {
       let supportsShadow = element.content.supportsShadow && isEditable
       let shadow = element.style.shadows.first
-      shadowButton.isEnabled = supportsShadow
+      shadowButton.isEnabled = supportsShadow || (isEditable && shadow != nil)
       shadowButton.state = shadow == nil ? .off : .on
       shadowColorWell.isEnabled = supportsShadow && shadow != nil
       shadowBlurSlider.isEnabled = shadowColorWell.isEnabled

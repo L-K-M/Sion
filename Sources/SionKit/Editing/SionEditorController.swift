@@ -1336,10 +1336,13 @@
     }
 
     /// One drop shadow per element, which is what the inspector exposes and
-    /// what canvas rendering reads.
+    /// what canvas rendering reads. Content that does not take a shadow can
+    /// still have one cleared: a document written elsewhere may carry a shadow
+    /// this build would refuse to add, and refusing to remove it too would
+    /// leave it on screen with nothing able to reach it.
     func setShadow(_ shadow: ShadowStyle?, on id: ElementID) throws {
       guard var element = editor.document.scene.element(withID: id),
-        element.content.supportsShadow
+        shadow == nil || element.content.supportsShadow
       else {
         return
       }

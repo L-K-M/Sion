@@ -73,6 +73,19 @@ final class SionEditorControllerShadowTests: XCTestCase {
     XCTAssertTrue(try style(of: group.id, in: controller).shadows.isEmpty)
   }
 
+  /// A document written by another build can carry a shadow on content this
+  /// build refuses to shadow. Rendering still draws it, so removal has to work.
+  func testAShadowAlreadyOnAGroupCanStillBeCleared() throws {
+    var group = SceneElement.group(frame: SionRect(x: 0, y: 0, width: 120, height: 80))
+    group.style.shadows = [SionShadowDefaults.style]
+    let controller = try makeController(elements: [group])
+    XCTAssertFalse(try style(of: group.id, in: controller).shadows.isEmpty)
+
+    try controller.setShadowEnabled(false, on: group.id)
+
+    XCTAssertTrue(try style(of: group.id, in: controller).shadows.isEmpty)
+  }
+
   func testANegativeOrInfiniteBlurIsRefused() throws {
     let (controller, id) = try makeShape()
     let before = try style(of: id, in: controller).shadows

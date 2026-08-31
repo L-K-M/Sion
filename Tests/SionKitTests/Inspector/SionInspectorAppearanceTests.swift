@@ -65,6 +65,27 @@ final class SionInspectorAppearanceTests: XCTestCase {
     }
   }
 
+  /// Content that arrived carrying a shadow this build would not add keeps a
+  /// live checkbox, so the shadow can be switched off exactly once.
+  func testAGroupThatAlreadyHasAShadowCanSwitchItOff() throws {
+    var group = SceneElement.group(frame: SionRect(x: 0, y: 0, width: 200, height: 200))
+    group.style.shadows = [SionShadowDefaults.style]
+
+    try withInspector(elements: [group], selecting: group.id) { fixture in
+      let button = try shadowButton(in: fixture)
+      XCTAssertTrue(button.isEnabled)
+      XCTAssertEqual(button.state, .on)
+      // Restyling is still refused, so the controls that would do it stay dark.
+      XCTAssertFalse(try colorWell(labelled: "Drop shadow color", in: fixture).isEnabled)
+
+      button.performClick(nil)
+
+      let edited = try XCTUnwrap(fixture.editor.document.scene.element(withID: group.id))
+      XCTAssertTrue(edited.style.shadows.isEmpty)
+      XCTAssertFalse(try shadowButton(in: fixture).isEnabled)
+    }
+  }
+
   private struct Fixture {
     let editor: SionEditorController
     let descendants: [NSView]

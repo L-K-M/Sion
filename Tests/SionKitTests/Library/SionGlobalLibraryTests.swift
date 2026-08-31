@@ -78,6 +78,30 @@ final class SionGlobalLibraryTests: XCTestCase {
     }
   }
 
+  func testAFailedIndexWriteTakesTheNewPayloadWithIt() throws {
+    let directory = makeStoreDirectory()
+    let library = SionGlobalLibrary(directoryURL: directory)
+
+    // Read once so the empty index is cached, then put a directory where the
+    // index file goes: the payload write still succeeds and the index write
+    // that would have named it does not.
+    XCTAssertTrue(library.entries.isEmpty)
+    try FileManager.default.createDirectory(
+      at: directory.appendingPathComponent("index.json"),
+      withIntermediateDirectories: true
+    )
+
+    XCTAssertThrowsError(try library.add(payload: try payloadData(), name: "Node"))
+
+    let leftBehind =
+      (try? FileManager.default.contentsOfDirectory(
+        at: directory.appendingPathComponent("payloads"),
+        includingPropertiesForKeys: nil
+      )) ?? []
+
+    XCTAssertEqual(leftBehind, [], "A payload no index names is one nothing can reach")
+  }
+
   func testRemovingAnEntryTakesItsPayloadWithIt() throws {
     let directory = makeStoreDirectory()
     let library = SionGlobalLibrary(directoryURL: directory)

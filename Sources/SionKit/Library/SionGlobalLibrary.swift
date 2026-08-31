@@ -95,7 +95,17 @@
       let url = try payloadURL(named: row.payloadFileName)
       try write(payload, to: url)
       index.rows.insert(row, at: 0)
-      try store(index)
+
+      do {
+        try store(index)
+      } catch {
+        // The index is written atomically, so a throw here leaves the stored
+        // one not naming this file. Nothing would ever look at it again, and
+        // nothing sweeps the folder.
+        try? FileManager.default.removeItem(at: url)
+        throw error
+      }
+
       return SceneLibraryEntry(id: row.id, name: row.name)
     }
 

@@ -60,6 +60,19 @@ final class SceneLibraryTests: XCTestCase {
         .libraryIsFull(itemCount: SceneLibraryLimits.maximumItemCount)
       )
     }
+    // And which one wins when both are over, so reordering the two guards
+    // cannot quietly change what a full library says about a huge selection.
+    XCTAssertThrowsError(
+      try SceneLibraryLimits.validateAddition(
+        payloadByteCount: SceneLibraryLimits.maximumPayloadByteCount + 1,
+        itemCount: SceneLibraryLimits.maximumItemCount
+      )
+    ) { error in
+      XCTAssertEqual(
+        error as? SceneLibraryError,
+        .payloadTooLarge(byteCount: SceneLibraryLimits.maximumPayloadByteCount + 1)
+      )
+    }
   }
 
   func testAnAbsentStoreReadsAsAnEmptyLibraryAndAnEmptyOneDoesNot() throws {

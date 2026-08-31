@@ -267,7 +267,12 @@
     /// and decoding a library's payloads that often would be all this palette
     /// ever did.
     private func refreshItems(force: Bool = false) {
-      loadViewIfNeeded()
+      // The rows go below the built-in ones, so those have to exist first.
+      // `loadViewIfNeeded()` would say this outright but is macOS 14; reading
+      // the view is what it does.
+      if !isViewLoaded {
+        _ = view
+      }
 
       let storage = target.flatMap { $0.paletteEditorController.documentLibraryStorage }
       guard force || !hasRenderedItems || storage != displayedDocumentStorage else { return }

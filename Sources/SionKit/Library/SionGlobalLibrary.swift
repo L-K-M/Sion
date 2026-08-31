@@ -59,16 +59,17 @@
     /// Application Support, under the bundle identifier the way every other
     /// app's own folder is named. A build with no Application Support to write
     /// to keeps the library for the session rather than losing the command.
-    static func defaultFileURL() -> URL {
-      let container = FileManager.default.urls(
-        for: .applicationSupportDirectory,
-        in: .userDomainMask
-      ).first ?? FileManager.default.temporaryDirectory
-      let folderName = Bundle.main.bundleIdentifier ?? Storage.fallbackDirectoryName
+    ///
+    /// Nonisolated because it reads nothing but the file system's layout, and
+    /// the default argument it serves is evaluated wherever the caller is.
+    nonisolated static func defaultFileURL() -> URL {
+      let manager = FileManager.default
+      let domains = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+      let container = domains.first ?? manager.temporaryDirectory
+      let folder = Bundle.main.bundleIdentifier ?? GlobalLibraryStorage.fallbackDirectoryName
+      let directory = container.appendingPathComponent(folder)
 
-      return container
-        .appendingPathComponent(folderName)
-        .appendingPathComponent(Storage.fileName)
+      return directory.appendingPathComponent(GlobalLibraryStorage.fileName)
     }
 
     /// Read once per launch. A missing file is an empty library; anything else
@@ -114,10 +115,12 @@
       loadedLibrary = library
       NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
     }
+  }
 
-    private enum Storage {
-      static let fallbackDirectoryName = "Sion"
-      static let fileName = "Library.json"
-    }
+  /// Outside the class, which is main-actor isolated: `defaultFileURL()` is
+  /// not, and a type nested in an isolated one would be.
+  private enum GlobalLibraryStorage {
+    static let fallbackDirectoryName = "Sion"
+    static let fileName = "Library.json"
   }
 #endif

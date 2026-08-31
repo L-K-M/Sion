@@ -512,12 +512,10 @@
 
     /// The bands a point lies on, empty everywhere else. The top is missing on
     /// purpose: the header owns it, and dragging it moves the panel.
-    static func edges(
-      at point: NSPoint,
-      in bounds: NSRect,
-      bandWidth: CGFloat = PaletteResizeBorderView.bandWidth
-    ) -> Edges {
+    static func edges(at point: NSPoint, in bounds: NSRect) -> Edges {
       guard bounds.contains(point) else { return [] }
+
+      let bandWidth = Self.bandWidth
 
       var edges = Edges()
       if point.x - bounds.minX <= bandWidth {

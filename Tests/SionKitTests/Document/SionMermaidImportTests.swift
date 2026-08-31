@@ -96,13 +96,13 @@ final class SionMermaidImportTests: XCTestCase {
     XCTAssertTrue(document.editingController.document.scene.elements.isEmpty)
   }
 
-  func testNewDocumentFromMermaidStartsFromTheImportedDiagram() throws {
-    _ = NSApplication.shared
-    let controller = SionDocumentController()
-    let document = try XCTUnwrap(
-      controller.makeMermaidDocument(source: MermaidFixture.diagram, display: false)
-    )
-    defer { document.close() }
+  /// `makeMermaidDocument` adds this to a document AppKit creates for it, and
+  /// `openUntitledDocumentAndDisplay` needs a declared document type that only
+  /// the app bundle carries, so the insertion is covered on its own.
+  func testAFreshDocumentTakesAWholeDiagramAndBecomesEdited() throws {
+    let document = makeDocument()
+
+    _ = try XCTUnwrap(document.insertMermaid(MermaidFixture.diagram))
 
     XCTAssertEqual(document.editingController.document.scene.elements.count, 3)
     XCTAssertTrue(document.isDocumentEdited)

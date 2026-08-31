@@ -30,6 +30,32 @@ final class SVGExporterTests: XCTestCase {
     XCTAssertFalse(svg.contains(originalData.base64EncodedString()))
   }
 
+  func testImageBorderIsExportedAsAStrokedRect() throws {
+    let display = try SionAsset.safeDisplayPNG(data: testPNGData())
+    var image = SceneElement.image(
+      frame: SionRect(x: 10, y: 20, width: 100, height: 50),
+      assetID: display.id,
+      displayAssetID: display.id
+    )
+    let plain = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [image])),
+      assets: [display.id: display]
+    )
+
+    image.style.stroke = StrokeStyle(color: .primaryInk, width: 3)
+    let bordered = try SVGExporter.export(
+      document: SionDocument(scene: SionScene(elements: [image])),
+      assets: [display.id: display]
+    )
+
+    // `<image>` takes no stroke, so the border rides along as a rect over it.
+    XCTAssertFalse(plain.contains("stroke-width=\"3\""))
+    XCTAssertTrue(bordered.contains("stroke-width=\"3\""))
+    XCTAssertTrue(
+      bordered.contains("x=\"10\" y=\"20\" width=\"100\" height=\"50\" fill=\"none\"")
+    )
+  }
+
   func testImageExportRejectsSpoofedDisplayPNG() throws {
     let spoofed = try SionAsset(
       data: Data("<svg><script>alert('unsafe')</script></svg>".utf8),

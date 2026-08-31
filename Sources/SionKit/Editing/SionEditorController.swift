@@ -7,6 +7,18 @@
     static let minimumInfiniteSize = SionSize(width: 4_000, height: 3_000)
   }
 
+  /// The drop shadow a newly enabled shadow starts from, and the range the
+  /// inspector offers for it.
+  enum SionShadowDefaults {
+    static let style = ShadowStyle(
+      color: SionColor(red: 0, green: 0, blue: 0, alpha: 0.35),
+      offset: SionVector(dx: 0, dy: 2),
+      blurRadius: 6
+    )
+    static let minimumBlurRadius = 0.0
+    static let maximumBlurRadius = 40.0
+  }
+
   /// Shared placement defaults keep click and drag creation consistent.
   enum SionCreationDefaults {
     static let rectangleSize = SionSize(width: 160, height: 96)
@@ -1310,6 +1322,49 @@
         element.style.stroke = StrokeStyle(color: .primaryInk, width: width)
       }
       try perform(name: "Change Stroke", command: .setStyle(elementID: id, style: element.style))
+    }
+
+    /// One drop shadow per element, which is what the inspector exposes and
+    /// what canvas rendering reads.
+    func setShadow(_ shadow: ShadowStyle?, on id: ElementID) throws {
+      guard var element = editor.document.scene.element(withID: id) else { return }
+
+      let shadows = shadow.map { [$0] } ?? []
+      guard element.style.shadows != shadows else { return }
+
+      element.style.shadows = shadows
+      try perform(name: "Change Shadow", command: .setStyle(elementID: id, style: element.style))
+    }
+
+    func setShadowEnabled(_ isEnabled: Bool, on id: ElementID) throws {
+      guard let element = editor.document.scene.element(withID: id) else { return }
+
+      guard isEnabled else {
+        try setShadow(nil, on: id)
+        return
+      }
+
+      try setShadow(element.style.shadows.first ?? SionShadowDefaults.style, on: id)
+    }
+
+    func setShadowColor(_ color: SionColor, on id: ElementID) throws {
+      guard let element = editor.document.scene.element(withID: id) else { return }
+
+      var shadow = element.style.shadows.first ?? SionShadowDefaults.style
+      shadow.color = color
+      try setShadow(shadow, on: id)
+    }
+
+    func setShadowBlurRadius(_ radius: Double, on id: ElementID) throws {
+      guard radius >= 0, radius.isFinite,
+        let element = editor.document.scene.element(withID: id)
+      else {
+        return
+      }
+
+      var shadow = element.style.shadows.first ?? SionShadowDefaults.style
+      shadow.blurRadius = radius
+      try setShadow(shadow, on: id)
     }
 
     func restoreRevision(identifier: String) throws {

@@ -25,12 +25,15 @@
     }
 
     private enum Drag {
-      case move(lastPoint: SionPoint)
+      /// A move tracks the gesture's start rather than the last frame, so the
+      /// offset a snap contributes is not folded into the next delta.
+      case move(startPoint: SionPoint, startBounds: SionRect, appliedOffset: SionVector)
       case resize(
         elementID: ElementID,
         handle: ResizeHandle,
         startFrame: SionRect,
-        rotationRadians: Double
+        rotationRadians: Double,
+        preservesAspectRatio: Bool
       )
       case rotate(
         elementID: ElementID,
@@ -75,6 +78,10 @@
     private var editingCanvasBounds: SionRect
     private var canvasExtent: CanvasExtent
     private var textRenderCache: [TextRenderKey: TextRender] = [:]
+    private var snapGuides: [SceneSnapGuide] = []
+    /// A view preference, not document state: it changes how dragging behaves,
+    /// not what the drawing contains.
+    private(set) var snapsToObjects = true
     private var pasteboardValidation: PasteboardValidation?
 
     /// Everything that determines one measured text layout. Widths quantize
@@ -138,6 +145,7 @@
       setAccessibilityElement(true)
       setAccessibilityRole(.group)
       setAccessibilityLabel("Diagram canvas")
+      registerForDraggedTypes(PasteboardType.draggedImageTypes)
       updateAccessibilityHelp()
       observerID = editorController.observeChanges { [weak self] in
         guard let self else { return }
@@ -380,7 +388,47 @@
       drawCreationPreview()
       drawConnectorPreview()
       drawMarquee()
+      drawSnapGuides()
       NSGraphicsContext.restoreGraphicsState()
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+      dragOperation(for: sender)
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+      dragOperation(for: sender)
+    }
+
+    override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+      dragOperation(for: sender) != []
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+      performImageDrop(from: sender.draggingPasteboard, atWindowLocation: sender.draggingLocation)
+    }
+
+    /// Split from the AppKit entry points, which need a dragging session no
+    /// test can stand up. A dropped image lands where it was dropped, not at
+    /// the viewport center.
+    @discardableResult
+    func performImageDrop(
+      from pasteboard: NSPasteboard,
+      atWindowLocation location: NSPoint
+    ) -> Bool {
+      commitTextEditing()
+
+      return pasteImage(from: pasteboard, at: modelPoint(from: convert(location, from: nil)))
+    }
+
+    func acceptsImageDrop(from pasteboard: NSPasteboard) -> Bool {
+      hasImportableImage(in: pasteboard)
+    }
+
+    private func dragOperation(for sender: any NSDraggingInfo) -> NSDragOperation {
+      guard acceptsImageDrop(from: sender.draggingPasteboard) else { return [] }
+
+      return .copy
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -423,17 +471,37 @@
       guard let drag else { return }
 
       switch drag {
-      case .move(let lastPoint):
-        let offset = point - lastPoint
-        try? editorController.moveSelection(by: offset)
-        self.drag = .move(lastPoint: point)
-      case .resize(let elementID, let handle, let startFrame, let rotationRadians):
+      case .move(let startPoint, let startBounds, let appliedOffset):
+        let requested = point - startPoint
+        let snap = objectSnap(for: startBounds.translated(by: requested))
+        let offset = requested + snap.offset
+        try? editorController.moveSelection(by: offset - appliedOffset)
+        self.drag = .move(
+          startPoint: startPoint,
+          startBounds: startBounds,
+          appliedOffset: offset
+        )
+        if snapGuides != snap.guides {
+          snapGuides = snap.guides
+          needsDisplay = true
+        }
+      case .resize(
+        let elementID,
+        let handle,
+        let startFrame,
+        let rotationRadians,
+        let preservesAspectRatio
+      ):
+        // Shift inverts the element's own convention: an image keeps its
+        // proportions unless asked not to, everything else the other way round.
+        let constrainsAspect = preservesAspectRatio != event.modifierFlags.contains(.shift)
         let frame = InteractionGeometry.resizedFrame(
           startFrame,
           moving: handle,
           to: point,
           minimumSize: CanvasMetrics.minimumElementSize,
-          rotationRadians: rotationRadians
+          rotationRadians: rotationRadians,
+          aspectRatio: constrainsAspect ? aspectRatio(of: startFrame) : nil
         )
         try? editorController.resize(elementID, to: frame)
       case .rotate(let elementID, let center, let startPoint, let startRotation):
@@ -620,6 +688,7 @@
       guard let activeDrag = drag else { return nil }
 
       drag = nil
+      snapGuides = []
       needsDisplay = true
       window?.invalidateCursorRects(for: self)
       NSCursor.arrow.set()
@@ -643,6 +712,14 @@
 
     @objc func toggleGridVisibility(_ sender: Any?) {
       attemptEdit { try editorController.toggleGridVisibility() }
+    }
+
+    @objc func toggleObjectSnapping(_ sender: Any?) {
+      snapsToObjects.toggle()
+      guard !snapsToObjects, !snapGuides.isEmpty else { return }
+
+      snapGuides = []
+      needsDisplay = true
     }
 
     @objc func duplicate(_ sender: Any?) {
@@ -763,6 +840,9 @@
 
         // Text editing owns the active model gesture; defer the grid command.
         return textEditor == nil
+      case #selector(toggleObjectSnapping(_:)):
+        menuItem.state = snapsToObjects ? .on : .off
+        return true
       default:
         return true
       }
@@ -1097,7 +1177,11 @@
 
       do {
         try editorController.beginMove()
-        drag = .move(lastPoint: point)
+        drag = .move(
+          startPoint: point,
+          startBounds: selectionBounds(),
+          appliedOffset: .zero
+        )
         NSCursor.closedHand.set()
       } catch {
         drag = nil
@@ -1133,11 +1217,21 @@
           elementID: element.id,
           handle: handle,
           startFrame: element.geometry.frame.standardized,
-          rotationRadians: element.geometry.rotationRadians
+          rotationRadians: element.geometry.rotationRadians,
+          preservesAspectRatio: element.preservesAspectRatioWhileResizing
         )
       } catch {
         drag = nil
       }
+    }
+
+    /// The proportion a constrained resize holds: what the frame had when the
+    /// drag began, not the artwork's own.
+    private func aspectRatio(of frame: SionRect) -> Double? {
+      let standardized = frame.standardized
+      guard standardized.width > 0, standardized.height > 0 else { return nil }
+
+      return standardized.width / standardized.height
     }
 
     private func beginRotation(of element: SceneElement, at point: SionPoint) {
@@ -1409,6 +1503,23 @@
 
       let insertedIDs = try? editorController.insertSelectionPayload(data, at: point)
       return insertedIDs?.isEmpty == false
+    }
+
+    /// Mirrors what `pasteImage(from:at:)` will accept, without reading the
+    /// bytes a drag has not yet delivered.
+    private func hasImportableImage(in pasteboard: NSPasteboard) -> Bool {
+      if pastedImageFile(from: pasteboard) != nil {
+        return true
+      }
+
+      let available = Set(pasteboard.types ?? [])
+      if ImagePasteType.preservedPasteboardTypes.contains(where: { available.contains($0.0) })
+        || available.contains(.png)
+      {
+        return true
+      }
+
+      return pasteboard.string(forType: .string)?.contains("<svg") == true
     }
 
     private func pasteImage(from pasteboard: NSPasteboard, at point: SionPoint) -> Bool {
@@ -1720,6 +1831,11 @@
         }
       case .image(let image):
         drawImage(image, frame: element.geometry.frame)
+        // An image takes no fill, but a border frames it like any other object.
+        drawStroke(
+          element.style.stroke,
+          paths: [NSBezierPath(rect: nsRect(element.geometry.frame))]
+        )
       case .group:
         break
       case .connector:
@@ -2342,6 +2458,62 @@
       path.stroke()
     }
 
+    /// The alignments the current drag settled on, drawn only while it lasts.
+    private func drawSnapGuides() {
+      guard !snapGuides.isEmpty else { return }
+
+      let path = NSBezierPath()
+      for guide in snapGuides {
+        switch guide.axis {
+        case .vertical:
+          path.move(to: nsPoint(SionPoint(x: guide.position, y: guide.start)))
+          path.line(to: nsPoint(SionPoint(x: guide.position, y: guide.end)))
+        case .horizontal:
+          path.move(to: nsPoint(SionPoint(x: guide.start, y: guide.position)))
+          path.line(to: nsPoint(SionPoint(x: guide.end, y: guide.position)))
+        }
+      }
+
+      path.lineWidth = CanvasMetrics.snapGuideLineWidth * inverseMagnification
+      nsColor(.accent).setStroke()
+      path.stroke()
+    }
+
+    /// The union of what is being dragged, which is what lines up with the rest.
+    private func selectionBounds() -> SionRect {
+      let frames = editorController.selectedElements
+        .filter { $0.content.connector == nil }
+        .map { $0.geometry.frame.standardized }
+
+      return frames.dropFirst().reduce(frames.first ?? .zero) { $0.union($1) }
+    }
+
+    /// Everything the drag could line up with: visible, unselected, and framed.
+    private func objectSnap(for proposedBounds: SionRect) -> SceneSnap {
+      // A connector-only selection has no frame of its own to line up.
+      guard snapsToObjects,
+        proposedBounds.isFinite,
+        proposedBounds.width > 0 || proposedBounds.height > 0
+      else {
+        return .none
+      }
+
+      let selection = editorController.selection
+      let neighbours = editorController.document.scene.elements
+        .filter {
+          $0.visibility == .visible
+            && $0.content.connector == nil
+            && !selection.contains($0.id)
+        }
+        .map { $0.geometry.frame.standardized }
+
+      return SceneSnapping.snap(
+        proposedBounds,
+        to: neighbours,
+        tolerance: CanvasMetrics.snapTolerance * inverseMagnification
+      )
+    }
+
     private func drawMarquee() {
       guard case .marquee(let origin, let current) = drag else { return }
 
@@ -2938,6 +3110,8 @@
   }
 
   private enum CanvasMetrics {
+    static let snapTolerance = 7.0
+    static let snapGuideLineWidth = 1.0
     static let majorGridOpacity = 0.18
     static let subdivisionGridOpacity = 0.08
     static let gridScreenLineWidth = 0.5
@@ -2991,6 +3165,11 @@
       .tiff,
       .png,
     ]
+
+    /// A dropped file arrives as a URL; the rest match what paste already
+    /// accepts, so a drag and a paste import the same artwork.
+    static let draggedImageTypes: [NSPasteboard.PasteboardType] =
+      [.fileURL] + binaryPasteTypes.filter { $0 != selection }
   }
 
   private enum CanvasKeyCode {
@@ -3022,6 +3201,13 @@
       case .text(let text): text.string
       case .connector(let connector): connector.label?.string ?? ""
       case .path, .image, .group: nil
+      }
+    }
+
+    fileprivate var preservesAspectRatioWhileResizing: Bool {
+      switch content {
+      case .image: true
+      case .shape, .path, .text, .group, .connector: false
       }
     }
 

@@ -91,12 +91,15 @@ public enum InteractionGeometry {
     return rotated(point, around: rect.center, by: rotationRadians)
   }
 
+  /// `aspectRatio` is width over height; when it is supplied the frame keeps
+  /// that proportion and the handle's opposite corner or edge stays fixed.
   public static func resizedFrame(
     _ initialFrame: SionRect,
     moving handle: ResizeHandle,
     to pointer: SionPoint,
     minimumSize: SionSize,
-    rotationRadians: Double = 0
+    rotationRadians: Double = 0,
+    aspectRatio: Double? = nil
   ) -> SionRect {
     let frame = initialFrame.standardized
     let center = frame.center
@@ -126,6 +129,16 @@ public enum InteractionGeometry {
       resized.height = vertical.length
     }
 
+    if let aspectRatio {
+      resized = constrained(
+        resized,
+        to: aspectRatio,
+        handle: handle,
+        fixedPoint: fixedPoint,
+        minimumSize: minimumSize
+      )
+    }
+
     guard rotationRadians != 0 else {
       return resized
     }
@@ -135,6 +148,52 @@ public enum InteractionGeometry {
     let movedFixedPoint = rotated(fixedPoint, around: resized.center, by: rotationRadians)
 
     return resized.translated(by: fixedWorldPoint - movedFixedPoint)
+  }
+
+  /// Reshapes `frame` to `ratio` around the point the handle leaves fixed. An
+  /// edge handle drives its own axis and the other follows; a corner follows
+  /// whichever axis the pointer pushed further, so the frame reaches the
+  /// pointer instead of trailing behind it.
+  private static func constrained(
+    _ frame: SionRect,
+    to ratio: Double,
+    handle: ResizeHandle,
+    fixedPoint: SionPoint,
+    minimumSize: SionSize
+  ) -> SionRect {
+    guard ratio.isFinite, ratio > 0, frame.width > 0 || frame.height > 0 else {
+      return frame
+    }
+
+    var width = frame.width
+    var height = frame.height
+    switch (handle.horizontalDirection, handle.verticalDirection) {
+    case (.some, .none):
+      height = width / ratio
+    case (.none, .some):
+      width = height * ratio
+    default:
+      if width >= height * ratio {
+        height = width / ratio
+      } else {
+        width = height * ratio
+      }
+    }
+
+    guard width > 0, height > 0, width.isFinite, height.isFinite else { return frame }
+
+    // Reaching a minimum on one axis has to grow the other in step.
+    let scale = max(1, max(minimumSize.width / width, minimumSize.height / height))
+    width *= scale
+    height *= scale
+
+    let fixedNormalized = handle.fixedNormalizedPosition
+    return SionRect(
+      x: fixedPoint.x - (fixedNormalized.x * width),
+      y: fixedPoint.y - (fixedNormalized.y * height),
+      width: width,
+      height: height
+    )
   }
 
   public static func rotated(

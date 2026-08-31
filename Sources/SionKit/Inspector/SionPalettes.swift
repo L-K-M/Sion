@@ -140,6 +140,13 @@
     private let fillColorWell = NSColorWell()
     private let strokeColorWell = NSColorWell()
     private let strokeWidthSlider = NSSlider()
+    private let shadowButton = NSButton(
+      checkboxWithTitle: "Drop Shadow",
+      target: nil,
+      action: nil
+    )
+    private let shadowColorWell = NSColorWell()
+    private let shadowBlurSlider = NSSlider()
     private let routePopup = NSPopUpButton()
     private let magnetPopup = NSPopUpButton()
     private let stack = NSStackView()
@@ -163,6 +170,7 @@
       configureMagnetPopup()
       configureAnchorEditingControls()
       configureAppearanceControls()
+      configureShadowControls()
       configureLockButton()
       configureNameField()
       stack.addArrangedSubview(selectionLabel)
@@ -172,6 +180,9 @@
       stack.addArrangedSubview(row(label: "Fill", control: fillColorWell))
       stack.addArrangedSubview(row(label: "Stroke", control: strokeColorWell))
       stack.addArrangedSubview(row(label: "Width", control: strokeWidthSlider))
+      stack.addArrangedSubview(shadowButton)
+      stack.addArrangedSubview(row(label: "Shadow", control: shadowColorWell))
+      stack.addArrangedSubview(row(label: "Blur", control: shadowBlurSlider))
       stack.addArrangedSubview(separator())
       stack.addArrangedSubview(row(label: "Route", control: routePopup))
       stack.addArrangedSubview(row(label: "Connector anchors", control: magnetPopup))
@@ -245,6 +256,25 @@
       strokeWidthSlider.setAccessibilityLabel("Stroke width")
     }
 
+    private func configureShadowControls() {
+      shadowButton.target = self
+      shadowButton.action = #selector(changeShadowEnabled(_:))
+      shadowButton.toolTip = "Cast a drop shadow behind this object."
+      shadowButton.setAccessibilityLabel("Drop shadow")
+
+      shadowColorWell.target = self
+      shadowColorWell.action = #selector(changeShadowColor(_:))
+      shadowColorWell.setAccessibilityLabel("Drop shadow color")
+
+      shadowBlurSlider.minValue = SionShadowDefaults.minimumBlurRadius
+      shadowBlurSlider.maxValue = SionShadowDefaults.maximumBlurRadius
+      shadowBlurSlider.allowsTickMarkValuesOnly = false
+      shadowBlurSlider.isContinuous = false
+      shadowBlurSlider.target = self
+      shadowBlurSlider.action = #selector(changeShadowBlur(_:))
+      shadowBlurSlider.setAccessibilityLabel("Drop shadow blur")
+    }
+
     private func configureLockButton() {
       lockButton.allowsMixedState = true
       lockButton.target = self
@@ -311,6 +341,7 @@
         fillColorWell.isEnabled = false
         strokeColorWell.isEnabled = false
         strokeWidthSlider.isEnabled = false
+        clearShadowControls()
         return
       }
 
@@ -323,14 +354,13 @@
         isEditable
         ? "Prevent changes to this element."
         : "Unlock this element to edit it."
-      let supportsFill = element.content.supportsFill
-      fillColorWell.isEnabled = supportsFill && isEditable
-      strokeColorWell.isEnabled =
-        (element.content.connector != nil || supportsFill) && isEditable
+      fillColorWell.isEnabled = element.content.supportsFill && isEditable
+      strokeColorWell.isEnabled = element.content.supportsStroke && isEditable
       strokeWidthSlider.isEnabled = strokeColorWell.isEnabled
       fillColorWell.color = nsColor(element.style.fill.solidColor ?? .clear)
       strokeColorWell.color = nsColor(element.style.stroke?.color ?? .primaryInk)
       strokeWidthSlider.doubleValue = element.style.stroke?.width ?? 0
+      refreshShadowControls(for: element, isEditable: isEditable)
       let editsAnchors =
         target?.anchorEditingState == .editing(element.id) && isEditable
       magnetPopup.isEnabled =
@@ -383,6 +413,43 @@
         nameField.stringValue = ""
         nameField.placeholderString = InspectorCopy.mixedValue
       }
+    }
+
+    /// The color and blur controls only mean something once a shadow exists.
+    private func refreshShadowControls(for element: SceneElement, isEditable: Bool) {
+      let supportsShadow = element.content.supportsShadow && isEditable
+      let shadow = element.style.shadows.first
+      shadowButton.isEnabled = supportsShadow
+      shadowButton.state = shadow == nil ? .off : .on
+      shadowColorWell.isEnabled = supportsShadow && shadow != nil
+      shadowBlurSlider.isEnabled = shadowColorWell.isEnabled
+      shadowColorWell.color = nsColor(shadow?.color ?? SionShadowDefaults.style.color)
+      shadowBlurSlider.doubleValue = shadow?.blurRadius ?? SionShadowDefaults.style.blurRadius
+    }
+
+    private func clearShadowControls() {
+      shadowButton.isEnabled = false
+      shadowButton.state = .off
+      shadowColorWell.isEnabled = false
+      shadowBlurSlider.isEnabled = false
+    }
+
+    @objc private func changeShadowEnabled(_ sender: NSButton) {
+      guard let target, let id = target.selectedElement?.id else { return }
+
+      attemptEdit { try target.setShadowEnabled(sender.state == .on, on: id) }
+    }
+
+    @objc private func changeShadowColor(_ sender: NSColorWell) {
+      guard let target, let id = target.selectedElement?.id else { return }
+
+      attemptEdit { try target.setShadowColor(sionColor(sender.color), on: id) }
+    }
+
+    @objc private func changeShadowBlur(_ sender: NSSlider) {
+      guard let target, let id = target.selectedElement?.id else { return }
+
+      attemptEdit { try target.setShadowBlurRadius(sender.doubleValue, on: id) }
     }
 
     @objc private func changeLock(_ sender: NSButton) {
@@ -908,6 +975,22 @@
       switch self {
       case .shape, .path: true
       case .text, .image, .group, .connector: false
+      }
+    }
+
+    /// An image takes a border even though it takes no fill.
+    fileprivate var supportsStroke: Bool {
+      switch self {
+      case .shape, .path, .image, .connector: true
+      case .text, .group: false
+      }
+    }
+
+    /// A group paints nothing of its own, so it casts no shadow either.
+    fileprivate var supportsShadow: Bool {
+      switch self {
+      case .shape, .path, .text, .image, .connector: true
+      case .group: false
       }
     }
   }

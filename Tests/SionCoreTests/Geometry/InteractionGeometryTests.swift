@@ -352,6 +352,115 @@ final class InteractionGeometryTests: XCTestCase {
     XCTAssertEqual(actual.y, expected.y, accuracy: tolerance, file: file, line: line)
   }
 
+  func testConstrainedCornerResizeKeepsTheProportionAndTheOppositeCorner() {
+    let frame = SionRect(x: 100, y: 100, width: 200, height: 100)
+
+    let resized = InteractionGeometry.resizedFrame(
+      frame,
+      moving: .southEast,
+      to: SionPoint(x: 500, y: 160),
+      minimumSize: minimumSize,
+      aspectRatio: 2
+    )
+
+    // The pointer pushes width further than height, so width leads.
+    assertRect(resized, equals: SionRect(x: 100, y: 100, width: 400, height: 200))
+  }
+
+  func testConstrainedCornerResizeFollowsTheDominantAxis() {
+    let frame = SionRect(x: 100, y: 100, width: 200, height: 100)
+
+    let resized = InteractionGeometry.resizedFrame(
+      frame,
+      moving: .southEast,
+      to: SionPoint(x: 320, y: 400),
+      minimumSize: minimumSize,
+      aspectRatio: 2
+    )
+
+    // Height pushes to 300, which needs a width of 600.
+    assertRect(resized, equals: SionRect(x: 100, y: 100, width: 600, height: 300))
+  }
+
+  func testConstrainedEdgeResizeDrivesTheOtherAxis() {
+    let frame = SionRect(x: 100, y: 100, width: 200, height: 100)
+
+    let horizontal = InteractionGeometry.resizedFrame(
+      frame,
+      moving: .east,
+      to: SionPoint(x: 500, y: 100),
+      minimumSize: minimumSize,
+      aspectRatio: 2
+    )
+    let vertical = InteractionGeometry.resizedFrame(
+      frame,
+      moving: .south,
+      to: SionPoint(x: 100, y: 300),
+      minimumSize: minimumSize,
+      aspectRatio: 2
+    )
+
+    // An edge handle keeps the frame centered on the axis it does not move.
+    assertRect(horizontal, equals: SionRect(x: 100, y: 50, width: 400, height: 200))
+    assertRect(vertical, equals: SionRect(x: 0, y: 100, width: 400, height: 200))
+  }
+
+  func testConstrainedResizeKeepsTheHandlesFixedCornerAnchored() {
+    let frame = SionRect(x: 100, y: 100, width: 200, height: 100)
+
+    let resized = InteractionGeometry.resizedFrame(
+      frame,
+      moving: .northWest,
+      to: SionPoint(x: 0, y: 60),
+      minimumSize: minimumSize,
+      aspectRatio: 2
+    )
+
+    // The south-east corner stays at (300, 200).
+    XCTAssertEqual(resized.maxX, 300, accuracy: tolerance)
+    XCTAssertEqual(resized.maxY, 200, accuracy: tolerance)
+    XCTAssertEqual(resized.width / resized.height, 2, accuracy: tolerance)
+  }
+
+  func testConstrainedResizeGrowsBothAxesToClearTheMinimum() {
+    let frame = SionRect(x: 100, y: 100, width: 200, height: 100)
+
+    let resized = InteractionGeometry.resizedFrame(
+      frame,
+      moving: .southEast,
+      to: SionPoint(x: 100, y: 100),
+      minimumSize: SionSize(width: 12, height: 40),
+      aspectRatio: 2
+    )
+
+    // Height reaches its minimum first and pulls the width along with it.
+    assertRect(resized, equals: SionRect(x: 100, y: 100, width: 80, height: 40))
+  }
+
+  func testAnUnusableAspectRatioLeavesTheFreeResizeAlone() {
+    let frame = SionRect(x: 100, y: 100, width: 200, height: 100)
+    let pointer = SionPoint(x: 500, y: 160)
+    let free = InteractionGeometry.resizedFrame(
+      frame,
+      moving: .southEast,
+      to: pointer,
+      minimumSize: minimumSize
+    )
+
+    for ratio in [0.0, -2.0, Double.nan, Double.infinity] {
+      assertRect(
+        InteractionGeometry.resizedFrame(
+          frame,
+          moving: .southEast,
+          to: pointer,
+          minimumSize: minimumSize,
+          aspectRatio: ratio
+        ),
+        equals: free
+      )
+    }
+  }
+
   private func assertRect(
     _ actual: SionRect,
     equals expected: SionRect,

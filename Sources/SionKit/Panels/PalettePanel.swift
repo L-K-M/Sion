@@ -148,21 +148,33 @@
     /// show anything in — one saved by a build that collapsed the panel, say.
     /// Growing back is the only way out for a palette the user cannot resize.
     private func growToMinimumContentSize() {
-      let size = contentRect(forFrameRect: frame).size
-      guard size.width < contentMinSize.width || size.height < contentMinSize.height else {
+      let current = contentRect(forFrameRect: frame).size
+      guard current.width < contentMinSize.width || current.height < contentMinSize.height else {
         return
       }
 
-      // Grow downward. The header is the panel's only grab handle, so a frame
-      // restored near the top of the screen must not push it out of reach.
-      let topLeft = NSPoint(x: frame.minX, y: frame.maxY)
-      setContentSize(
-        NSSize(
-          width: max(size.width, contentMinSize.width),
-          height: max(size.height, contentMinSize.height)
+      let grown = frameRect(
+        forContentRect: NSRect(
+          origin: .zero,
+          size: NSSize(
+            width: max(current.width, contentMinSize.width),
+            height: max(current.height, contentMinSize.height)
+          )
         )
       )
-      setFrameTopLeftPoint(topLeft)
+
+      // One frame change, anchored at the top-left. The header is the panel's
+      // only grab handle, so growing must not carry it off the top of the
+      // screen, and nothing observing the window should see it half moved.
+      setFrame(
+        NSRect(
+          x: frame.minX,
+          y: frame.maxY - grown.height,
+          width: grown.width,
+          height: grown.height
+        ),
+        display: false
+      )
     }
   }
 

@@ -163,17 +163,31 @@
         )
       )
 
-      // One frame change, anchored at the top-left. The header is the panel's
-      // only grab handle, so growing must not carry it off the top of the
-      // screen, and nothing observing the window should see it half moved.
-      setFrame(
-        NSRect(
-          x: frame.minX,
-          y: frame.maxY - grown.height,
-          width: grown.width,
-          height: grown.height
+      // Anchored at the top-left, then held on screen: the position the frame
+      // grew from is as arbitrary as its size was, and a palette hanging off
+      // the edge is as far out of reach as one collapsed to its header. The
+      // window may be on no screen at all, which is why the main one stands in.
+      let anchored = NSRect(
+        x: frame.minX,
+        y: frame.maxY - grown.height,
+        width: grown.width,
+        height: grown.height
+      )
+      let visible = (screen ?? NSScreen.main)?.visibleFrame
+
+      // One frame change, so nothing observing the window sees it half moved.
+      setFrame(visible.map { Self.constrained(anchored, to: $0) } ?? anchored, display: false)
+    }
+
+    /// Slides `rect` inside `visible` without resizing it, which leaves a rect
+    /// wider or taller than the screen starting at the screen's own edge.
+    static func constrained(_ rect: NSRect, to visible: NSRect) -> NSRect {
+      NSRect(
+        origin: NSPoint(
+          x: min(max(rect.minX, visible.minX), max(visible.minX, visible.maxX - rect.width)),
+          y: min(max(rect.minY, visible.minY), max(visible.minY, visible.maxY - rect.height))
         ),
-        display: false
+        size: rect.size
       )
     }
   }

@@ -67,6 +67,36 @@ final class PalettePanelTests: XCTestCase {
     XCTAssertNil(header.hitTest(NSPoint(x: chrome.bounds.midX, y: chrome.bounds.midY)))
   }
 
+  func testARepairedFrameIsHeldInsideTheVisibleScreen() {
+    let visible = NSRect(x: 0, y: 0, width: 1000, height: 800)
+    let size = PalettePanelTestGeometry.contentSize
+
+    // Grown from a frame parked at the right edge, so the width now runs past it.
+    XCTAssertEqual(
+      PalettePanel.constrained(
+        NSRect(x: 940, y: 400, width: size.width, height: size.height),
+        to: visible
+      ),
+      NSRect(x: 1000 - size.width, y: 400, width: size.width, height: size.height)
+    )
+    // Grown downward from a low top edge, so the body ran off the bottom.
+    XCTAssertEqual(
+      PalettePanel.constrained(
+        NSRect(x: 100, y: -200, width: size.width, height: size.height),
+        to: visible
+      ),
+      NSRect(x: 100, y: 0, width: size.width, height: size.height)
+    )
+    // Wider than the screen: it starts at the screen's edge rather than past it.
+    XCTAssertEqual(
+      PalettePanel.constrained(NSRect(x: 40, y: 0, width: 1200, height: 344), to: visible),
+      NSRect(x: 0, y: 0, width: 1200, height: 344)
+    )
+    // A frame that already fits stays where it was put.
+    let placed = NSRect(x: 100, y: 100, width: size.width, height: size.height)
+    XCTAssertEqual(PalettePanel.constrained(placed, to: visible), placed)
+  }
+
   func testCloseButtonClosesPanel() throws {
     _ = NSApplication.shared
     let panel = makePanel()

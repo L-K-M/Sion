@@ -36,11 +36,13 @@ final class SionScenePrintViewTests: XCTestCase {
     let view = makeView()
     let bitmap = try render(view)
 
-    // Content 100x50 on a 200x200 page fits at 2x, leaving 50pt bands.
-    XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 100, y: 100)).redComponent, 1, accuracy: 0.02)
+    // Content 100x50 on a 200x200 page fits at 2x, so the drawing spans the
+    // full width and leaves an empty 50pt band above and below it.
+    XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 100, y: 100)).alphaComponent, 1)
+    XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 4, y: 100)).alphaComponent, 1)
+    XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 196, y: 100)).alphaComponent, 1)
     XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 100, y: 10)).alphaComponent, 0)
     XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 100, y: 190)).alphaComponent, 0)
-    XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 4, y: 100)).redComponent, 1, accuracy: 0.02)
   }
 
   private func makeView() -> SionScenePrintView {

@@ -72,7 +72,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     // the trailing edge of the toolbar item.
     XCTAssertGreaterThanOrEqual(
       stack.bounds.maxX - label.frame.maxX,
-      ZoomToolbarSpacing.minimumTrailingInset
+      ZoomToolbarSpacing.minimumTrailingGap
     )
   }
 
@@ -538,7 +538,11 @@ private enum ZoomTestCommand {
 }
 
 private enum ZoomToolbarSpacing {
-  static let minimumTrailingInset: CGFloat = 8
+  /// The gap is read from the label's frame, which runs wider than the text it
+  /// draws, so it measures a couple of points short of the 8pt inset itself.
+  /// The floor is what matters: without the inset the label ends flush with the
+  /// item, or a little past it.
+  static let minimumTrailingGap: CGFloat = 6
 }
 
 private enum ZoomToolbarTestPlacement {

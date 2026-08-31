@@ -224,12 +224,29 @@ public enum SVGExporter {
       )
       let tiled =
         "<rect x=\"\(number(frame.minX))\" y=\"\(number(frame.minY))\" width=\"\(number(frame.width))\" height=\"\(number(frame.height))\" fill=\"url(#\(patternID))\" aria-label=\"\(description)\"/>"
-      return wrapped(tiled, element: element, definitions: &definitions)
+      return wrapped(
+        tiled + imageBorder(element.style, frame: frame),
+        element: element,
+        definitions: &definitions
+      )
     }
 
     let image =
       "<svg x=\"\(number(frame.minX))\" y=\"\(number(frame.minY))\" width=\"\(number(frame.width))\" height=\"\(number(frame.height))\" viewBox=\"0 0 \(number(sourceSize.width)) \(number(sourceSize.height))\" preserveAspectRatio=\"\(aspect)\" aria-label=\"\(description)\"><use href=\"#\(definitionID)\"/></svg>"
-    return wrapped(image, element: element, definitions: &definitions)
+    return wrapped(
+      image + imageBorder(element.style, frame: frame),
+      element: element,
+      definitions: &definitions
+    )
+  }
+
+  /// `<image>` takes no stroke of its own, so a border becomes a rect over it.
+  private static func imageBorder(_ style: ElementStyle, frame: SionRect) -> String {
+    guard style.stroke != nil else { return "" }
+
+    return "<rect x=\"\(number(frame.minX))\" y=\"\(number(frame.minY))\" "
+      + "width=\"\(number(frame.width))\" height=\"\(number(frame.height))\" "
+      + "fill=\"none\" \(strokeAttributes(style))/>"
   }
 
   private static func imageDefinitionID(_ id: AssetID) -> String {

@@ -1,6 +1,7 @@
 #if canImport(AppKit)
   import AppKit
   import SionCore
+  import UniformTypeIdentifiers
 
   enum MermaidExportWarning: Equatable {
     case partial
@@ -49,6 +50,7 @@
 
     private var initialPackage = SionPackage()
     private var editingControllerStorage: SionEditorController?
+    private var sceneRendererStorage: SionSceneRenderer?
     private var pendingSaveIntent = SaveIntent.manual
     private var pendingSavedTitle: String?
     private var stagedHistory: DocumentHistory?
@@ -119,6 +121,29 @@
         shouldClose: shouldCloseSelector,
         contextInfo: contextInfo
       )
+    }
+
+    public override func close() {
+      sceneRendererStorage?.invalidate()
+      sceneRendererStorage = nil
+      super.close()
+    }
+
+    /// Renders scene content for print and image export without needing a
+    /// window, so the on-screen canvas keeps its own interaction state.
+    private var sceneRenderer: SionSceneRenderer {
+      // Rebuild rather than trust the cache: a renderer bound to a replaced
+      // editing controller would keep exporting the superseded scene.
+      if let sceneRendererStorage,
+        sceneRendererStorage.editorController === editingController
+      {
+        return sceneRendererStorage
+      }
+
+      sceneRendererStorage?.invalidate()
+      let renderer = SionSceneRenderer(editorController: editingController)
+      sceneRendererStorage = renderer
+      return renderer
     }
 
     public override func data(ofType typeName: String) throws -> Data {
@@ -200,6 +225,142 @@
           editingController.commitArchivedHistory(stagedHistory)
         }
         self.stagedHistory = nil
+      }
+    }
+
+    /// AppKit's Print… command and the print panel both route here. Page
+    /// Setup only edits `printInfo`, so paper, orientation, and margins arrive
+    /// through it and need no custom UI.
+    public override func printOperation(
+      withSettings printSettings: [NSPrintInfo.AttributeKey: Any]
+    ) throws -> NSPrintOperation {
+      commitPendingWindowEdits()
+
+      guard let settings = printInfo.copy() as? NSPrintInfo else {
+        throw SionExportError.contextUnavailable
+      }
+
+      let attributes = settings.dictionary()
+      for (key, value) in printSettings {
+        attributes.setValue(value, forKey: key.rawValue)
+      }
+
+      // The print view reports its own single-page range and scales to fit, so
+      // AppKit must not paginate or rescale on top of it.
+      settings.horizontalPagination = .clip
+      settings.verticalPagination = .clip
+
+      let renderer = sceneRenderer
+      let printView = SionScenePrintView(
+        contentBounds: renderer.contentBounds,
+        pageSize: SionScenePrintView.printableSize(for: settings),
+        drawScene: renderer.sceneDrawing
+      )
+      let operation = NSPrintOperation(view: printView, printInfo: settings)
+      operation.jobTitle = displayName
+      return operation
+    }
+
+    @objc func exportImage(_ sender: Any?) {
+      commitPendingWindowEdits()
+
+      guard let window = windowForSheet else { return }
+
+      let accessory = SionImageExportAccessoryView()
+      let panel = NSSavePanel()
+      panel.canCreateDirectories = true
+      panel.accessoryView = accessory
+      var appliedFormat = accessory.options.format
+      applyImageExportFormat(appliedFormat, to: panel)
+      accessory.onChange = { [weak self, weak panel] options in
+        // Scale and transparency change neither the type nor the extension,
+        // so they must not overwrite a name the user typed.
+        guard let self, let panel, options.format != appliedFormat else { return }
+
+        appliedFormat = options.format
+        self.applyImageExportFormat(options.format, to: panel)
+      }
+      panel.beginSheetModal(for: window) { [weak self] response in
+        guard response == .OK, let url = panel.url, let self else { return }
+
+        do {
+          let data = try self.imageExportData(options: accessory.options)
+          try data.write(to: url, options: .atomic)
+        } catch {
+          self.presentError(error)
+        }
+      }
+    }
+
+    /// Encodes export data with no panel, so formats stay testable headlessly.
+    func imageExportData(options: SionImageExportOptions) throws -> Data {
+      commitPendingWindowEdits()
+
+      return try SionSceneImageExporter.data(options: options, renderer: sceneRenderer)
+    }
+
+    /// Keeps the panel's suggested name and content type on the chosen format.
+    private func applyImageExportFormat(
+      _ format: SionImageExportFormat,
+      to panel: NSSavePanel
+    ) {
+      panel.allowedContentTypes = [format.contentType]
+      panel.nameFieldStringValue = exportFilename(extension: format.fileExtension)
+    }
+
+    @objc func importMermaid(_ sender: Any?) {
+      commitPendingWindowEdits()
+
+      guard let window = windowForSheet else { return }
+
+      let panel = SionMermaidFile.makeOpenPanel()
+      panel.beginSheetModal(for: window) { [weak self] response in
+        guard response == .OK, let url = panel.url, let self else { return }
+
+        do {
+          try self.importMermaid(contentsOf: url)
+        } catch {
+          self.presentError(error)
+        }
+      }
+    }
+
+    /// Reads a Mermaid file and inserts it as one undoable command. A read
+    /// failure is thrown rather than presented, so only the command that owns
+    /// the panel puts an alert on screen.
+    @discardableResult
+    func importMermaid(
+      contentsOf url: URL
+    ) throws -> SionEditorController.MermaidInsertionResult? {
+      insertMermaid(try SionMermaidFile.source(at: url))
+    }
+
+    @discardableResult
+    func insertMermaid(_ source: String) -> SionEditorController.MermaidInsertionResult? {
+      commitPendingWindowEdits()
+
+      return SionMermaidInsertion.insert(
+        source,
+        at: mermaidInsertionCenter,
+        origin: .file,
+        using: editingController,
+        feedback: { presentEditorFeedback($0) }
+      )
+    }
+
+    /// The visible canvas centre when a window exists, and the canvas centre
+    /// otherwise, so an import into a windowless document still lands on paper.
+    private var mermaidInsertionCenter: SionPoint {
+      for case let windowController as SionDocumentWindowController in windowControllers {
+        return windowController.canvasVisibleCenter
+      }
+
+      return editingController.defaultInsertionCenter
+    }
+
+    private func presentEditorFeedback(_ request: SionEditorFeedbackRequest) {
+      for case let windowController as SionDocumentWindowController in windowControllers {
+        windowController.presentEditorFeedback(request)
       }
     }
 

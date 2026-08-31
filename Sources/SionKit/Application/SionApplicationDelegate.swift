@@ -47,6 +47,18 @@ public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
     false
   }
 
+  /// Creating a document from Mermaid must work with nothing open, so the
+  /// command lives on the delegate: it is reached through the same nil-target
+  /// action chain as New and Open, and needs no document to validate.
+  @objc public func newDocumentFromMermaid(_ sender: Any?) {
+    let panel = SionMermaidFile.makeOpenPanel()
+    panel.begin { [weak self] response in
+      guard response == .OK, let url = panel.url else { return }
+
+      self?.documentController.openMermaidDocument(at: url)
+    }
+  }
+
   public func applicationShouldHandleReopen(
     _ sender: NSApplication,
     hasVisibleWindows flag: Bool
@@ -137,6 +149,7 @@ private enum SionMainMenu {
   ) -> NSMenuItem {
     let submenu = NSMenu(title: "File")
     submenu.addItem(item("New", action: #selector(NSDocumentController.newDocument(_:)), key: "n"))
+    submenu.addItem(item("New from Mermaid…", action: AppAction.newDocumentFromMermaid))
     submenu.addItem(
       item("Open…", action: #selector(NSDocumentController.openDocument(_:)), key: "o"))
     let recentMenu = recentDocumentsMenuController.makeMenu()
@@ -147,9 +160,15 @@ private enum SionMainMenu {
     submenu.addItem(item("Save As…", action: AppAction.saveAs, key: "S"))
     submenu.addItem(item("Revert to Saved…", action: AppAction.revertToSaved))
     submenu.addItem(.separator())
+    submenu.addItem(item("Import Mermaid…", action: AppAction.importMermaid))
+    submenu.addItem(item("Export Image…", action: AppAction.exportImage))
     submenu.addItem(
       item("Export SVG…", action: AppAction.exportSVG, key: "e", modifiers: [.command, .shift]))
     submenu.addItem(item("Export Mermaid…", action: AppAction.exportMermaid))
+    submenu.addItem(.separator())
+    submenu.addItem(
+      item("Page Setup…", action: AppAction.pageSetup, key: "P", modifiers: [.command, .shift]))
+    submenu.addItem(item("Print…", action: AppAction.printDocument, key: "p"))
     return parentItem(title: "File", submenu: submenu)
   }
 
@@ -260,6 +279,7 @@ private enum SionMainMenu {
     submenu.addItem(item("Zoom to Fit", action: AppAction.zoomToFit, key: "1"))
     submenu.addItem(.separator())
     submenu.addItem(item("Show Grid", action: AppAction.toggleGridVisibility))
+    submenu.addItem(item("Snap to Objects", action: AppAction.toggleObjectSnapping))
     submenu.addItem(.separator())
     submenu.addItem(
       item("Inspector", action: AppAction.showInspector, key: "i", modifiers: [.command, .option]))
@@ -352,11 +372,16 @@ private enum AppAction {
   static let distributeHorizontally = Selector(("distributeHorizontally:"))
   static let distributeVertically = Selector(("distributeVertically:"))
   static let duplicate = Selector(("duplicate:"))
+  static let exportImage = Selector(("exportImage:"))
   static let exportMermaid = Selector(("exportMermaid:"))
   static let exportSVG = Selector(("exportSVG:"))
   static let hideSelection = Selector(("hideSelection:"))
+  static let importMermaid = Selector(("importMermaid:"))
   static let lockSelection = Selector(("lockSelection:"))
+  static let newDocumentFromMermaid = Selector(("newDocumentFromMermaid:"))
+  static let pageSetup = #selector(NSDocument.runPageLayout(_:))
   static let paste = Selector(("paste:"))
+  static let printDocument = #selector(NSDocument.printDocument(_:))
   static let redo = Selector(("redo:"))
   static let revealHiddenElements = Selector(("revealHiddenElements:"))
   static let revertToSaved = #selector(NSDocument.revertToSaved(_:))
@@ -369,6 +394,7 @@ private enum AppAction {
   static let showInspector = Selector(("showInspector:"))
   static let showLibrary = Selector(("showLibrary:"))
   static let toggleGridVisibility = Selector(("toggleGridVisibility:"))
+  static let toggleObjectSnapping = Selector(("toggleObjectSnapping:"))
   static let undo = Selector(("undo:"))
   static let unlockSelection = Selector(("unlockSelection:"))
   static let zoomIn = Selector(("zoomIn:"))

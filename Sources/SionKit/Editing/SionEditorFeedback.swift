@@ -3,7 +3,7 @@
 
   enum SionEditorFeedback: Equatable {
     enum Context: Equatable {
-      case mermaidPaste
+      case mermaidSource
     }
 
     enum MermaidSourcePreservation: Equatable {
@@ -12,6 +12,7 @@
     }
 
     enum Command: Equatable {
+      case importMermaid
       case pasteMermaid
     }
 
@@ -19,9 +20,10 @@
     case commandFailed(Command)
 
     var context: Context {
+      // Paste and import share one banner slot, so a later success clears it.
       switch self {
-      case .mermaidSourcePreserved, .commandFailed(.pasteMermaid):
-        .mermaidPaste
+      case .mermaidSourcePreserved, .commandFailed:
+        .mermaidSource
       }
     }
 
@@ -38,6 +40,8 @@
         }
       case .commandFailed(.pasteMermaid):
         "Mermaid could not be pasted. The document was not changed."
+      case .commandFailed(.importMermaid):
+        "Mermaid could not be imported. The document was not changed."
       }
     }
 

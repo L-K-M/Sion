@@ -48,6 +48,22 @@
     }
   }
 
+  extension PaletteDefinition {
+    /// Gives a palette's root view a definite size before it is presented.
+    ///
+    /// `NSPopover` sizes itself from the content view controller once one is
+    /// attached — its preferred size, else its view's frame. A root whose Auto
+    /// Layout fitting size is indeterminate, an `NSScrollView` for example,
+    /// reports neither, so both channels are seeded here. The popover
+    /// positions its content view by frame, so its autoresizing translation is
+    /// deliberately left alone.
+    @MainActor
+    func applyContentSizing(to controller: NSViewController) {
+      controller.preferredContentSize = contentSize
+      controller.view.setFrameSize(contentSize)
+    }
+  }
+
   public enum PalettePresentation: Equatable, Sendable {
     case popover
     case panel

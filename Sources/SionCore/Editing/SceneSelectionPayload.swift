@@ -365,35 +365,7 @@ public struct SceneSelectionPayload: Equatable, Sendable {
   }
 
   private static func rotatedBounds(of geometry: ElementGeometry) -> SionRect {
-    let frame = geometry.frame.standardized
-    guard geometry.rotationRadians != 0 else { return frame }
-
-    let center = frame.center
-    let cosine = cos(geometry.rotationRadians)
-    let sine = sin(geometry.rotationRadians)
-    let corners = [
-      SionPoint(x: frame.minX, y: frame.minY),
-      SionPoint(x: frame.maxX, y: frame.minY),
-      SionPoint(x: frame.maxX, y: frame.maxY),
-      SionPoint(x: frame.minX, y: frame.maxY),
-    ].map { point in
-      let dx = point.x - center.x
-      let dy = point.y - center.y
-      return SionPoint(
-        x: center.x + (dx * cosine) - (dy * sine),
-        y: center.y + (dx * sine) + (dy * cosine)
-      )
-    }
-    let minimumX = corners.map(\.x).min() ?? frame.minX
-    let maximumX = corners.map(\.x).max() ?? frame.maxX
-    let minimumY = corners.map(\.y).min() ?? frame.minY
-    let maximumY = corners.map(\.y).max() ?? frame.maxY
-    return SionRect(
-      x: minimumX,
-      y: minimumY,
-      width: maximumX - minimumX,
-      height: maximumY - minimumY
-    )
+    InteractionGeometry.rotatedBounds(of: geometry)
   }
 
   private static func referencedAssetIDs(in elements: [SceneElement]) -> Set<AssetID> {

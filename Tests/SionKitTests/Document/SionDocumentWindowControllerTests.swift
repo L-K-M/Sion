@@ -291,6 +291,175 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     return SionDocumentWindowController(editorController: editorController)
   }
 
+  func testSingleClickArmsAToolAndASecondClickKeepsItActive() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    windowController.selectTool(.rectangle, clickCount: 1)
+
+    XCTAssertEqual(editorController.tool, .rectangle)
+    XCTAssertEqual(editorController.toolPersistence, .oneShot)
+
+    windowController.selectTool(.rectangle, clickCount: 2)
+
+    XCTAssertEqual(editorController.tool, .rectangle)
+    XCTAssertEqual(editorController.toolPersistence, .sticky)
+  }
+
+  func testToolSegmentsDescribeTheirPersistence() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    let control = try toolsSegmentedControl(in: windowController)
+    windowController.selectTool(.rectangle, clickCount: 1)
+
+    XCTAssertEqual(control.selectedSegment, SionEditorController.Tool.rectangle.rawValue)
+    XCTAssertEqual(
+      control.toolTip(forSegment: SionEditorController.Tool.rectangle.rawValue),
+      "\(SionEditorController.Tool.rectangle.help). Reverts to Select after one use"
+    )
+    XCTAssertEqual(
+      control.toolTip(forSegment: SionEditorController.Tool.circle.rawValue),
+      "\(SionEditorController.Tool.circle.help). Double-click to keep the tool active"
+    )
+    XCTAssertEqual(
+      control.toolTip(forSegment: SionEditorController.Tool.select.rawValue),
+      SionEditorController.Tool.select.help
+    )
+    XCTAssertEqual(
+      windowController.toolAccessibilityValue,
+      "Rounded Rectangle. Reverts to Select after one use"
+    )
+  }
+
+  func testChoosingAnArmedToolAgainKeepsItActiveWithoutAClickCount() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    // A key event carries no click count to read, so the mapping reports one
+    // however many times the tool is chosen.
+    let keyPress = SionDocumentWindowController.toolClickCount(for: try makeKeyEvent())
+    XCTAssertEqual(keyPress, 1)
+
+    windowController.selectTool(.rectangle, clickCount: keyPress)
+    XCTAssertEqual(editorController.toolPersistence, .oneShot)
+
+    windowController.selectTool(.rectangle, clickCount: keyPress)
+
+    XCTAssertEqual(editorController.tool, .rectangle)
+    XCTAssertEqual(editorController.toolPersistence, .sticky)
+  }
+
+  func testChoosingAToolAgainAfterItWasSpentArmsAnotherSingleUse() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    windowController.selectTool(.rectangle, clickCount: 1)
+    editorController.toolDidComplete(.rectangle)
+    XCTAssertEqual(editorController.tool, .select)
+
+    // Two quick single uses are not a double click.
+    windowController.selectTool(.rectangle, clickCount: 1)
+
+    XCTAssertEqual(editorController.toolPersistence, .oneShot)
+  }
+
+  func testToolClickCountIgnoresEventsWithoutAClickCount() throws {
+    let key = try makeKeyEvent()
+    let doubleClick = try XCTUnwrap(
+      NSEvent.mouseEvent(
+        with: .leftMouseUp,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        eventNumber: 0,
+        clickCount: 2,
+        pressure: 1
+      )
+    )
+
+    XCTAssertEqual(SionDocumentWindowController.toolClickCount(for: nil), 1)
+    XCTAssertEqual(SionDocumentWindowController.toolClickCount(for: key), 1)
+    XCTAssertEqual(SionDocumentWindowController.toolClickCount(for: doubleClick), 2)
+  }
+
+  func testAHeldToolShortcutIsOnePressRatherThanASecondChoice() throws {
+    XCTAssertFalse(SionDocumentWindowController.isAutoRepeat(nil))
+    XCTAssertFalse(SionDocumentWindowController.isAutoRepeat(try makeKeyEvent()))
+    XCTAssertTrue(
+      SionDocumentWindowController.isAutoRepeat(try makeKeyEvent(isARepeat: true))
+    )
+  }
+
+  private func makeKeyEvent(isARepeat: Bool = false) throws -> NSEvent {
+    try XCTUnwrap(
+      NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: " ",
+        charactersIgnoringModifiers: " ",
+        isARepeat: isARepeat,
+        keyCode: 49
+      )
+    )
+  }
+
+  func testCustomizationPaletteToolsCopyDoesNotStealSynchronization() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    let installed = try toolsSegmentedControl(in: windowController, willBeInserted: true)
+    _ = try toolsSegmentedControl(in: windowController, willBeInserted: false)
+
+    windowController.selectTool(.circle, clickCount: 2)
+
+    XCTAssertEqual(installed.selectedSegment, SionEditorController.Tool.circle.rawValue)
+    XCTAssertEqual(
+      installed.toolTip(forSegment: SionEditorController.Tool.circle.rawValue),
+      "\(SionEditorController.Tool.circle.help). Stays active until another tool is chosen"
+    )
+  }
+
+  private func toolsSegmentedControl(
+    in windowController: SionDocumentWindowController,
+    willBeInserted: Bool = true
+  ) throws -> NSSegmentedControl {
+    let toolbar = NSToolbar(identifier: "Sion.Tests.Tools")
+    let item = try XCTUnwrap(
+      windowController.toolbar(
+        toolbar,
+        itemForItemIdentifier: NSToolbarItem.Identifier("Sion.Tools"),
+        willBeInsertedIntoToolbar: willBeInserted
+      )
+    )
+
+    return try XCTUnwrap(item.view as? NSSegmentedControl)
+  }
+
+  private func makeEditorController() throws -> SionEditorController {
+    try SionEditorController(
+      package: SionPackage(document: SionDocument()),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+  }
+
   private func makeZoomWindowController() throws -> SionDocumentWindowController {
     let editorController = try SionEditorController(
       package: SionPackage(document: SionDocument()),

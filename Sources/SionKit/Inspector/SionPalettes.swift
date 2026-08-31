@@ -140,8 +140,16 @@
     private let fillColorWell = NSColorWell()
     private let strokeColorWell = NSColorWell()
     private let strokeWidthSlider = NSSlider()
+    private let shadowButton = NSButton(
+      checkboxWithTitle: "Drop Shadow",
+      target: nil,
+      action: nil
+    )
+    private let shadowColorWell = NSColorWell()
+    private let shadowBlurSlider = NSSlider()
     private let routePopup = NSPopUpButton()
     private let magnetPopup = NSPopUpButton()
+    private let stack = NSStackView()
     private let anchorEditingControls = NSStackView()
     private let anchorEditingInstruction = NSTextField(
       wrappingLabelWithString: AnchorEditingCopy.instruction
@@ -149,7 +157,6 @@
     private let anchorEditingDoneButton = NSButton()
 
     override func loadView() {
-      let stack = NSStackView()
       stack.orientation = .vertical
       stack.alignment = .leading
       stack.spacing = InspectorMetrics.spacing
@@ -163,6 +170,7 @@
       configureMagnetPopup()
       configureAnchorEditingControls()
       configureAppearanceControls()
+      configureShadowControls()
       configureLockButton()
       configureNameField()
       stack.addArrangedSubview(selectionLabel)
@@ -172,12 +180,17 @@
       stack.addArrangedSubview(row(label: "Fill", control: fillColorWell))
       stack.addArrangedSubview(row(label: "Stroke", control: strokeColorWell))
       stack.addArrangedSubview(row(label: "Width", control: strokeWidthSlider))
+      stack.addArrangedSubview(shadowButton)
+      stack.addArrangedSubview(row(label: "Shadow", control: shadowColorWell))
+      stack.addArrangedSubview(row(label: "Blur", control: shadowBlurSlider))
       stack.addArrangedSubview(separator())
       stack.addArrangedSubview(row(label: "Route", control: routePopup))
       stack.addArrangedSubview(row(label: "Connector anchors", control: magnetPopup))
       stack.addArrangedSubview(anchorEditingControls)
       stack.addArrangedSubview(NSView())
-      view = stack
+      // Anchor editing reveals extra rows, so the body has to be able to
+      // scroll rather than clip inside the palette's declared size.
+      view = scrollingPaletteBody(stack)
     }
 
     var paletteInitialFirstResponder: NSView? { routePopup }
@@ -241,6 +254,25 @@
       strokeWidthSlider.target = self
       strokeWidthSlider.action = #selector(changeStrokeWidth(_:))
       strokeWidthSlider.setAccessibilityLabel("Stroke width")
+    }
+
+    private func configureShadowControls() {
+      shadowButton.target = self
+      shadowButton.action = #selector(changeShadowEnabled(_:))
+      shadowButton.toolTip = "Cast a drop shadow behind this object."
+      shadowButton.setAccessibilityLabel("Drop shadow")
+
+      shadowColorWell.target = self
+      shadowColorWell.action = #selector(changeShadowColor(_:))
+      shadowColorWell.setAccessibilityLabel("Drop shadow color")
+
+      shadowBlurSlider.minValue = SionShadowDefaults.minimumBlurRadius
+      shadowBlurSlider.maxValue = SionShadowDefaults.maximumBlurRadius
+      shadowBlurSlider.allowsTickMarkValuesOnly = false
+      shadowBlurSlider.isContinuous = false
+      shadowBlurSlider.target = self
+      shadowBlurSlider.action = #selector(changeShadowBlur(_:))
+      shadowBlurSlider.setAccessibilityLabel("Drop shadow blur")
     }
 
     private func configureLockButton() {
@@ -309,6 +341,7 @@
         fillColorWell.isEnabled = false
         strokeColorWell.isEnabled = false
         strokeWidthSlider.isEnabled = false
+        clearShadowControls()
         return
       }
 
@@ -321,14 +354,13 @@
         isEditable
         ? "Prevent changes to this element."
         : "Unlock this element to edit it."
-      let supportsFill = element.content.supportsFill
-      fillColorWell.isEnabled = supportsFill && isEditable
-      strokeColorWell.isEnabled =
-        (element.content.connector != nil || supportsFill) && isEditable
+      fillColorWell.isEnabled = element.content.supportsFill && isEditable
+      strokeColorWell.isEnabled = element.content.supportsStroke && isEditable
       strokeWidthSlider.isEnabled = strokeColorWell.isEnabled
       fillColorWell.color = nsColor(element.style.fill.solidColor ?? .clear)
       strokeColorWell.color = nsColor(element.style.stroke?.color ?? .primaryInk)
       strokeWidthSlider.doubleValue = element.style.stroke?.width ?? 0
+      refreshShadowControls(for: element, isEditable: isEditable)
       let editsAnchors =
         target?.anchorEditingState == .editing(element.id) && isEditable
       magnetPopup.isEnabled =
@@ -381,6 +413,50 @@
         nameField.stringValue = ""
         nameField.placeholderString = InspectorCopy.mixedValue
       }
+    }
+
+    /// The color and blur controls only mean something once a shadow exists.
+    /// Content that does not take a shadow but arrived carrying one keeps a
+    /// live checkbox so the shadow can be switched off; the controls that would
+    /// restyle it stay dark, since the command refuses to set one there.
+    private func refreshShadowControls(for element: SceneElement, isEditable: Bool) {
+      let supportsShadow = element.content.supportsShadow && isEditable
+      let shadow = element.style.shadows.first
+      shadowButton.isEnabled = supportsShadow || (isEditable && shadow != nil)
+      shadowButton.state = shadow == nil ? .off : .on
+      shadowColorWell.isEnabled = supportsShadow && shadow != nil
+      shadowBlurSlider.isEnabled = shadowColorWell.isEnabled
+      shadowColorWell.color = nsColor(shadow?.color ?? SionShadowDefaults.style.color)
+      // A document can carry a blur the inspector's range does not reach;
+      // clamping it here would silently shrink it on the first drag.
+      let blurRadius = shadow?.blurRadius ?? SionShadowDefaults.style.blurRadius
+      shadowBlurSlider.maxValue = max(SionShadowDefaults.maximumBlurRadius, blurRadius)
+      shadowBlurSlider.doubleValue = blurRadius
+    }
+
+    private func clearShadowControls() {
+      shadowButton.isEnabled = false
+      shadowButton.state = .off
+      shadowColorWell.isEnabled = false
+      shadowBlurSlider.isEnabled = false
+    }
+
+    @objc private func changeShadowEnabled(_ sender: NSButton) {
+      guard let target, let id = target.selectedElement?.id else { return }
+
+      attemptEdit { try target.setShadowEnabled(sender.state == .on, on: id) }
+    }
+
+    @objc private func changeShadowColor(_ sender: NSColorWell) {
+      guard let target, let id = target.selectedElement?.id else { return }
+
+      attemptEdit { try target.setShadowColor(sionColor(sender.color), on: id) }
+    }
+
+    @objc private func changeShadowBlur(_ sender: NSSlider) {
+      guard let target, let id = target.selectedElement?.id else { return }
+
+      attemptEdit { try target.setShadowBlurRadius(sender.doubleValue, on: id) }
     }
 
     @objc private func changeLock(_ sender: NSButton) {
@@ -613,18 +689,7 @@
       stack.addArrangedSubview(
         libraryButton("Text", symbol: "textformat", action: #selector(addText)))
 
-      // The fixed-height palette keeps every labeled entry keyboard reachable.
-      let scrollView = NSScrollView()
-      scrollView.hasVerticalScroller = true
-      scrollView.documentView = stack
-      stack.translatesAutoresizingMaskIntoConstraints = false
-      NSLayoutConstraint.activate([
-        stack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-        stack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-        stack.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-        stack.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-      ])
-      view = scrollView
+      view = scrollingPaletteBody(stack)
     }
 
     func retarget(to target: SionDocumentWindowController?) {
@@ -693,17 +758,7 @@
       stack.spacing = InspectorMetrics.spacing
       stack.edgeInsets = InspectorMetrics.insets
 
-      let scrollView = NSScrollView()
-      scrollView.hasVerticalScroller = true
-      scrollView.documentView = stack
-      stack.translatesAutoresizingMaskIntoConstraints = false
-      NSLayoutConstraint.activate([
-        stack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-        stack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-        stack.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-        stack.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-      ])
-      view = scrollView
+      view = scrollingPaletteBody(stack)
     }
 
     func retarget(to target: SionDocumentWindowController?) {
@@ -757,6 +812,37 @@
       target.commitPendingEdits()
       try? target.paletteEditorController.restoreRevision(identifier: identifier)
     }
+  }
+
+  /// Wraps a palette's document stack in a vertically scrolling body, which
+  /// keeps every labeled entry reachable inside a fixed-size palette.
+  ///
+  /// The stack matches the clip view's width so it only scrolls vertically; its
+  /// height stays intrinsic, which is what lets it grow past the viewport. The
+  /// scroll view contributes no height of its own, so a palette's declared
+  /// content size is what has to size the container — see
+  /// ``PaletteDefinition/applyContentSizing(to:)``.
+  @MainActor
+  private func scrollingPaletteBody(_ stack: NSStackView) -> NSScrollView {
+    let scrollView = NSScrollView()
+    scrollView.hasVerticalScroller = true
+    scrollView.autohidesScrollers = true
+    // The popover and the panel supply their own backing; a second opaque
+    // rectangle inside them only fights their material.
+    scrollView.borderType = .noBorder
+    scrollView.drawsBackground = false
+    scrollView.documentView = stack
+
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    let clipView = scrollView.contentView
+    NSLayoutConstraint.activate([
+      stack.topAnchor.constraint(equalTo: clipView.topAnchor),
+      stack.leadingAnchor.constraint(equalTo: clipView.leadingAnchor),
+      stack.trailingAnchor.constraint(equalTo: clipView.trailingAnchor),
+      stack.widthAnchor.constraint(equalTo: clipView.widthAnchor),
+    ])
+
+    return scrollView
   }
 
   private enum MagnetOption: Int, CaseIterable {
@@ -896,6 +982,14 @@
       switch self {
       case .shape, .path: true
       case .text, .image, .group, .connector: false
+      }
+    }
+
+    /// An image takes a border even though it takes no fill.
+    fileprivate var supportsStroke: Bool {
+      switch self {
+      case .shape, .path, .image, .connector: true
+      case .text, .group: false
       }
     }
   }

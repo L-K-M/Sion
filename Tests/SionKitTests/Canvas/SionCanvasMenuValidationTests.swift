@@ -215,7 +215,7 @@ final class SionCanvasMenuValidationTests: XCTestCase {
 
     canvas.paste(nil)
 
-    XCTAssertEqual(feedback, [.clear(.mermaidPaste)])
+    XCTAssertEqual(feedback, [.clear(.mermaidSource)])
     XCTAssertEqual(controller.document.scene.elements.count, 3)
   }
 

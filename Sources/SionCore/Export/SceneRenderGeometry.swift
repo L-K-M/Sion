@@ -345,12 +345,7 @@ public enum SceneRenderGeometry {
   }
 
   private static func rotatedBounds(of geometry: ElementGeometry) -> SionRect {
-    let frame = geometry.frame.standardized
-    return rotatedBounds(
-      frame,
-      around: frame.center,
-      by: geometry.rotationRadians
-    )
+    InteractionGeometry.rotatedBounds(of: geometry)
   }
 
   private static func rotatedBounds(
@@ -358,32 +353,7 @@ public enum SceneRenderGeometry {
     around center: SionPoint,
     by radians: Double
   ) -> SionRect {
-    let frame = bounds.standardized
-    guard radians != 0 else { return frame }
-
-    let corners = [
-      SionPoint(x: frame.minX, y: frame.minY),
-      SionPoint(x: frame.maxX, y: frame.minY),
-      SionPoint(x: frame.maxX, y: frame.maxY),
-      SionPoint(x: frame.minX, y: frame.maxY),
-    ].map { point in
-      InteractionGeometry.rotated(
-        point,
-        around: center,
-        by: radians
-      )
-    }
-
-    let minimumX = corners.map(\.x).min() ?? frame.minX
-    let maximumX = corners.map(\.x).max() ?? frame.maxX
-    let minimumY = corners.map(\.y).min() ?? frame.minY
-    let maximumY = corners.map(\.y).max() ?? frame.maxY
-    return SionRect(
-      x: minimumX,
-      y: minimumY,
-      width: maximumX - minimumX,
-      height: maximumY - minimumY
-    )
+    InteractionGeometry.rotatedBounds(bounds, around: center, by: radians)
   }
 
   private static func referencePoint(

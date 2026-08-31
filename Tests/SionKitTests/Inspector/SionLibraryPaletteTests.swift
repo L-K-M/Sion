@@ -25,7 +25,9 @@ final class SionLibraryPaletteTests: XCTestCase {
     let library = try XCTUnwrap(
       PaletteCenter.shared.registeredPalette(for: SionPaletteKind.library.paletteKind)
     )
-    defer { library.close() }
+    // A palette is app global; any earlier presentation has to be gone first.
+    drainClose(library)
+    defer { drainClose(library) }
     library.showPanel()
 
     let libraryPanels = NSApp.windows.filter { $0.title == "Library" && $0.isVisible }
@@ -85,6 +87,104 @@ final class SionLibraryPaletteTests: XCTestCase {
     undoManager.undo()
 
     XCTAssertEqual(editor.document.scene.elements.count, expectedShapes.count - 1)
+  }
+
+  func testLibraryPopoverPresentsEveryEntryAtTheDeclaredContentSize() throws {
+    _ = NSApplication.shared
+    SionPalettes.shared.registerIfNeeded()
+
+    let (window, anchor) = try makeAnchorWindow()
+    defer { window.close() }
+
+    let library = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.library.paletteKind)
+    )
+    // A palette is app global, so any earlier presentation has to be gone first.
+    drainClose(library)
+    defer { drainClose(library) }
+
+    library.present(from: anchor)
+
+    let popover = try XCTUnwrap(library.presentedPopover)
+
+    // Asserting against the registered definition keeps the test honest when
+    // the palette is re-declared at another size.
+    XCTAssertEqual(popover.contentSize, library.definitionContentSize)
+
+    let scrollView = try XCTUnwrap(popover.contentViewController?.view as? NSScrollView)
+    scrollView.layoutSubtreeIfNeeded()
+
+    let stack = try XCTUnwrap(scrollView.documentView as? NSStackView)
+    let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }
+
+    XCTAssertEqual(
+      buttons.map(\.title),
+      [
+        "Rectangle", "Rounded Rectangle", "Ellipse", "Diamond", "Triangle", "Hexagon",
+        "Capsule", "Cylinder", "Text",
+      ]
+    )
+    // Chrome independent: whatever the popover settles on, the body fills it.
+    XCTAssertEqual(scrollView.frame.size, popover.contentSize)
+    XCTAssertGreaterThan(stack.fittingSize.height, libraryViewportHeight)
+    XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
+  }
+
+  func testHistoryPopoverScrollsWithoutItsOwnBackingOrBorder() throws {
+    _ = NSApplication.shared
+    SionPalettes.shared.registerIfNeeded()
+
+    let (window, anchor) = try makeAnchorWindow()
+    defer { window.close() }
+
+    let history = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.history.paletteKind)
+    )
+    drainClose(history)
+    defer { drainClose(history) }
+
+    history.present(from: anchor)
+
+    let popover = try XCTUnwrap(history.presentedPopover)
+    let scrollView = try XCTUnwrap(popover.contentViewController?.view as? NSScrollView)
+
+    XCTAssertEqual(popover.contentSize, history.definitionContentSize)
+    XCTAssertTrue(scrollView.hasVerticalScroller)
+    XCTAssertFalse(scrollView.drawsBackground)
+    XCTAssertEqual(scrollView.borderType, .noBorder)
+  }
+
+  /// A programmatically created window is released when it closes, which would
+  /// over-release the strong reference the caller holds.
+  private func makeAnchorWindow() throws -> (window: NSWindow, anchor: NSView) {
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+      styleMask: [.titled, .closable],
+      backing: .buffered,
+      defer: false
+    )
+    window.isReleasedWhenClosed = false
+    let anchor = NSView(frame: NSRect(x: 20, y: 20, width: 80, height: 24))
+    try XCTUnwrap(window.contentView).addSubview(anchor)
+    window.orderFrontRegardless()
+    return (window, anchor)
+  }
+
+  /// A popover closes asynchronously, and a palette is app global, so a leaked
+  /// one would defer the next presentation instead of failing here.
+  private func drainClose(
+    _ palette: Palette,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    palette.close()
+    let deadline = Date(timeIntervalSinceNow: 1)
+    while palette.isPresented || palette.presentedPopover != nil, Date() < deadline {
+      RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+    }
+
+    XCTAssertFalse(palette.isPresented, "The palette did not close.", file: file, line: line)
+    XCTAssertNil(palette.presentedPopover, "The popover did not close.", file: file, line: line)
   }
 }
 

@@ -323,6 +323,7 @@ extension SceneElement {
     frame: SionRect,
     assetID: AssetID,
     displayAssetID: AssetID,
+    scalingMode: ImageScalingMode = .stretch,
     parentID: ElementID? = nil
   ) -> SceneElement {
     SceneElement(
@@ -332,7 +333,11 @@ extension SceneElement {
       magnetConfiguration: .preset(.eight),
       style: .imageDefault,
       content: .image(
-        ImageContent(assetID: assetID, displayAssetID: displayAssetID)
+        ImageContent(
+          assetID: assetID,
+          displayAssetID: displayAssetID,
+          scalingMode: scalingMode
+        )
       )
     )
   }

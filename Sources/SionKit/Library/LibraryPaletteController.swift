@@ -247,7 +247,13 @@
       do {
         switch reference.scope {
         case .document:
-          guard let editor = target?.paletteEditorController else { return }
+          // The document an item belongs to can go away between the row being
+          // drawn and its menu being used. Leaving the switch rather than the
+          // method keeps the refresh below, which takes the row with it.
+          guard let editor = target?.paletteEditorController else {
+            report(.unavailable)
+            break
+          }
 
           try document(editor)
         case .global:

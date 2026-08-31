@@ -19,10 +19,17 @@
     private let chrome: PaletteChromeView
     private var embeddedController: NSViewController?
 
-    init(title: String) {
-      chrome = PaletteChromeView(title: title)
+    init(title: String, contentSize: NSSize) {
+      chrome = PaletteChromeView(title: title, contentSize: contentSize)
 
       super.init(nibName: nil, bundle: nil)
+
+      // A borderless panel has no title bar of its own to size it, so the
+      // chrome states the size the window should open at.
+      preferredContentSize = NSSize(
+        width: contentSize.width,
+        height: contentSize.height + PaletteMetrics.headerHeight
+      )
     }
 
     @available(*, unavailable)
@@ -52,7 +59,10 @@
     private let paletteViewController: PalettePanelViewController
 
     init(definition: PaletteDefinition) {
-      paletteViewController = PalettePanelViewController(title: definition.title)
+      paletteViewController = PalettePanelViewController(
+        title: definition.title,
+        contentSize: definition.contentSize
+      )
 
       var styleMask: NSWindow.StyleMask = [.borderless, .closable, .nonactivatingPanel]
       if case .resizable = definition.sizing {
@@ -84,13 +94,16 @@
       isMovableByWindowBackground = false
       collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
       animationBehavior = .utilityWindow
-      contentViewController = paletteViewController
 
+      // The limits go in before the content view controller, which resizes the
+      // window to the controller's preferred size as it is attached.
       configureSizing(definition.sizing, preferredContentSize: panelSize)
+      contentViewController = paletteViewController
 
       // Center first; setFrameAutosaveName restores a previous placement.
       center()
       _ = setFrameAutosaveName(Self.frameAutosavePrefix + definition.kind.identifier)
+      growToMinimumContentSize()
     }
 
     @available(*, unavailable)
@@ -130,6 +143,23 @@
         )
       }
     }
+
+    /// A frame restored from user defaults can be smaller than the palette can
+    /// show anything in — one saved by a build that collapsed the panel, say.
+    /// Growing back is the only way out for a palette the user cannot resize.
+    private func growToMinimumContentSize() {
+      let size = contentRect(forFrameRect: frame).size
+      guard size.width < contentMinSize.width || size.height < contentMinSize.height else {
+        return
+      }
+
+      setContentSize(
+        NSSize(
+          width: max(size.width, contentMinSize.width),
+          height: max(size.height, contentMinSize.height)
+        )
+      )
+    }
   }
 
   /// The header uses standard controls so keyboard focus and VoiceOver stay native.
@@ -143,14 +173,14 @@
     private let contentHost = NSView()
     private weak var embeddedView: NSView?
 
-    init(title: String) {
+    init(title: String, contentSize: NSSize) {
       titleLabel = NSTextField(labelWithString: title)
 
       super.init(frame: .zero)
 
       configureAppearance()
       configureHeader(title: title)
-      configureLayout()
+      configureLayout(contentSize: contentSize)
     }
 
     @available(*, unavailable)
@@ -224,7 +254,7 @@
       header.interactiveControl = closeButton
     }
 
-    private func configureLayout() {
+    private func configureLayout(contentSize: NSSize) {
       for child in [header, contentHost] {
         child.translatesAutoresizingMaskIntoConstraints = false
         addSubview(child)
@@ -261,6 +291,26 @@
         contentHost.trailingAnchor.constraint(equalTo: trailingAnchor),
         contentHost.bottomAnchor.constraint(equalTo: bottomAnchor),
       ])
+
+      applyDeclaredSize(contentSize)
+    }
+
+    /// The embedded palette bodies scroll, so they contribute no height of
+    /// their own: left at that, the chrome fits its header alone and a panel
+    /// that takes its size from its content opens as a bare title bar.
+    ///
+    /// The priority sits below `windowSizeStayPut`, so a resizable panel's own
+    /// frame still wins once the user drags its edge.
+    private func applyDeclaredSize(_ contentSize: NSSize) {
+      let size = [
+        contentHost.widthAnchor.constraint(equalToConstant: contentSize.width),
+        contentHost.heightAnchor.constraint(equalToConstant: contentSize.height),
+      ]
+      for constraint in size {
+        constraint.priority = .defaultLow
+      }
+
+      NSLayoutConstraint.activate(size)
     }
 
     @objc private func closePalette() {
@@ -279,12 +329,17 @@
       true
     }
 
+    /// `point` arrives in the superview's coordinates, so it has to be
+    /// converted before it means anything here: comparing it against `bounds`
+    /// as it stands misses every header that is not at the origin, which is
+    /// every header on a panel taller than its own title bar.
     override func hitTest(_ point: NSPoint) -> NSView? {
-      guard bounds.contains(point) else { return nil }
+      let localPoint = convert(point, from: superview)
+      guard bounds.contains(localPoint) else { return nil }
       guard let interactiveControl else { return self }
 
-      let controlPoint = convert(point, to: interactiveControl)
-      return interactiveControl.hitTest(controlPoint) ?? self
+      // The control is a subview, so it hit-tests in this view's coordinates.
+      return interactiveControl.hitTest(localPoint) ?? self
     }
 
     override func mouseDown(with event: NSEvent) {

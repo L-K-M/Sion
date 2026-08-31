@@ -310,6 +310,15 @@
       let stack = NSStackView(views: [control, percentageLabel])
       stack.orientation = .horizontal
       stack.alignment = .centerY
+      // The percentage is the item's trailing edge and, unlike the segmented
+      // control beside it, carries no bezel of its own to hold it off the edge
+      // of the toolbar's backing.
+      stack.edgeInsets = NSEdgeInsets(
+        top: 0,
+        left: 0,
+        bottom: 0,
+        right: ZoomStatus.percentageTrailingInset
+      )
 
       let item = NSToolbarItem(itemIdentifier: .zoom)
       item.label = "Zoom"
@@ -556,6 +565,7 @@
 
   private enum ZoomStatus {
     static let percentageScale: CGFloat = 100
+    static let percentageTrailingInset: CGFloat = 8
   }
 
   private enum ZoomCommand: Int, CaseIterable {

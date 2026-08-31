@@ -54,7 +54,9 @@ semantics.
 Inspector, library, and history use a typed content factory for two containers:
 a transient `NSPopover` and a borderless floating `NSPanel`. The instances
 share their current document target. Each palette is an app-global singleton
-that retargets to the front document and selection.
+that retargets to the front document and selection. The panel states the
+palette's declared size itself: it is borderless, so it has no title bar to
+size it, and the palette bodies scroll rather than report a height of their own.
 
 ## Linux
 

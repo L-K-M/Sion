@@ -53,6 +53,29 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     XCTAssertEqual(label.accessibilityLabel(), "Zoom level")
   }
 
+  func testZoomToolbarKeepsRoomAfterThePercentage() throws {
+    _ = NSApplication.shared
+    let windowController = try makeZoomWindowController()
+    defer { windowController.close() }
+
+    let item = try zoomToolbarItem(
+      from: windowController,
+      placement: .installed
+    )
+    let stack = try XCTUnwrap(item.view as? NSStackView)
+    let label = try zoomPercentageLabel(in: item)
+
+    stack.setFrameSize(stack.fittingSize)
+    stack.layoutSubtreeIfNeeded()
+
+    // The percentage has no bezel of its own, so the stack has to hold it off
+    // the trailing edge of the toolbar item.
+    XCTAssertGreaterThanOrEqual(
+      stack.bounds.maxX - label.frame.maxX,
+      ZoomToolbarSpacing.minimumTrailingInset
+    )
+  }
+
   func testZoomPercentageTracksInstalledToolbarItem() throws {
     _ = NSApplication.shared
     let windowController = try makeZoomWindowController()
@@ -512,6 +535,10 @@ private enum ZoomTestCommand {
   static let zoomInSegment = 2
   static let action = NSSelectorFromString("performZoomCommand:")
   static let actualSizeMagnification: CGFloat = 1
+}
+
+private enum ZoomToolbarSpacing {
+  static let minimumTrailingInset: CGFloat = 8
 }
 
 private enum ZoomToolbarTestPlacement {

@@ -18,6 +18,55 @@ final class PalettePanelTests: XCTestCase {
     XCTAssertTrue(header.mouseDownCanMoveWindow)
   }
 
+  func testPanelSizesItsChromeAndContentFromTheDefinition() throws {
+    _ = NSApplication.shared
+    let panel = makePanel()
+    let content = PaletteTestContent()
+    panel.embed(content)
+    let chrome = try XCTUnwrap(panel.contentView)
+
+    // The palette's own 320 points plus the panel's 24pt header. The palette
+    // bodies scroll and so fit to nothing on their own: without a size stated
+    // here the chrome fits its header alone and the panel opens as a bare pill.
+    XCTAssertEqual(chrome.fittingSize.width, PalettePanelTestGeometry.contentSize.width)
+    XCTAssertEqual(
+      chrome.fittingSize.height,
+      PalettePanelTestGeometry.contentSize.height + PalettePanelTestGeometry.headerHeight
+    )
+
+    chrome.setFrameSize(chrome.fittingSize)
+    chrome.layoutSubtreeIfNeeded()
+
+    XCTAssertEqual(content.view.frame.size, PalettePanelTestGeometry.contentSize)
+  }
+
+  func testHeaderHitTestingReachesTheCloseButtonAndTheDragRegion() throws {
+    _ = NSApplication.shared
+    let panel = makePanel()
+    let chrome = try XCTUnwrap(panel.contentView)
+    chrome.setFrameSize(chrome.fittingSize)
+    chrome.layoutSubtreeIfNeeded()
+
+    let header = try XCTUnwrap(chrome.descendants.first { $0 is NSVisualEffectView })
+    let closeButton = try XCTUnwrap(chrome.descendants.compactMap { $0 as? NSButton }.first)
+
+    // `hitTest` takes points in the header's superview, which is the chrome.
+    // The header sits at the top of an unflipped chrome, so a header that only
+    // looks at its own bounds misses every click that lands on it.
+    let onCloseButton = chrome.convert(
+      NSPoint(x: closeButton.bounds.midX, y: closeButton.bounds.midY),
+      from: closeButton
+    )
+    let onDragRegion = chrome.convert(
+      NSPoint(x: header.bounds.maxX - 4, y: header.bounds.midY),
+      from: header
+    )
+
+    XCTAssertIdentical(header.hitTest(onCloseButton), closeButton)
+    XCTAssertIdentical(header.hitTest(onDragRegion), header)
+    XCTAssertNil(header.hitTest(NSPoint(x: chrome.bounds.midX, y: chrome.bounds.midY)))
+  }
+
   func testCloseButtonClosesPanel() throws {
     _ = NSApplication.shared
     let panel = makePanel()
@@ -68,7 +117,7 @@ final class PalettePanelTests: XCTestCase {
       definition: PaletteDefinition(
         kind: PaletteKind("tests.inspector"),
         title: PalettePanelTestCopy.title,
-        contentSize: NSSize(width: 300, height: 320)
+        contentSize: PalettePanelTestGeometry.contentSize
       )
     )
   }
@@ -76,6 +125,11 @@ final class PalettePanelTests: XCTestCase {
 
 private enum PalettePanelTestCopy {
   static let title = "Palette Panel Test"
+}
+
+private enum PalettePanelTestGeometry {
+  static let contentSize = NSSize(width: 300, height: 320)
+  static let headerHeight: CGFloat = 24
 }
 
 @MainActor

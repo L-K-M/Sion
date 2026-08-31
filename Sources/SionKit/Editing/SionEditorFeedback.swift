@@ -4,6 +4,7 @@
   enum SionEditorFeedback: Equatable {
     enum Context: Equatable {
       case mermaidSource
+      case library
     }
 
     enum MermaidSourcePreservation: Equatable {
@@ -16,14 +17,25 @@
       case pasteMermaid
     }
 
+    /// Why a library command could not do what it was asked to.
+    enum LibraryFailure: Equatable {
+      case full
+      case tooLarge
+      case unavailable
+      case itemUnavailable
+    }
+
     case mermaidSourcePreserved(MermaidSourcePreservation)
     case commandFailed(Command)
+    case libraryCommandFailed(LibraryFailure)
 
     var context: Context {
       // Paste and import share one banner slot, so a later success clears it.
       switch self {
       case .mermaidSourcePreserved, .commandFailed:
         .mermaidSource
+      case .libraryCommandFailed:
+        .library
       }
     }
 
@@ -42,6 +54,14 @@
         "Mermaid could not be pasted. The document was not changed."
       case .commandFailed(.importMermaid):
         "Mermaid could not be imported. The document was not changed."
+      case .libraryCommandFailed(.full):
+        "The library is full. Remove an item and try again."
+      case .libraryCommandFailed(.tooLarge):
+        "That selection is too large to keep in the library."
+      case .libraryCommandFailed(.unavailable):
+        "The library could not be updated. Nothing was changed."
+      case .libraryCommandFailed(.itemUnavailable):
+        "That library item could not be placed. The document was not changed."
       }
     }
 
@@ -55,6 +75,25 @@
       return .mermaidSourcePreserved(
         .omissions(firstLine: firstOmission.line, count: omissions.count)
       )
+    }
+  }
+
+  extension SionEditorFeedback.LibraryFailure {
+    /// Maps what the stores throw onto what the banner can say about it.
+    init(_ error: Error) {
+      guard let libraryError = error as? SceneLibraryError else {
+        self = .unavailable
+        return
+      }
+
+      switch libraryError {
+      case .libraryIsFull:
+        self = .full
+      case .payloadTooLarge:
+        self = .tooLarge
+      case .malformedStorage, .unsupportedVersion, .duplicateItem, .itemNotFound:
+        self = .unavailable
+      }
     }
   }
 

@@ -253,9 +253,87 @@
     }
 
     @discardableResult
-    func insertSelectionPayload(_ data: Data, at point: SionPoint) throws -> [ElementID] {
+    func insertSelectionPayload(
+      _ data: Data,
+      at point: SionPoint,
+      undoName: String = "Paste"
+    ) throws -> [ElementID] {
       let payload = try SceneSelectionPayload(data: data)
-      return try insertPayload(payload, centeredAt: point, undoName: "Paste")
+      return try insertPayload(payload, centeredAt: point, undoName: undoName)
+    }
+
+    /// The library the front document carries with it, empty when it has none.
+    ///
+    /// Storage a future build wrote is not readable here, and neither is
+    /// storage some other tool put under the same key. Either way the palette
+    /// shows nothing rather than refusing to open, and the writes below leave
+    /// what they cannot read alone.
+    var documentLibrary: SceneLibrary {
+      (try? SceneLibrary(portableValue: documentLibraryStorage)) ?? SceneLibrary()
+    }
+
+    @discardableResult
+    func addSelectionToDocumentLibrary(named name: String) throws -> SceneLibraryItem {
+      let payload = try selectionPayloadData()
+      var library = try writableDocumentLibrary()
+      let item = try library.add(payload: payload, name: name)
+      try storeDocumentLibrary(library, undoName: "Add to Library")
+      return item
+    }
+
+    func removeDocumentLibraryItem(id: String) throws {
+      var library = try writableDocumentLibrary()
+      try library.remove(id: id)
+      try storeDocumentLibrary(library, undoName: "Remove from Library")
+    }
+
+    func renameDocumentLibraryItem(id: String, to name: String) throws {
+      var library = try writableDocumentLibrary()
+      try library.rename(id: id, to: name)
+      try storeDocumentLibrary(library, undoName: "Rename Library Item")
+    }
+
+    /// The library's stored form, before anything decodes it. The palette
+    /// compares this to tell an edit that touched the library from the many
+    /// that did not.
+    var documentLibraryStorage: PortableValue? {
+      editor.document.scene.extensions[SceneLibrary.extensionKey]
+    }
+
+    /// The one decode a mutation needs. Overwriting storage this build cannot
+    /// read would discard whatever wrote it, so a document that carries
+    /// something else under the key is left untouched and the command says so.
+    private func writableDocumentLibrary() throws -> SceneLibrary {
+      guard let library = try? SceneLibrary(portableValue: documentLibraryStorage) else {
+        throw SceneLibraryError.malformedStorage
+      }
+
+      return library
+    }
+
+    private func storeDocumentLibrary(_ library: SceneLibrary, undoName: String) throws {
+      try perform(
+        name: undoName,
+        command: .setSceneExtension(
+          key: SceneLibrary.extensionKey,
+          value: library.items.isEmpty ? nil : library.portableValue
+        )
+      )
+    }
+
+    /// What a stored selection is called before anyone renames it: the one
+    /// element's own name if it has one, else what it is, else how many.
+    var selectionLibraryName: String {
+      let elements = selectedElements
+      guard let element = elements.first, elements.count == 1 else {
+        return "\(elements.count) Objects"
+      }
+
+      if let name = element.name?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+        return name
+      }
+
+      return element.displayName
     }
 
     /// Copies the selection one grid pitch aside; a repeat after moving the

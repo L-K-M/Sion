@@ -802,6 +802,56 @@
       attemptEdit { try editorController.revealHiddenElements() }
     }
 
+    @objc func addSelectionToDocumentLibrary(_ sender: Any?) {
+      addSelectionToLibrary { name in
+        try editorController.addSelectionToDocumentLibrary(named: name)
+      }
+    }
+
+    @objc func addSelectionToGlobalLibrary(_ sender: Any?) {
+      addSelectionToLibrary { name in
+        let payload = try editorController.selectionPayloadData()
+        try SionGlobalLibrary.shared.add(payload: payload, name: name)
+      }
+    }
+
+    /// The stored name is the one the inspector would show for the selection,
+    /// which is the only name it has until someone renames it in the palette.
+    private func addSelectionToLibrary(_ store: (String) throws -> Void) {
+      guard editorController.canCopySelection else { return }
+
+      do {
+        try store(editorController.selectionLibraryName)
+      } catch {
+        NSLog("Add to library failed: %@", String(describing: error))
+        editorFeedback(
+          .show(.libraryCommandFailed(SionEditorFeedback.LibraryFailure(error)))
+        )
+      }
+    }
+
+    /// A right click acts on what is under it, so the menu it opens always
+    /// describes what it would change: an element outside the selection
+    /// replaces it, one inside keeps the whole selection, and bare canvas
+    /// clears it.
+    override func menu(for event: NSEvent) -> NSMenu? {
+      cancelActiveDrag()
+      commitTextEditing()
+      window?.makeFirstResponder(self)
+
+      let point = modelPoint(from: event)
+      guard let element = editorController.element(at: point) else {
+        editorController.select(nil)
+        return SionCanvasContextMenu.make()
+      }
+
+      if !editorController.selection.contains(element.id) {
+        editorController.select(element.id)
+      }
+
+      return SionCanvasContextMenu.make()
+    }
+
     /// AppKit discovers menu validation through Objective-C responder dispatch.
     @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
       switch menuItem.action {
@@ -839,6 +889,9 @@
         return editorController.canSetSelectionLockState(.editable)
       case #selector(hideSelection(_:)):
         return editorController.canHideSelection
+      case #selector(addSelectionToDocumentLibrary(_:)),
+        #selector(addSelectionToGlobalLibrary(_:)):
+        return editorController.canCopySelection
       case #selector(revealHiddenElements(_:)):
         return editorController.canRevealHiddenElements
       case #selector(NSResponder.performTextFinderAction(_:)),

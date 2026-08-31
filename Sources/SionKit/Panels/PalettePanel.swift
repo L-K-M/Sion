@@ -7,6 +7,9 @@
     static let borderWidth: CGFloat = 1
     static let closeButtonSize: CGFloat = 18
     static let horizontalInset: CGFloat = 7
+    /// Past any display, but stated rather than left to whatever an unset
+    /// `contentMaxSize` reports: the drag below clamps against it.
+    static let maximumContentSize = NSSize(width: 10_000, height: 10_000)
   }
 
   /// Native, compact chrome around a borderless palette panel.
@@ -19,8 +22,12 @@
     private let chrome: PaletteChromeView
     private var embeddedController: NSViewController?
 
-    init(title: String, contentSize: NSSize) {
-      chrome = PaletteChromeView(title: title, contentSize: contentSize)
+    init(title: String, contentSize: NSSize, isResizable: Bool) {
+      chrome = PaletteChromeView(
+        title: title,
+        contentSize: contentSize,
+        isResizable: isResizable
+      )
 
       super.init(nibName: nil, bundle: nil)
 
@@ -59,15 +66,18 @@
     private let paletteViewController: PalettePanelViewController
 
     init(definition: PaletteDefinition) {
-      paletteViewController = PalettePanelViewController(
-        title: definition.title,
-        contentSize: definition.contentSize
-      )
-
       var styleMask: NSWindow.StyleMask = [.borderless, .closable, .nonactivatingPanel]
+      var isResizable = false
       if case .resizable = definition.sizing {
         styleMask.insert(.resizable)
+        isResizable = true
       }
+
+      paletteViewController = PalettePanelViewController(
+        title: definition.title,
+        contentSize: definition.contentSize,
+        isResizable: isResizable
+      )
 
       let panelSize = NSSize(
         width: definition.contentSize.width,
@@ -141,6 +151,7 @@
           width: minimumContentSize.width,
           height: minimumContentSize.height + PaletteMetrics.headerHeight
         )
+        contentMaxSize = PaletteMetrics.maximumContentSize
       }
     }
 
@@ -208,7 +219,7 @@
     private let contentHost = NSView()
     private weak var embeddedView: NSView?
 
-    init(title: String, contentSize: NSSize) {
+    init(title: String, contentSize: NSSize, isResizable: Bool) {
       titleLabel = NSTextField(labelWithString: title)
 
       super.init(frame: .zero)
@@ -216,6 +227,10 @@
       configureAppearance()
       configureHeader(title: title)
       configureLayout(contentSize: contentSize)
+
+      guard isResizable else { return }
+
+      installResizeBorder()
     }
 
     @available(*, unavailable)
@@ -330,6 +345,23 @@
       applyDeclaredSize(contentSize)
     }
 
+    /// A borderless window has no frame view to resize it from, so the panel
+    /// grows its own edges: an overlay that claims only a band along the sides
+    /// and the bottom and lets every other point through to the palette below.
+    /// The top edge is left to the header, which drags the panel.
+    private func installResizeBorder() {
+      let border = PaletteResizeBorderView()
+      border.translatesAutoresizingMaskIntoConstraints = false
+      addSubview(border)
+
+      NSLayoutConstraint.activate([
+        border.topAnchor.constraint(equalTo: topAnchor),
+        border.leadingAnchor.constraint(equalTo: leadingAnchor),
+        border.trailingAnchor.constraint(equalTo: trailingAnchor),
+        border.bottomAnchor.constraint(equalTo: bottomAnchor),
+      ])
+    }
+
     /// The embedded palette bodies scroll, so they contribute no height of
     /// their own: left at that, the chrome fits its header alone and a panel
     /// that takes its size from its content opens as a bare title bar.
@@ -379,6 +411,226 @@
 
     override func mouseDown(with event: NSEvent) {
       window?.performDrag(with: event)
+    }
+  }
+
+  /// Drags the window's own edges, standing in for the frame view a borderless
+  /// window does not have.
+  @MainActor
+  final class PaletteResizeBorderView: NSView {
+    /// How far in from an edge still counts as that edge.
+    static let bandWidth: CGFloat = 5
+
+    struct Edges: OptionSet {
+      let rawValue: Int
+
+      static let left = Edges(rawValue: 1 << 0)
+      static let right = Edges(rawValue: 1 << 1)
+      static let bottom = Edges(rawValue: 1 << 2)
+    }
+
+    private struct ResizeDrag {
+      let edges: Edges
+      let startFrame: NSRect
+      let startLocation: NSPoint
+    }
+
+    private var drag: ResizeDrag?
+
+    /// The overlay covers the whole palette, so anything that is not on a band
+    /// has to fall through to the content underneath it.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+      let localPoint = convert(point, from: superview)
+      guard !Self.edges(at: localPoint, in: bounds).isEmpty else { return nil }
+
+      return self
+    }
+
+    /// Cursor rectangles are only consulted for the key window, and a floating
+    /// nonactivating palette is usually not it: the bands would show the plain
+    /// arrow for the whole time a document window has focus, and the resize
+    /// would ship with nothing to find it by. Tracking areas set to
+    /// `.activeAlways` change the pointer either way.
+    override func updateTrackingAreas() {
+      super.updateTrackingAreas()
+
+      for area in trackingAreas {
+        removeTrackingArea(area)
+      }
+
+      for band in Self.cursorBands(in: bounds) {
+        addTrackingArea(
+          NSTrackingArea(
+            rect: band.rect,
+            // A resize calls this back with the pointer inside the band it is
+            // being dragged by. Without `.assumeInside` the replacement area
+            // is never entered and so never exited, and the resize cursor
+            // stays on over the palette once the drag ends.
+            options: [.cursorUpdate, .activeAlways, .assumeInside],
+            owner: self,
+            userInfo: [CursorBand.cursorKey: band.cursor]
+          )
+        )
+      }
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+      guard let cursor = event.trackingArea?.userInfo?[CursorBand.cursorKey] as? NSCursor else {
+        super.cursorUpdate(with: event)
+        return
+      }
+
+      cursor.set()
+    }
+
+    /// Where the pointer changes shape, which is not quite where a drag is
+    /// picked up: the bands here do not overlap, so a corner reads as one
+    /// thing rather than as whichever region was added last.
+    ///
+    /// The corner belongs to the bottom band and shows the vertical arrow,
+    /// while a drag from it still resizes both edges — AppKit publishes no
+    /// diagonal resize cursor to say so.
+    static func cursorBands(in bounds: NSRect) -> [CursorBand] {
+      let band = bandWidth
+      let sideY = bounds.minY + band
+      let sideHeight = max(0, bounds.height - band)
+
+      return [
+        CursorBand(
+          rect: NSRect(x: bounds.minX, y: sideY, width: band, height: sideHeight),
+          cursor: .resizeLeftRight
+        ),
+        CursorBand(
+          rect: NSRect(x: bounds.maxX - band, y: sideY, width: band, height: sideHeight),
+          cursor: .resizeLeftRight
+        ),
+        CursorBand(
+          rect: NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: band),
+          cursor: .resizeUpDown
+        ),
+      ]
+    }
+
+    struct CursorBand {
+      static let cursorKey = "cursor"
+
+      let rect: NSRect
+      let cursor: NSCursor
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+      true
+    }
+
+    /// The header above this view moves the panel on mouse-down; a band has to
+    /// keep the press for itself to resize with it.
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func mouseDown(with event: NSEvent) {
+      guard let window else { return }
+
+      let edges = Self.edges(at: convert(event.locationInWindow, from: nil), in: bounds)
+      guard !edges.isEmpty else { return }
+
+      drag = ResizeDrag(
+        edges: edges,
+        startFrame: window.frame,
+        startLocation: window.convertPoint(toScreen: event.locationInWindow)
+      )
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+      guard let drag, let window else { return }
+
+      // Screen coordinates, because resizing from a leading or bottom edge
+      // moves the window's own origin out from under the pointer.
+      let location = window.convertPoint(toScreen: event.locationInWindow)
+      let frame = Self.resizedFrame(
+        drag.startFrame,
+        edges: drag.edges,
+        translation: NSSize(
+          width: location.x - drag.startLocation.x,
+          height: location.y - drag.startLocation.y
+        ),
+        minimum: Self.frameSize(forContentSize: window.contentMinSize, of: window),
+        maximum: Self.frameSize(forContentSize: window.contentMaxSize, of: window)
+      )
+
+      window.setFrame(frame, display: true)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+      drag = nil
+    }
+
+    /// The bands a point lies on, empty everywhere else. The top is missing on
+    /// purpose: the header owns it, and dragging it moves the panel.
+    static func edges(at point: NSPoint, in bounds: NSRect) -> Edges {
+      guard bounds.contains(point) else { return [] }
+
+      let bandWidth = Self.bandWidth
+
+      var edges = Edges()
+      if point.x - bounds.minX <= bandWidth {
+        edges.insert(.left)
+      }
+      if bounds.maxX - point.x <= bandWidth {
+        edges.insert(.right)
+      }
+      if point.y - bounds.minY <= bandWidth {
+        edges.insert(.bottom)
+      }
+
+      return edges
+    }
+
+    /// The edges opposite the dragged ones stay put, so the palette grows away
+    /// from the pointer rather than sliding under it. The top edge is opposite
+    /// every band there is, which is what keeps the header in place.
+    static func resizedFrame(
+      _ startFrame: NSRect,
+      edges: Edges,
+      translation: NSSize,
+      minimum: NSSize,
+      maximum: NSSize
+    ) -> NSRect {
+      var width = startFrame.width
+      if edges.contains(.left) {
+        width -= translation.width
+      }
+      if edges.contains(.right) {
+        width += translation.width
+      }
+
+      var height = startFrame.height
+      if edges.contains(.bottom) {
+        height -= translation.height
+      }
+
+      width = clamped(width, minimum: minimum.width, maximum: maximum.width)
+      height = clamped(height, minimum: minimum.height, maximum: maximum.height)
+
+      return NSRect(
+        x: edges.contains(.left) ? startFrame.maxX - width : startFrame.minX,
+        y: startFrame.maxY - height,
+        width: width,
+        height: height
+      )
+    }
+
+    /// A maximum below the minimum would otherwise pin the palette under the
+    /// size it needs; an unset one is already larger than any screen.
+    private static func clamped(
+      _ value: CGFloat,
+      minimum: CGFloat,
+      maximum: CGFloat
+    ) -> CGFloat {
+      min(max(value, minimum), max(minimum, maximum))
+    }
+
+    private static func frameSize(forContentSize contentSize: NSSize, of window: NSWindow) -> NSSize
+    {
+      window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize)).size
     }
   }
 

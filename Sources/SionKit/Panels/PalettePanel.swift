@@ -153,12 +153,16 @@
         return
       }
 
+      // Grow downward. The header is the panel's only grab handle, so a frame
+      // restored near the top of the screen must not push it out of reach.
+      let topLeft = NSPoint(x: frame.minX, y: frame.maxY)
       setContentSize(
         NSSize(
           width: max(size.width, contentMinSize.width),
           height: max(size.height, contentMinSize.height)
         )
       )
+      setFrameTopLeftPoint(topLeft)
     }
   }
 

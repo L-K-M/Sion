@@ -70,9 +70,10 @@ final class SionDocumentWindowControllerTests: XCTestCase {
 
     // The percentage has no bezel of its own, so the stack has to hold it off
     // the trailing edge of the toolbar item.
+    XCTAssertEqual(stack.edgeInsets.right, ZoomToolbarSpacing.trailingInset)
     XCTAssertGreaterThanOrEqual(
       stack.bounds.maxX - label.frame.maxX,
-      ZoomToolbarSpacing.minimumTrailingGap
+      ZoomToolbarSpacing.minimumLaidOutGap
     )
   }
 
@@ -538,11 +539,13 @@ private enum ZoomTestCommand {
 }
 
 private enum ZoomToolbarSpacing {
-  /// The gap is read from the label's frame, which runs wider than the text it
-  /// draws, so it measures a couple of points short of the 8pt inset itself.
-  /// The floor is what matters: without the inset the label ends flush with the
-  /// item, or a little past it.
-  static let minimumTrailingGap: CGFloat = 6
+  static let trailingInset: CGFloat = 8
+
+  /// A stack view arranges its views by their alignment rects, which need not
+  /// match their frames, so a gap measured between frames can read under the
+  /// inset that produced it — here by two points. The floor is the point:
+  /// without the inset the label ends flush with the item, or a little past it.
+  static let minimumLaidOutGap: CGFloat = 6
 }
 
 private enum ZoomToolbarTestPlacement {

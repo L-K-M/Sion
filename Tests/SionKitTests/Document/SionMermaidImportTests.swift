@@ -89,7 +89,10 @@ final class SionMermaidImportTests: XCTestCase {
     let directory = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    XCTAssertNil(document.importMermaid(contentsOf: directory.appendingPathComponent("gone.mmd")))
+    // The read throws to its caller; only the panel command shows an alert.
+    XCTAssertThrowsError(
+      try document.importMermaid(contentsOf: directory.appendingPathComponent("gone.mmd"))
+    )
     XCTAssertTrue(document.editingController.document.scene.elements.isEmpty)
   }
 

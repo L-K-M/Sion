@@ -19,7 +19,7 @@ final class SionDocumentController: NSDocumentController {
   func openMermaidDocument(at url: URL) {
     do {
       let source = try SionMermaidFile.source(at: url)
-      _ = try makeMermaidDocument(source: source, display: true)
+      try makeMermaidDocument(source: source, display: true)
     } catch {
       presentError(error)
     }

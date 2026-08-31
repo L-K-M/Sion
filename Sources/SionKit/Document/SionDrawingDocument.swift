@@ -306,24 +306,24 @@
 
       let panel = SionMermaidFile.makeOpenPanel()
       panel.beginSheetModal(for: window) { [weak self] response in
-        guard response == .OK, let url = panel.url else { return }
+        guard response == .OK, let url = panel.url, let self else { return }
 
-        self?.importMermaid(contentsOf: url)
+        do {
+          try self.importMermaid(contentsOf: url)
+        } catch {
+          self.presentError(error)
+        }
       }
     }
 
-    /// Reads a Mermaid file and inserts it as one undoable command.
+    /// Reads a Mermaid file and inserts it as one undoable command. A read
+    /// failure is thrown rather than presented, so only the command that owns
+    /// the panel puts an alert on screen.
     @discardableResult
-    func importMermaid(contentsOf url: URL) -> SionEditorController.MermaidInsertionResult? {
-      let source: String
-      do {
-        source = try SionMermaidFile.source(at: url)
-      } catch {
-        presentError(error)
-        return nil
-      }
-
-      return insertMermaid(source)
+    func importMermaid(
+      contentsOf url: URL
+    ) throws -> SionEditorController.MermaidInsertionResult? {
+      insertMermaid(try SionMermaidFile.source(at: url))
     }
 
     @discardableResult

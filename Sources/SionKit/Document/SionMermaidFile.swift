@@ -10,9 +10,9 @@
     static let fileExtensions = ["mmd", "mermaid"]
 
     /// Declared text types plus the dynamic types unregistered extensions take.
-    static var contentTypes: [UTType] {
+    /// Resolving them queries Launch Services, which cannot change in-process.
+    static let contentTypes: [UTType] =
       [.plainText, .text] + fileExtensions.compactMap { UTType(filenameExtension: $0) }
-    }
 
     static func makeOpenPanel() -> NSOpenPanel {
       let panel = NSOpenPanel()
@@ -26,7 +26,14 @@
     }
 
     static func source(at url: URL) throws -> String {
-      let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+      // Probe first: a mapped read of an oversized or truncated file can fault
+      // long after the cap would have rejected it.
+      let values = try url.resourceValues(forKeys: [.fileSizeKey])
+      guard (values.fileSize ?? 0) <= maximumByteCount else {
+        throw SionMermaidFileError.tooLarge(url)
+      }
+
+      let data = try Data(contentsOf: url)
       guard data.count <= maximumByteCount else {
         throw SionMermaidFileError.tooLarge(url)
       }

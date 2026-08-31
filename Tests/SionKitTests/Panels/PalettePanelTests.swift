@@ -243,6 +243,18 @@ final class PalettePanelTests: XCTestCase {
       ),
       NSRect(x: 200, y: 244, width: 200, height: 200)
     )
+    // And past the maximum on the way out, with the leading edge still where
+    // the drag started from.
+    XCTAssertEqual(
+      PaletteResizeBorderView.resizedFrame(
+        start,
+        edges: .right,
+        translation: NSSize(width: 5_000, height: 0),
+        minimum: minimum,
+        maximum: maximum
+      ),
+      NSRect(x: 100, y: 100, width: maximum.width, height: 344)
+    )
     // A maximum below the minimum is a palette that cannot show itself; the
     // minimum is what a person can still work in, so it wins.
     XCTAssertEqual(

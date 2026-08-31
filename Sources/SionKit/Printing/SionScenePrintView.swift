@@ -5,6 +5,10 @@
   /// Prints the drawing itself: the content bounds scaled to fit one page and
   /// centered, with no grid, selection handles, magnets, or marquee.
   ///
+  /// The canvas color stays behind too. On screen it is the surface the drawing
+  /// sits on; on paper it would be a slab of ink around the drawing, and paper
+  /// is the surface already.
+  ///
   /// The view is deliberately not flipped, so its coordinate system matches a
   /// plain bitmap context. The model's y-down flip is applied explicitly below,
   /// exactly as offscreen rendering does, which keeps printed output and test
@@ -96,7 +100,7 @@
       let drawingContext = NSGraphicsContext(cgContext: cgContext, flipped: true)
       NSGraphicsContext.current = drawingContext
 
-      drawScene(contentBounds, true)
+      drawScene(contentBounds, false)
       drawingContext.flushGraphics()
     }
   }

@@ -48,6 +48,27 @@ final class SionScenePrintViewTests: XCTestCase {
     XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 100, y: 190)).alphaComponent, 0)
   }
 
+  func testPrintViewLeavesTheCanvasBackdropOffThePage() throws {
+    let view = SionScenePrintView(
+      contentBounds: SionRect(x: 40, y: 60, width: 100, height: 50),
+      pageSize: NSSize(width: 200, height: 200),
+      drawScene: { bounds, fillsBackground in
+        guard fillsBackground else { return }
+
+        NSColor(deviceRed: 0, green: 0, blue: 1, alpha: 1).setFill()
+        NSBezierPath(
+          rect: NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height)
+        ).fill()
+      }
+    )
+
+    let bitmap = try render(view)
+
+    // Paper is the surface already; the canvas color would print as a slab of
+    // ink around the drawing, so the page stays bare where only it would be.
+    XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 100, y: 100)).alphaComponent, 0)
+  }
+
   private func makeView() -> SionScenePrintView {
     SionScenePrintView(
       contentBounds: SionRect(x: 40, y: 60, width: 100, height: 50),

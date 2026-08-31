@@ -53,6 +53,30 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     XCTAssertEqual(label.accessibilityLabel(), "Zoom level")
   }
 
+  func testZoomToolbarKeepsRoomAfterThePercentage() throws {
+    _ = NSApplication.shared
+    let windowController = try makeZoomWindowController()
+    defer { windowController.close() }
+
+    let item = try zoomToolbarItem(
+      from: windowController,
+      placement: .installed
+    )
+    let stack = try XCTUnwrap(item.view as? NSStackView)
+    let label = try zoomPercentageLabel(in: item)
+
+    stack.setFrameSize(stack.fittingSize)
+    stack.layoutSubtreeIfNeeded()
+
+    // The percentage has no bezel of its own, so the stack has to hold it off
+    // the trailing edge of the toolbar item.
+    XCTAssertEqual(stack.edgeInsets.right, ZoomToolbarSpacing.trailingInset)
+    XCTAssertGreaterThanOrEqual(
+      stack.bounds.maxX - label.frame.maxX,
+      ZoomToolbarSpacing.minimumLaidOutGap
+    )
+  }
+
   func testZoomPercentageTracksInstalledToolbarItem() throws {
     _ = NSApplication.shared
     let windowController = try makeZoomWindowController()
@@ -512,6 +536,16 @@ private enum ZoomTestCommand {
   static let zoomInSegment = 2
   static let action = NSSelectorFromString("performZoomCommand:")
   static let actualSizeMagnification: CGFloat = 1
+}
+
+private enum ZoomToolbarSpacing {
+  static let trailingInset: CGFloat = 8
+
+  /// A stack view arranges its views by their alignment rects, which need not
+  /// match their frames, so a gap measured between frames can read under the
+  /// inset that produced it — here by two points. The floor is the point:
+  /// without the inset the label ends flush with the item, or a little past it.
+  static let minimumLaidOutGap: CGFloat = 6
 }
 
 private enum ZoomToolbarTestPlacement {

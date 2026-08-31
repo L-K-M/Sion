@@ -72,9 +72,12 @@ written by a later build survives a round trip through this one. Two stores
 share that model and differ only in how far an entry travels. The document's own
 library is a scene extension under `ch.lkmc.sion.library`, written by the same
 command mechanism as any other edit, so it is undoable and travels in the
-archive. The global one is a JSON file in Application Support, written straight
+archive. The global one lives in Application Support and is written straight
 through: it belongs to the person rather than any document, so there is no undo
-stack it could join. A file that this build cannot read is never overwritten.
+stack it could join. Its index and its payloads are separate files, so a rename
+rewrites the index alone and listing the library never reads an entry's bytes —
+those are fetched when something asks to place one. Storage that this build
+cannot read is never overwritten.
 
 ## Linux
 

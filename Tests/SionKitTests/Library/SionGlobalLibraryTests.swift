@@ -7,57 +7,140 @@ import XCTest
 @MainActor
 final class SionGlobalLibraryTests: XCTestCase {
   func testStoredItemsOutliveTheInstanceThatWroteThem() throws {
-    let fileURL = makeStoreURL()
-    let library = SionGlobalLibrary(fileURL: fileURL)
+    let directory = makeStoreDirectory()
+    let library = SionGlobalLibrary(directoryURL: directory)
     let payload = try payloadData()
 
-    let item = try library.add(payload: payload, name: "Node")
-    try library.rename(id: item.id, to: "Renamed Node")
+    let entry = try library.add(payload: payload, name: "Node")
+    try library.rename(id: entry.id, to: "Renamed Node")
 
-    // A second instance reads the file rather than the first one's memory,
+    // A second instance reads the files rather than the first one's memory,
     // which is what the next launch does.
-    let reopened = SionGlobalLibrary(fileURL: fileURL)
+    let reopened = SionGlobalLibrary(directoryURL: directory)
 
-    XCTAssertEqual(reopened.items.map(\.name), ["Renamed Node"])
-    XCTAssertEqual(reopened.item(id: item.id)?.payload, payload)
+    XCTAssertEqual(reopened.entries.map(\.name), ["Renamed Node"])
+    XCTAssertEqual(try reopened.payload(id: entry.id), payload)
 
-    try library.remove(id: item.id)
+    try library.remove(id: entry.id)
 
-    XCTAssertTrue(SionGlobalLibrary(fileURL: fileURL).items.isEmpty)
+    XCTAssertTrue(SionGlobalLibrary(directoryURL: directory).entries.isEmpty)
   }
 
-  func testAMissingFileAndItsMissingFolderAreAnEmptyLibrary() throws {
-    let fileURL = makeStoreURL()
-    let library = SionGlobalLibrary(fileURL: fileURL)
+  func testARenameRewritesTheIndexAndLeavesThePayloadAlone() throws {
+    let directory = makeStoreDirectory()
+    let library = SionGlobalLibrary(directoryURL: directory)
+    let entry = try library.add(payload: try payloadData(), name: "Node")
 
-    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.deletingLastPathComponent().path))
-    XCTAssertTrue(library.items.isEmpty)
-    XCTAssertTrue(library.isReadable)
+    // Marking the stored file is what makes a rewrite visible: a rename that
+    // re-encoded the whole library would put the payload back over this.
+    let payloadURL = try onlyPayloadURL(in: directory)
+    let sentinel = Data("sentinel".utf8)
+    try sentinel.write(to: payloadURL)
 
-    // The store makes the folder it was pointed at, so a first launch stores.
-    XCTAssertNoThrow(try library.add(payload: try payloadData(), name: "Node"))
-    XCTAssertEqual(SionGlobalLibrary(fileURL: fileURL).items.map(\.name), ["Node"])
+    try library.rename(id: entry.id, to: "Renamed")
+
+    XCTAssertEqual(library.entries.map(\.name), ["Renamed"])
+    XCTAssertEqual(try Data(contentsOf: payloadURL), sentinel)
   }
 
-  func testAFileThisBuildCannotReadIsNeverOverwritten() throws {
-    let fileURL = makeStoreURL()
-    let foreign = Data("{\"format\":\"something-else\"}\n".utf8)
-    // This one has to exist before the store would have made it.
+  func testARowIsListedWithoutReadingItsBytes() throws {
+    let directory = makeStoreDirectory()
+    let library = SionGlobalLibrary(directoryURL: directory)
+    let entry = try library.add(payload: try payloadData(), name: "Node")
+    try FileManager.default.removeItem(at: try onlyPayloadURL(in: directory))
+
+    // A fresh instance has nothing cached, so listing it has to come from the
+    // index alone — a library of large entries is not read in to draw rows.
+    let reopened = SionGlobalLibrary(directoryURL: directory)
+
+    XCTAssertEqual(reopened.entries.map(\.name), ["Node"])
+    XCTAssertThrowsError(try reopened.payload(id: entry.id))
+  }
+
+  func testRemovingAnEntryTakesItsPayloadWithIt() throws {
+    let directory = makeStoreDirectory()
+    let library = SionGlobalLibrary(directoryURL: directory)
+    let entry = try library.add(payload: try payloadData(), name: "Node")
+    let payloadURL = try onlyPayloadURL(in: directory)
+
+    try library.remove(id: entry.id)
+
+    XCTAssertFalse(FileManager.default.fileExists(atPath: payloadURL.path))
+    XCTAssertThrowsError(try library.payload(id: entry.id)) { error in
+      XCTAssertEqual(error as? SceneLibraryError, .itemNotFound(entry.id))
+    }
+  }
+
+  func testTheOneFileLibraryOfAnEarlierBuildIsTakenOver() throws {
+    let directory = makeStoreDirectory()
+    let payload = try payloadData()
+    var legacy = SceneLibrary()
+    let item = try legacy.add(payload: payload, name: "Stored Earlier", id: "legacy")
+    let legacyURL = directory.deletingLastPathComponent()
+      .appendingPathComponent("Library.json")
     try FileManager.default.createDirectory(
-      at: fileURL.deletingLastPathComponent(),
+      at: legacyURL.deletingLastPathComponent(),
       withIntermediateDirectories: true
     )
-    try foreign.write(to: fileURL)
+    try legacy.dataRepresentation().write(to: legacyURL)
 
-    let library = SionGlobalLibrary(fileURL: fileURL)
+    let library = SionGlobalLibrary(directoryURL: directory)
+
+    XCTAssertEqual(library.entries, [SceneLibraryEntry(id: "legacy", name: item.name)])
+    XCTAssertEqual(try library.payload(id: "legacy"), payload)
+    // Removed only once its contents are stored in the new layout.
+    XCTAssertFalse(FileManager.default.fileExists(atPath: legacyURL.path))
+    XCTAssertEqual(SionGlobalLibrary(directoryURL: directory).entries.count, 1)
+  }
+
+  func testAMissingIndexAndItsMissingFolderAreAnEmptyLibrary() throws {
+    let directory = makeStoreDirectory()
+    let library = SionGlobalLibrary(directoryURL: directory)
+
+    XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+    XCTAssertTrue(library.entries.isEmpty)
+    XCTAssertTrue(library.isReadable)
+
+    // The store makes the folders it was pointed at, so a first launch stores.
+    XCTAssertNoThrow(try library.add(payload: try payloadData(), name: "Node"))
+    XCTAssertEqual(SionGlobalLibrary(directoryURL: directory).entries.map(\.name), ["Node"])
+  }
+
+  func testAnIndexThisBuildCannotReadIsNeverOverwritten() throws {
+    let directory = makeStoreDirectory()
+    let indexURL = directory.appendingPathComponent("index.json")
+    let foreign = Data("{\"format\":\"something-else\"}\n".utf8)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try foreign.write(to: indexURL)
+
+    let library = SionGlobalLibrary(directoryURL: directory)
 
     XCTAssertFalse(library.isReadable)
     XCTAssertThrowsError(try library.add(payload: try payloadData(), name: "Node"))
-    XCTAssertEqual(try Data(contentsOf: fileURL), foreign)
+    XCTAssertEqual(try Data(contentsOf: indexURL), foreign)
+  }
+
+  func testAnIndexMayNotNameAPayloadOutsideTheLibrary() {
+    for name in ["", ".", "..", "../escape.json", "sub/escape.json", "colon:escape"] {
+      XCTAssertFalse(GlobalLibraryIndex.isSafePayloadFileName(name), name)
+    }
+
+    XCTAssertTrue(GlobalLibraryIndex.isSafePayloadFileName("A0BE-1234.json"))
+
+    let escaping = Data(
+      """
+      {"format":"sion-library-index","version":1,\
+      "items":[{"id":"a","name":"A","payload":"../../secrets.json"}]}
+      """.utf8
+    )
+
+    XCTAssertThrowsError(try GlobalLibraryIndex(data: escaping)) { error in
+      XCTAssertEqual(error as? SceneLibraryError, .malformedStorage)
+    }
   }
 
   func testEveryChangeAnnouncesItselfSoOpenPalettesCatchUp() throws {
-    let library = SionGlobalLibrary(fileURL: makeStoreURL())
+    let library = SionGlobalLibrary(directoryURL: makeStoreDirectory())
     var changeCount = 0
     let observer = NotificationCenter.default.addObserver(
       forName: SionGlobalLibrary.didChangeNotification,
@@ -68,22 +151,33 @@ final class SionGlobalLibraryTests: XCTestCase {
     }
     defer { NotificationCenter.default.removeObserver(observer) }
 
-    let item = try library.add(payload: try payloadData(), name: "Node")
-    try library.rename(id: item.id, to: "Renamed")
-    try library.remove(id: item.id)
+    let entry = try library.add(payload: try payloadData(), name: "Node")
+    try library.rename(id: entry.id, to: "Renamed")
+    try library.remove(id: entry.id)
 
     XCTAssertEqual(changeCount, 3)
   }
 
-  /// A directory that does not exist yet, so the store has to create its own.
-  private func makeStoreURL() -> URL {
-    let directory = FileManager.default.temporaryDirectory
+  /// A library folder that does not exist yet, so the store has to make its
+  /// own, inside a container the legacy file could also sit in.
+  private func makeStoreDirectory() -> URL {
+    let container = FileManager.default.temporaryDirectory
       .appendingPathComponent("SionGlobalLibraryTests-\(UUID().uuidString)")
     addTeardownBlock {
-      try? FileManager.default.removeItem(at: directory)
+      try? FileManager.default.removeItem(at: container)
     }
 
-    return directory.appendingPathComponent("Library.json")
+    return container.appendingPathComponent("Library")
+  }
+
+  private func onlyPayloadURL(in directory: URL) throws -> URL {
+    let payloads = try FileManager.default.contentsOfDirectory(
+      at: directory.appendingPathComponent("payloads"),
+      includingPropertiesForKeys: nil
+    )
+
+    XCTAssertEqual(payloads.count, 1)
+    return try XCTUnwrap(payloads.first)
   }
 
   private func payloadData() throws -> Data {

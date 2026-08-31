@@ -15,6 +15,37 @@ final class SceneLibraryTests: XCTestCase {
     XCTAssertEqual(try SceneLibrary(portableValue: library.portableValue), library)
     XCTAssertEqual(try SceneLibrary(data: library.dataRepresentation()), library)
     XCTAssertEqual(library.item(id: first.id), first)
+
+    // What a palette draws its rows from, in the same order and without the
+    // bytes behind them.
+    XCTAssertEqual(
+      library.entries,
+      [
+        SceneLibraryEntry(id: second.id, name: "Wide Node"),
+        SceneLibraryEntry(id: first.id, name: "Node"),
+      ]
+    )
+  }
+
+  func testTheTwoStoresAgreeOnWhenALibraryIsFull() throws {
+    XCTAssertNoThrow(
+      try SceneLibraryLimits.validateAddition(
+        payloadByteCount: SceneLibraryLimits.maximumPayloadByteCount,
+        itemCount: SceneLibraryLimits.maximumItemCount - 1
+      )
+    )
+    XCTAssertThrowsError(
+      try SceneLibraryLimits.validateAddition(
+        payloadByteCount: SceneLibraryLimits.maximumPayloadByteCount + 1,
+        itemCount: 0
+      )
+    )
+    XCTAssertThrowsError(
+      try SceneLibraryLimits.validateAddition(
+        payloadByteCount: 1,
+        itemCount: SceneLibraryLimits.maximumItemCount
+      )
+    )
   }
 
   func testAnAbsentStoreReadsAsAnEmptyLibraryAndAnEmptyOneDoesNot() throws {

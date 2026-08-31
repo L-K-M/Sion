@@ -18,6 +18,21 @@ public struct SceneLibraryItem: Equatable, Sendable {
   }
 }
 
+/// An item's identity and label, without its bytes.
+///
+/// Listing a library needs only this; placing an entry is what needs the
+/// payload. A store large enough for the difference to matter keeps the two
+/// apart on disk and reads the bytes when something asks for them.
+public struct SceneLibraryEntry: Equatable, Sendable {
+  public let id: String
+  public var name: String
+
+  public init(id: String, name: String) {
+    self.id = id
+    self.name = name
+  }
+}
+
 /// An ordered collection of library items, portable enough to live either in a
 /// scene's extensions or in a file of its own.
 public struct SceneLibrary: Equatable, Sendable {
@@ -98,12 +113,10 @@ public struct SceneLibrary: Equatable, Sendable {
     name: String,
     id: String = UUID().uuidString
   ) throws -> SceneLibraryItem {
-    guard payload.count <= SceneLibraryLimits.maximumPayloadByteCount else {
-      throw SceneLibraryError.payloadTooLarge(byteCount: payload.count)
-    }
-    guard items.count < SceneLibraryLimits.maximumItemCount else {
-      throw SceneLibraryError.libraryIsFull(itemCount: items.count)
-    }
+    try SceneLibraryLimits.validateAddition(
+      payloadByteCount: payload.count,
+      itemCount: items.count
+    )
     guard !items.contains(where: { $0.id == id }) else {
       throw SceneLibraryError.duplicateItem(id)
     }
@@ -111,7 +124,7 @@ public struct SceneLibrary: Equatable, Sendable {
     _ = try SceneSelectionPayload(data: payload)
     let item = SceneLibraryItem(
       id: id,
-      name: Self.normalized(name),
+      name: SceneLibraryNaming.normalized(name),
       payload: payload
     )
     items.insert(item, at: 0)
@@ -131,24 +144,19 @@ public struct SceneLibrary: Equatable, Sendable {
       throw SceneLibraryError.itemNotFound(id)
     }
 
-    items[index].name = Self.normalized(name)
+    items[index].name = SceneLibraryNaming.normalized(name)
   }
 
   public func item(id: String) -> SceneLibraryItem? {
     items.first { $0.id == id }
   }
 
-  private static let formatIdentifier = "sion-library"
-
-  /// A name is a label in a list, so it is trimmed, kept to one line, and
-  /// bounded. An empty one would leave an unclickable-looking row behind.
-  private static func normalized(_ name: String) -> String {
-    let singleLine = name.components(separatedBy: .newlines).joined(separator: " ")
-    let collapsed = singleLine.trimmingCharacters(in: .whitespaces)
-    guard !collapsed.isEmpty else { return SceneLibraryCopy.unnamedItem }
-
-    return String(collapsed.prefix(SceneLibraryLimits.maximumNameLength))
+  /// What a palette needs to draw its rows.
+  public var entries: [SceneLibraryEntry] {
+    items.map { SceneLibraryEntry(id: $0.id, name: $0.name) }
   }
+
+  private static let formatIdentifier = "sion-library"
 
   private static func decodedItem(_ value: PortableValue) throws -> SceneLibraryItem {
     guard case .object(let fields) = value,
@@ -163,7 +171,11 @@ public struct SceneLibrary: Equatable, Sendable {
       throw SceneLibraryError.malformedStorage
     }
 
-    return SceneLibraryItem(id: id, name: normalized(name), payload: payload)
+    return SceneLibraryItem(
+      id: id,
+      name: SceneLibraryNaming.normalized(name),
+      payload: payload
+    )
   }
 }
 
@@ -173,6 +185,29 @@ public enum SceneLibraryLimits {
   public static let maximumItemCount = 200
   public static let maximumPayloadByteCount = 512 * 1_024
   public static let maximumNameLength = 120
+
+  /// The one place a library decides whether it has room for another entry,
+  /// so the two stores cannot come to different answers.
+  public static func validateAddition(payloadByteCount: Int, itemCount: Int) throws {
+    guard payloadByteCount <= maximumPayloadByteCount else {
+      throw SceneLibraryError.payloadTooLarge(byteCount: payloadByteCount)
+    }
+    guard itemCount < maximumItemCount else {
+      throw SceneLibraryError.libraryIsFull(itemCount: itemCount)
+    }
+  }
+}
+
+public enum SceneLibraryNaming {
+  /// A name is a label in a list, so it is trimmed, kept to one line, and
+  /// bounded. An empty one would leave an unclickable-looking row behind.
+  public static func normalized(_ name: String) -> String {
+    let singleLine = name.components(separatedBy: .newlines).joined(separator: " ")
+    let collapsed = singleLine.trimmingCharacters(in: .whitespaces)
+    guard !collapsed.isEmpty else { return SceneLibraryCopy.unnamedItem }
+
+    return String(collapsed.prefix(SceneLibraryLimits.maximumNameLength))
+  }
 }
 
 public enum SceneLibraryCopy {

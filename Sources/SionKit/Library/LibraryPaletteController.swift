@@ -140,16 +140,16 @@
     }
 
     /// Places a stored item at the middle of what the document is showing.
+    ///
+    /// This is where an entry's bytes are read: a global one is a file of its
+    /// own, and a row is drawn without ever opening it.
     func insert(_ reference: ItemReference) {
       guard let target else { return }
-      guard let item = item(for: reference) else {
-        report(.itemUnavailable)
-        return
-      }
 
       do {
+        let bytes = try payload(for: reference)
         _ = try target.paletteEditorController.insertSelectionPayload(
-          item.payload,
+          bytes,
           at: target.canvasVisibleCenter,
           undoName: LibraryCopy.insertUndoName
         )
@@ -175,12 +175,27 @@
       }
     }
 
-    func item(for reference: ItemReference) -> SceneLibraryItem? {
+    func entry(for reference: ItemReference) -> SceneLibraryEntry? {
       switch reference.scope {
       case .document:
-        target?.paletteEditorController.documentLibrary.item(id: reference.id)
+        target?.paletteEditorController.documentLibrary.entries
+          .first { $0.id == reference.id }
       case .global:
-        globalLibrary.item(id: reference.id)
+        globalLibrary.entry(id: reference.id)
+      }
+    }
+
+    private func payload(for reference: ItemReference) throws -> Data {
+      switch reference.scope {
+      case .document:
+        guard let item = target?.paletteEditorController.documentLibrary.item(id: reference.id)
+        else {
+          throw SceneLibraryError.itemNotFound(reference.id)
+        }
+
+        return item.payload
+      case .global:
+        return try globalLibrary.payload(id: reference.id)
       }
     }
 
@@ -216,8 +231,8 @@
 
     @objc private func renameLibraryItem(_ sender: NSMenuItem) {
       guard let reference = sender.representedObject as? ItemReference,
-        let item = item(for: reference),
-        let name = Self.promptForName(current: item.name)
+        let entry = entry(for: reference),
+        let name = Self.promptForName(current: entry.name)
       else {
         return
       }
@@ -306,10 +321,10 @@
     }
 
     private func currentItems() -> [ItemDescription] {
-      let documentItems = target?.paletteEditorController.documentLibrary.items ?? []
+      let documentEntries = target?.paletteEditorController.documentLibrary.entries ?? []
 
-      return documentItems.map { ItemDescription(scope: .document, item: $0) }
-        + globalLibrary.items.map { ItemDescription(scope: .global, item: $0) }
+      return documentEntries.map { ItemDescription(scope: .document, entry: $0) }
+        + globalLibrary.entries.map { ItemDescription(scope: .global, entry: $0) }
     }
 
     /// A stored item shown in the list: no payload, because the list is
@@ -318,9 +333,9 @@
       let reference: ItemReference
       let name: String
 
-      init(scope: Scope, item: SceneLibraryItem) {
-        reference = ItemReference(scope: scope, id: item.id)
-        name = item.name
+      init(scope: Scope, entry: SceneLibraryEntry) {
+        reference = ItemReference(scope: scope, id: entry.id)
+        name = entry.name
       }
     }
 

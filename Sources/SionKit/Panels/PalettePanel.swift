@@ -179,13 +179,18 @@
       setFrame(visible.map { Self.constrained(anchored, to: $0) } ?? anchored, display: false)
     }
 
-    /// Slides `rect` inside `visible` without resizing it, which leaves a rect
-    /// wider or taller than the screen starting at the screen's own edge.
+    /// Slides `rect` inside `visible` without resizing it.
+    ///
+    /// A rect that does not fit gives up a different edge per axis. Too wide
+    /// starts at the leading edge, since the header runs the whole width and
+    /// stays grabbable from either end. Too tall keeps its top edge on screen
+    /// and lets the body hang off the bottom: the body scrolls, and the header
+    /// is the only handle the panel has.
     static func constrained(_ rect: NSRect, to visible: NSRect) -> NSRect {
       NSRect(
         origin: NSPoint(
           x: min(max(rect.minX, visible.minX), max(visible.minX, visible.maxX - rect.width)),
-          y: min(max(rect.minY, visible.minY), max(visible.minY, visible.maxY - rect.height))
+          y: min(max(rect.minY, visible.minY), visible.maxY - rect.height)
         ),
         size: rect.size
       )

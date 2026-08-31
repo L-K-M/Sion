@@ -92,6 +92,15 @@ final class PalettePanelTests: XCTestCase {
       PalettePanel.constrained(NSRect(x: 40, y: 0, width: 1200, height: 344), to: visible),
       NSRect(x: 0, y: 0, width: 1200, height: 344)
     )
+    // Taller than the screen: the header keeps its place on screen and the
+    // body, which scrolls, is what hangs off.
+    XCTAssertEqual(
+      PalettePanel.constrained(
+        NSRect(x: 100, y: 0, width: size.width, height: 900),
+        to: visible
+      ).maxY,
+      visible.maxY
+    )
     // A frame that already fits stays where it was put.
     let placed = NSRect(x: 100, y: 100, width: size.width, height: size.height)
     XCTAssertEqual(PalettePanel.constrained(placed, to: visible), placed)

@@ -70,6 +70,9 @@ final class SionGlobalLibraryTests: XCTestCase {
     // being replaced between the write that bounded it and the read.
     try Data(count: overLimit).write(to: try onlyPayloadURL(in: directory))
 
+    // The count is what the capped read returned, which is one byte past the
+    // limit however large the file grew: finding out the rest would mean
+    // asking the file, which is the lookup the bounded read does without.
     XCTAssertThrowsError(try library.payload(id: entry.id)) { error in
       XCTAssertEqual(error as? SceneLibraryError, .payloadTooLarge(byteCount: overLimit))
     }

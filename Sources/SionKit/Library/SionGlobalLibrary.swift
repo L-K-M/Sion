@@ -63,6 +63,9 @@
       let limit = SceneLibraryLimits.maximumPayloadByteCount
       let bytes = try handle.read(upToCount: limit + 1) ?? Data()
       guard bytes.count <= limit else {
+        // The capped read length rather than what is on disk, deliberately:
+        // asking the file how big it really is is the lookup this read exists
+        // to do without.
         throw SceneLibraryError.payloadTooLarge(byteCount: bytes.count)
       }
 

@@ -193,11 +193,63 @@ final class SionDrawingDocumentTests: XCTestCase {
 
     XCTAssertNil(saveError)
     XCTAssertEqual(document.fileURL, url)
-    XCTAssertEqual(document.displayName, savedTitle)
     XCTAssertEqual(windowController.window?.title, savedTitle)
 
     let package = try SionArchive.decode(Data(contentsOf: url))
     XCTAssertEqual(package.document.title, savedTitle)
+  }
+
+  func testSaveAsHidesTheOwnedExtensionRegardlessOfCase() async throws {
+    let document = makeDocument()
+    document.makeWindowControllers()
+    let windowController = try XCTUnwrap(
+      document.windowControllers.first as? SionDocumentWindowController
+    )
+    defer { windowController.close() }
+
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString,
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let savedTitle = "Renamed Diagram"
+    let filename = "\(savedTitle).\(SionDrawingDocument.filenameExtension.uppercased())"
+    let url = directory.appendingPathComponent(filename)
+    let saveError: Error? = await withCheckedContinuation { continuation in
+      document.save(
+        to: url,
+        ofType: SionDrawingDocument.typeIdentifier,
+        for: .saveAsOperation
+      ) { error in
+        continuation.resume(returning: error)
+      }
+    }
+
+    XCTAssertNil(saveError)
+    XCTAssertEqual(document.fileURL, url)
+    XCTAssertEqual(windowController.window?.title, "Renamed Diagram")
+  }
+
+  func testWindowTitleStripsOnlyTheOwnedExtension() throws {
+    let document = makeDocument()
+    document.makeWindowControllers()
+    let windowController = try XCTUnwrap(
+      document.windowControllers.first as? SionDocumentWindowController
+    )
+    defer { windowController.close() }
+
+    XCTAssertEqual(windowController.windowTitle(forDocumentDisplayName: "Untitled"), "Untitled")
+    XCTAssertEqual(windowController.windowTitle(forDocumentDisplayName: ".sion"), ".sion")
+    XCTAssertEqual(
+      windowController.windowTitle(forDocumentDisplayName: "Diagram.SION"),
+      "Diagram"
+    )
+    XCTAssertEqual(
+      windowController.windowTitle(forDocumentDisplayName: "Diagram.sion.sion"),
+      "Diagram.sion"
+    )
   }
 
   func testAutosaveElsewhereKeepsAuthoredTitle() throws {

@@ -35,6 +35,11 @@
       canvasView.beginTextEditing(id)
     }
 
+    /// Document-level commands report through the canvas's banner.
+    func presentEditorFeedback(_ request: SionEditorFeedbackRequest) {
+      feedbackPresenter.handle(request)
+    }
+
     func renderPreviewPNG() -> Data? {
       canvasView.renderPreviewPNG()
     }
@@ -259,13 +264,10 @@
         target: self,
         action: #selector(selectTool(_:))
       )
-      control.selectedSegment = editorController.tool.rawValue
       control.segmentStyle = .texturedRounded
       control.setAccessibilityLabel("Editing tool")
-      for tool in SionEditorController.Tool.allCases {
-        control.setToolTip(tool.help, forSegment: tool.rawValue)
-      }
       toolControl = control
+      synchronizeUI()
 
       let item = NSToolbarItem(itemIdentifier: .tools)
       item.label = "Tools"
@@ -337,7 +339,16 @@
     @objc private func selectTool(_ sender: NSSegmentedControl) {
       guard let tool = SionEditorController.Tool(rawValue: sender.selectedSegment) else { return }
 
-      editorController.setTool(tool)
+      // The control sends its action once per click, from inside its own mouse
+      // tracking, so the event AppKit is dispatching carries the click count.
+      selectTool(tool, clickCount: NSApplication.shared.currentEvent?.clickCount ?? 1)
+    }
+
+    /// Split from the action so tests can supply the click count that only a
+    /// live event provides. One click arms a single use; the second click
+    /// upgrades the same tool in place.
+    func selectTool(_ tool: SionEditorController.Tool, clickCount: Int) {
+      editorController.setTool(tool, persistence: clickCount >= 2 ? .sticky : .oneShot)
       window?.makeFirstResponder(canvasView)
     }
 
@@ -357,7 +368,31 @@
     }
 
     private func synchronizeUI() {
-      toolControl?.selectedSegment = editorController.tool.rawValue
+      guard let toolControl else { return }
+
+      toolControl.selectedSegment = editorController.tool.rawValue
+      for tool in SionEditorController.Tool.allCases {
+        toolControl.setToolTip(toolTip(for: tool), forSegment: tool.rawValue)
+      }
+      toolControl.setAccessibilityValue(toolAccessibilityValue)
+    }
+
+    /// The active tool advertises the mode it is in; the others advertise the
+    /// gesture that makes a tool stay active, which is the only hidden one.
+    private func toolTip(for tool: SionEditorController.Tool) -> String {
+      guard tool != .select else { return tool.help }
+      guard tool == editorController.tool else {
+        return "\(tool.help). Double-click to keep the tool active"
+      }
+
+      return "\(tool.help). \(editorController.toolPersistence.summary)"
+    }
+
+    var toolAccessibilityValue: String {
+      let tool = editorController.tool
+      guard tool != .select else { return tool.title }
+
+      return "\(tool.title). \(editorController.toolPersistence.summary)"
     }
 
     private var zoomPercentageText: String {

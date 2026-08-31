@@ -291,6 +291,74 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     return SionDocumentWindowController(editorController: editorController)
   }
 
+  func testSingleClickArmsAToolAndASecondClickKeepsItActive() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    windowController.selectTool(.rectangle, clickCount: 1)
+
+    XCTAssertEqual(editorController.tool, .rectangle)
+    XCTAssertEqual(editorController.toolPersistence, .oneShot)
+
+    windowController.selectTool(.rectangle, clickCount: 2)
+
+    XCTAssertEqual(editorController.tool, .rectangle)
+    XCTAssertEqual(editorController.toolPersistence, .sticky)
+  }
+
+  func testToolSegmentsDescribeTheirPersistence() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    let control = try toolsSegmentedControl(in: windowController)
+    windowController.selectTool(.rectangle, clickCount: 1)
+
+    XCTAssertEqual(control.selectedSegment, SionEditorController.Tool.rectangle.rawValue)
+    XCTAssertEqual(
+      control.toolTip(forSegment: SionEditorController.Tool.rectangle.rawValue),
+      "\(SionEditorController.Tool.rectangle.help). Reverts to Select after one use"
+    )
+    XCTAssertEqual(
+      control.toolTip(forSegment: SionEditorController.Tool.circle.rawValue),
+      "\(SionEditorController.Tool.circle.help). Double-click to keep the tool active"
+    )
+    XCTAssertEqual(
+      control.toolTip(forSegment: SionEditorController.Tool.select.rawValue),
+      SionEditorController.Tool.select.help
+    )
+    XCTAssertEqual(
+      windowController.toolAccessibilityValue,
+      "Rounded Rectangle. Reverts to Select after one use"
+    )
+  }
+
+  private func toolsSegmentedControl(
+    in windowController: SionDocumentWindowController
+  ) throws -> NSSegmentedControl {
+    let toolbar = NSToolbar(identifier: "Sion.Tests.Tools")
+    let item = try XCTUnwrap(
+      windowController.toolbar(
+        toolbar,
+        itemForItemIdentifier: NSToolbarItem.Identifier("Sion.Tools"),
+        willBeInsertedIntoToolbar: true
+      )
+    )
+
+    return try XCTUnwrap(item.view as? NSSegmentedControl)
+  }
+
+  private func makeEditorController() throws -> SionEditorController {
+    try SionEditorController(
+      package: SionPackage(document: SionDocument()),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+  }
+
   private func makeZoomWindowController() throws -> SionDocumentWindowController {
     let editorController = try SionEditorController(
       package: SionPackage(document: SionDocument()),

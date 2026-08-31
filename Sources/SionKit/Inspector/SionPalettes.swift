@@ -142,6 +142,7 @@
     private let strokeWidthSlider = NSSlider()
     private let routePopup = NSPopUpButton()
     private let magnetPopup = NSPopUpButton()
+    private let stack = NSStackView()
     private let anchorEditingControls = NSStackView()
     private let anchorEditingInstruction = NSTextField(
       wrappingLabelWithString: AnchorEditingCopy.instruction
@@ -149,7 +150,6 @@
     private let anchorEditingDoneButton = NSButton()
 
     override func loadView() {
-      let stack = NSStackView()
       stack.orientation = .vertical
       stack.alignment = .leading
       stack.spacing = InspectorMetrics.spacing
@@ -177,7 +177,9 @@
       stack.addArrangedSubview(row(label: "Connector anchors", control: magnetPopup))
       stack.addArrangedSubview(anchorEditingControls)
       stack.addArrangedSubview(NSView())
-      view = stack
+      // Anchor editing reveals extra rows, so the body has to be able to
+      // scroll rather than clip inside the palette's declared size.
+      view = scrollingPaletteBody(stack)
     }
 
     var paletteInitialFirstResponder: NSView? { routePopup }
@@ -613,18 +615,7 @@
       stack.addArrangedSubview(
         libraryButton("Text", symbol: "textformat", action: #selector(addText)))
 
-      // The fixed-height palette keeps every labeled entry keyboard reachable.
-      let scrollView = NSScrollView()
-      scrollView.hasVerticalScroller = true
-      scrollView.documentView = stack
-      stack.translatesAutoresizingMaskIntoConstraints = false
-      NSLayoutConstraint.activate([
-        stack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-        stack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-        stack.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-        stack.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-      ])
-      view = scrollView
+      view = scrollingPaletteBody(stack)
     }
 
     func retarget(to target: SionDocumentWindowController?) {
@@ -693,17 +684,7 @@
       stack.spacing = InspectorMetrics.spacing
       stack.edgeInsets = InspectorMetrics.insets
 
-      let scrollView = NSScrollView()
-      scrollView.hasVerticalScroller = true
-      scrollView.documentView = stack
-      stack.translatesAutoresizingMaskIntoConstraints = false
-      NSLayoutConstraint.activate([
-        stack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-        stack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-        stack.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-        stack.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-      ])
-      view = scrollView
+      view = scrollingPaletteBody(stack)
     }
 
     func retarget(to target: SionDocumentWindowController?) {
@@ -757,6 +738,37 @@
       target.commitPendingEdits()
       try? target.paletteEditorController.restoreRevision(identifier: identifier)
     }
+  }
+
+  /// Wraps a palette's document stack in a vertically scrolling body, which
+  /// keeps every labeled entry reachable inside a fixed-size palette.
+  ///
+  /// The stack matches the clip view's width so it only scrolls vertically; its
+  /// height stays intrinsic, which is what lets it grow past the viewport. The
+  /// scroll view contributes no height of its own, so a palette's declared
+  /// content size is what has to size the container — see
+  /// ``PaletteDefinition/applyContentSizing(to:)``.
+  @MainActor
+  private func scrollingPaletteBody(_ stack: NSStackView) -> NSScrollView {
+    let scrollView = NSScrollView()
+    scrollView.hasVerticalScroller = true
+    scrollView.autohidesScrollers = true
+    // The popover and the panel supply their own backing; a second opaque
+    // rectangle inside them only fights their material.
+    scrollView.borderType = .noBorder
+    scrollView.drawsBackground = false
+    scrollView.documentView = stack
+
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    let clipView = scrollView.contentView
+    NSLayoutConstraint.activate([
+      stack.topAnchor.constraint(equalTo: clipView.topAnchor),
+      stack.leadingAnchor.constraint(equalTo: clipView.leadingAnchor),
+      stack.trailingAnchor.constraint(equalTo: clipView.trailingAnchor),
+      stack.widthAnchor.constraint(equalTo: clipView.widthAnchor),
+    ])
+
+    return scrollView
   }
 
   private enum MagnetOption: Int, CaseIterable {

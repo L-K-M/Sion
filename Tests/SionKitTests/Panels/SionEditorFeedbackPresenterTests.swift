@@ -42,7 +42,7 @@ final class SionEditorFeedbackPresenterTests: XCTestCase {
     presenter.attach(to: host)
     presenter.handle(.show(feedback))
 
-    presenter.handle(.clear(.mermaidPaste))
+    presenter.handle(.clear(.mermaidSource))
 
     XCTAssertFalse(
       host.descendants.compactMap { $0 as? NSTextField }.contains {

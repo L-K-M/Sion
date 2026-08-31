@@ -119,7 +119,7 @@
       let scene = editorController.document.scene
       let initialBounds = SceneRenderGeometry.editingCanvasBounds(
         of: scene,
-        minimumInfiniteSize: CanvasMetrics.minimumInfiniteSize
+        minimumInfiniteSize: SionCanvasDefaults.minimumInfiniteSize
       )
       editingCanvasBounds = initialBounds
       canvasExtent = scene.canvas.extent
@@ -517,6 +517,9 @@
             to: target.elementID,
             targetPoint: end
           )
+          // A magnet drag started under a placement tool completes the connector
+          // tool only, so an armed placement tool survives it.
+          editorController.toolDidComplete(.connector)
         } catch {
           creationFailureFeedback()
           needsDisplay = true
@@ -779,18 +782,13 @@
       guard let text = pasteboard.string(forType: .string), !text.isEmpty else { return }
 
       if MermaidImporter.looksLikeMermaid(text) {
-        do {
-          let result = try editorController.insertMermaid(text, at: point)
-          switch result {
-          case .diagram:
-            editorFeedback(.clear(.mermaidPaste))
-          case .sourceText(_, let omissions):
-            editorFeedback(.show(.mermaidSourcePreserved(omissions: omissions)))
-          }
-        } catch {
-          NSLog("Mermaid paste failed: %@", String(describing: error))
-          editorFeedback(.show(.commandFailed(.pasteMermaid)))
-        }
+        SionMermaidInsertion.insert(
+          text,
+          at: point,
+          origin: .paste,
+          using: editorController,
+          feedback: editorFeedback
+        )
         return
       }
 
@@ -845,8 +843,18 @@
       textView.setAccessibilityLabel("Edit element text")
 
       let scrollView = NSScrollView(frame: frame)
+      // Pinned to a light appearance: the editor sits on the document's paper,
+      // and a dark system appearance hides the document's own dark ink. The
+      // pin inherits downwards, so the clip view, the text view, the scroller,
+      // and the selection highlight follow while the canvas around them stays
+      // system-driven.
+      scrollView.appearance = NSAppearance(named: Self.lightEditorAppearance)
       scrollView.borderType = .lineBorder
       scrollView.hasVerticalScroller = true
+      // The scroll view is the only painter; locking the default keeps the
+      // bezel and the scroller gutter from exposing a second color.
+      scrollView.drawsBackground = true
+      scrollView.backgroundColor = inlineEditorPaperColor(for: element)
       scrollView.documentView = textView
       addSubview(scrollView)
 
@@ -885,6 +893,14 @@
       textView.defaultParagraphStyle = paragraph
       textView.backgroundColor = .clear
       textView.drawsBackground = false
+      // The caret follows the model ink instead of the appearance-driven
+      // default, which is invisible on paper under a dark system appearance.
+      textView.insertionPointColor = color
+      // A background-only highlight keeps the document's text color while the
+      // selection covers it, which it does from the opening select-all.
+      textView.selectedTextAttributes = [
+        .backgroundColor: NSColor.selectedTextBackgroundColor
+      ]
 
       let horizontalInset = finiteNonnegative(style.insets.leading)
       let topInset = finiteNonnegative(style.insets.top)
@@ -909,6 +925,32 @@
         verticalInset = max(topInset, frame.height - contentHeight - bottomInset)
       }
       textView.textContainerInset = NSSize(width: horizontalInset, height: verticalInset)
+    }
+
+    /// Pinning plain aqua would also drop a user's high-contrast variant, so
+    /// the light appearance follows the accessibility setting.
+    private static var lightEditorAppearance: NSAppearance.Name {
+      NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        ? .accessibilityHighContrastAqua
+        : .aqua
+    }
+
+    /// The inline editor mirrors the surface the element is drawn on, so the
+    /// document's own ink keeps the contrast it has on the canvas: a shape's
+    /// label sits on its fill, everything else on the page. A surface that
+    /// would swallow the ink is replaced, never dimmed.
+    private func inlineEditorPaperColor(for element: SceneElement) -> NSColor {
+      let backdrop: SionColor
+      if case .shape = element.content, case .solid(let fill) = element.style.fill {
+        backdrop = fill
+      } else {
+        backdrop = editorController.document.scene.canvas.background
+      }
+
+      return SionColorBridge.paperColor(
+        backdrop,
+        ink: element.textStyle?.color ?? .primaryInk
+      )
     }
 
     func textDidEndEditing(_ notification: Notification) {
@@ -936,14 +978,33 @@
       return inlineTextUndoManager
     }
 
-    /// Preview rendering draws every element and no interaction chrome.
+    /// Offscreen rendering draws every element and no interaction chrome.
     private var rendersOffscreenPreview = false
+
+    /// Draws every visible element into the current graphics context, which the
+    /// caller has already mapped to the model's y-down space.
+    ///
+    /// This is the shared seam behind the archive preview, image export, and
+    /// printing. The grid, selection handles, connection magnets, the creation
+    /// preview, and the marquee are interaction state, not document content, so
+    /// none of them are drawn here.
+    func drawSceneContent(in bounds: SionRect, fillsBackground: Bool) {
+      rendersOffscreenPreview = true
+      defer { rendersOffscreenPreview = false }
+
+      if fillsBackground {
+        nsColor(editorController.document.scene.canvas.background).setFill()
+        NSBezierPath(rect: nsRect(bounds)).fill()
+      }
+
+      for element in editorController.document.scene.elements
+      where element.visibility == .visible {
+        draw(element)
+      }
+    }
 
     /// Renders the document content into a bounded PNG for the archive's
     /// recovery preview. Grid and selection chrome are omitted.
-    ///
-    /// The explicit flipped context keeps text upright without inheriting a
-    /// display's backing scale.
     func renderPreviewPNG(
       maximumDimension: CGFloat = PreviewMetrics.maximumDimension
     ) -> Data? {
@@ -956,60 +1017,20 @@
         1,
         Double(maximumDimension) / max(content.width, content.height)
       )
-      let pixelWidth = max(1, Int((content.width * scale).rounded()))
-      let pixelHeight = max(1, Int((content.height * scale).rounded()))
       guard
-        let bitmap = NSBitmapImageRep(
-          bitmapDataPlanes: nil,
-          pixelsWide: pixelWidth,
-          pixelsHigh: pixelHeight,
-          bitsPerSample: PreviewMetrics.bitsPerSample,
-          samplesPerPixel: PreviewMetrics.samplesPerPixel,
-          hasAlpha: true,
-          isPlanar: false,
-          colorSpaceName: .calibratedRGB,
-          bytesPerRow: 0,
-          bitsPerPixel: 0
-        ),
-        let bitmapContext = NSGraphicsContext(bitmapImageRep: bitmap)
+        let bitmap = try? SionSceneImageExporter.renderBitmap(
+          content: content,
+          scale: scale,
+          backdrop: .canvas,
+          draw: { bounds, fillsBackground in
+            self.drawSceneContent(in: bounds, fillsBackground: fillsBackground)
+          }
+        )
       else {
         return nil
       }
 
-      let previousContext = NSGraphicsContext.current
-      defer { NSGraphicsContext.current = previousContext }
-
-      // Map the y-down model into the bitmap's y-up pixel coordinates.
-      bitmapContext.cgContext.translateBy(x: 0, y: CGFloat(pixelHeight))
-      bitmapContext.cgContext.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
-      bitmapContext.cgContext.translateBy(
-        x: CGFloat(-content.minX),
-        y: CGFloat(-content.minY)
-      )
-      let renderContext = NSGraphicsContext(
-        cgContext: bitmapContext.cgContext,
-        flipped: true
-      )
-      NSGraphicsContext.current = renderContext
-
-      rendersOffscreenPreview = true
-      defer { rendersOffscreenPreview = false }
-
-      nsColor(editorController.document.scene.canvas.background).setFill()
-      NSBezierPath(rect: nsRect(content)).fill()
-      for element in editorController.document.scene.elements
-      where element.visibility == .visible {
-        draw(element)
-      }
-
-      renderContext.flushGraphics()
-      let encodedBitmap =
-        bitmap.converting(
-          to: NSColorSpace.sRGB,
-          renderingIntent: NSColorRenderingIntent.default
-        ) ?? bitmap
-
-      return encodedBitmap.representation(
+      return bitmap.representation(
         using: NSBitmapImageRep.FileType.png,
         properties: [:]
       )
@@ -1170,6 +1191,7 @@
       to end: SionPoint
     ) {
       let placement = creationPlacement(creation, from: start, to: end)
+      let activeTool = editorController.tool
 
       do {
         switch creation {
@@ -1179,6 +1201,8 @@
           let id = try editorController.insertText("Text", in: placement.frame)
           beginTextEditing(id)
         }
+        // Only a committed insertion spends a one-shot tool; a throw skips this.
+        editorController.toolDidComplete(activeTool)
       } catch {
         creationFailureFeedback()
       }
@@ -1288,6 +1312,9 @@
       }
 
       textEditor.frame = textEditingFrame(for: element).insetBy(dx: -2, dy: -2)
+      // A fill edited from the inspector while the editor is open changes the
+      // surface the text is being written on.
+      textEditor.backgroundColor = inlineEditorPaperColor(for: element)
     }
 
     private func copySelection(to pasteboard: NSPasteboard) -> Bool {
@@ -2559,7 +2586,7 @@
     private func synchronizeCanvasBounds() {
       let scene = editorController.document.scene
       let requiredBounds = editorController.editingCanvasBounds(
-        minimumInfiniteSize: CanvasMetrics.minimumInfiniteSize
+        minimumInfiniteSize: SionCanvasDefaults.minimumInfiniteSize
       )
       let nextBounds: SionRect
       switch (canvasExtent, scene.canvas.extent) {
@@ -2692,8 +2719,10 @@
         return
       }
 
+      let tool = editorController.tool
+      let mode = tool == .select ? "" : " \(editorController.toolPersistence.summary)."
       setAccessibilityHelp(
-        "\(editorController.tool.help). Use Tab to select; use arrow keys to move."
+        "\(tool.help).\(mode) Use Tab to select; use arrow keys to move."
       )
     }
 
@@ -2909,7 +2938,6 @@
   }
 
   private enum CanvasMetrics {
-    static let minimumInfiniteSize = SionSize(width: 4_000, height: 3_000)
     static let majorGridOpacity = 0.18
     static let subdivisionGridOpacity = 0.08
     static let gridScreenLineWidth = 0.5
@@ -2952,8 +2980,6 @@
 
   private enum PreviewMetrics {
     static let maximumDimension: CGFloat = 768
-    static let bitsPerSample = 8
-    static let samplesPerPixel = 4
   }
 
   private enum PasteboardType {

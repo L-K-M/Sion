@@ -2,6 +2,11 @@
   import AppKit
   import SionCore
 
+  /// The editable area an infinite canvas always offers.
+  enum SionCanvasDefaults {
+    static let minimumInfiniteSize = SionSize(width: 4_000, height: 3_000)
+  }
+
   /// Shared placement defaults keep click and drag creation consistent.
   enum SionCreationDefaults {
     static let rectangleSize = SionSize(width: 160, height: 96)
@@ -126,8 +131,25 @@
       }
     }
 
+    /// How long a chosen tool stays active. One click arms a single use; a
+    /// double click keeps the tool until another one is chosen.
+    enum ToolPersistence: Equatable {
+      case oneShot
+      case sticky
+
+      /// Shown in the toolbar tooltip and spoken as the control's value, so the
+      /// mode stays discoverable without custom drawing.
+      var summary: String {
+        switch self {
+        case .oneShot: "Reverts to Select after one use"
+        case .sticky: "Stays active until another tool is chosen"
+        }
+      }
+    }
+
     private(set) var selection = Set<ElementID>()
     private(set) var tool = Tool.select
+    private(set) var toolPersistence = ToolPersistence.sticky
     private(set) var anchorEditingState = AnchorEditingState.inactive
     private var editor: SceneEditor
     private var assets: [AssetID: SionAsset]
@@ -671,6 +693,11 @@
       )
     }
 
+    /// Where a command inserts when no viewport has resolved yet.
+    var defaultInsertionCenter: SionPoint {
+      editingCanvasBounds(minimumInfiniteSize: SionCanvasDefaults.minimumInfiniteSize).center
+    }
+
     func connectorPreview(
       from sourceID: ElementID?,
       sourcePoint: SionPoint,
@@ -710,12 +737,32 @@
       observers[id] = nil
     }
 
-    func setTool(_ newTool: Tool) {
-      guard tool != newTool else { return }
+    /// `.select` is the resting tool and is always sticky. Re-sending the
+    /// active tool with a different persistence upgrades it in place, so the
+    /// second click of a double click is not swallowed; nothing but the mode
+    /// changes then, which keeps an in-progress anchor edit alive.
+    func setTool(_ newTool: Tool, persistence: ToolPersistence = .sticky) {
+      let resolvedPersistence: ToolPersistence = newTool == .select ? .sticky : persistence
+      let changesTool = tool != newTool
+      guard changesTool || toolPersistence != resolvedPersistence else { return }
 
       tool = newTool
-      anchorEditingState = .inactive
+      toolPersistence = resolvedPersistence
+      if changesTool {
+        anchorEditingState = .inactive
+      }
       notifyObservers()
+    }
+
+    /// A view reports one successful use of `completedTool`; an armed one-shot
+    /// tool then hands the canvas back to `.select`. Failed, too-short, and
+    /// cancelled creations must not call this.
+    @discardableResult
+    func toolDidComplete(_ completedTool: Tool) -> Bool {
+      guard completedTool == tool, toolPersistence == .oneShot else { return false }
+
+      setTool(.select)
+      return true
     }
 
     func beginAnchorEditing(on id: ElementID) {
@@ -938,16 +985,24 @@
     }
 
     @discardableResult
-    func insertText(_ text: String, in frame: SionRect) throws -> ElementID {
+    func insertText(
+      _ text: String,
+      in frame: SionRect,
+      actionName: String = "Add Text"
+    ) throws -> ElementID {
       let element = SceneElement.text(frame: frame.standardized, text: text)
 
-      try perform(name: "Add Text", command: .insert(elements: [element], at: nil))
+      try perform(name: actionName, command: .insert(elements: [element], at: nil))
       select(element.id)
       return element.id
     }
 
     @discardableResult
-    func insertText(_ text: String, centeredAt point: SionPoint) throws -> ElementID {
+    func insertText(
+      _ text: String,
+      centeredAt point: SionPoint,
+      actionName: String = "Add Text"
+    ) throws -> ElementID {
       let size = SionCreationDefaults.textSize
       let frame = SionRect(
         x: point.x - (size.width / 2),
@@ -956,7 +1011,7 @@
         height: size.height
       )
 
-      return try insertText(text, in: frame)
+      return try insertText(text, in: frame, actionName: actionName)
     }
 
     @discardableResult
@@ -1035,14 +1090,18 @@
       return element.id
     }
 
-    func insertMermaid(_ source: String, at point: SionPoint) throws -> MermaidInsertionResult {
+    func insertMermaid(
+      _ source: String,
+      at point: SionPoint,
+      actionName: String = "Paste Mermaid"
+    ) throws -> MermaidInsertionResult {
       let report = MermaidImporter.importReport(from: source, centeredAt: point)
       guard report.omissions.isEmpty, !report.elements.isEmpty else {
-        let elementID = try insertText(source, centeredAt: point)
+        let elementID = try insertText(source, centeredAt: point, actionName: actionName)
         return .sourceText(elementID: elementID, omissions: report.omissions)
       }
 
-      try perform(name: "Paste Mermaid", command: .insert(elements: report.elements, at: nil))
+      try perform(name: actionName, command: .insert(elements: report.elements, at: nil))
       let elementIDs = report.elements.map(\.id)
       selection = Set(elementIDs)
       notifyObservers()

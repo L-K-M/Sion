@@ -14,6 +14,12 @@
     public var isPresented: Bool { presentation != nil }
     public var isFloating: Bool { presentation == .panel }
 
+    /// The attached form while it exists. Module-internal; tests read it.
+    var presentedPopover: NSPopover? { popover }
+
+    /// The size this palette was registered with. Module-internal; tests read it.
+    var definitionContentSize: NSSize { definition.contentSize }
+
     private enum PopoverFollowUp: Equatable {
       case closePanel
       case showPanel
@@ -61,12 +67,15 @@
 
       let content = newContent()
       content.retarget()
+      definition.applyContentSizing(to: content.viewController)
 
       let popover = NSPopover()
       popover.behavior = .transient
       popover.animates = true
-      popover.contentSize = definition.contentSize
+      // Attaching a content view controller re-derives the popover's size from
+      // it, so the requested size only survives when it is applied afterwards.
       popover.contentViewController = content.viewController
+      popover.contentSize = definition.contentSize
       popover.delegate = self
 
       self.popover = popover

@@ -25,7 +25,7 @@ final class SionLibraryPaletteTests: XCTestCase {
     let library = try XCTUnwrap(
       PaletteCenter.shared.registeredPalette(for: SionPaletteKind.library.paletteKind)
     )
-    defer { library.close() }
+    defer { drainClose(library) }
     library.showPanel()
 
     let libraryPanels = NSApp.windows.filter { $0.title == "Library" && $0.isVisible }
@@ -85,6 +85,89 @@ final class SionLibraryPaletteTests: XCTestCase {
     undoManager.undo()
 
     XCTAssertEqual(editor.document.scene.elements.count, expectedShapes.count - 1)
+  }
+
+  func testLibraryPopoverPresentsEveryEntryAtTheDeclaredContentSize() throws {
+    _ = NSApplication.shared
+    SionPalettes.shared.registerIfNeeded()
+
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+      styleMask: [.titled, .closable],
+      backing: .buffered,
+      defer: false
+    )
+    let anchor = NSView(frame: NSRect(x: 20, y: 20, width: 80, height: 24))
+    try XCTUnwrap(window.contentView).addSubview(anchor)
+    window.orderFrontRegardless()
+    defer { window.close() }
+
+    let library = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.library.paletteKind)
+    )
+    // A palette is app global, so any earlier presentation has to be gone first.
+    drainClose(library)
+    defer { drainClose(library) }
+
+    library.present(from: anchor)
+
+    let popover = try XCTUnwrap(library.presentedPopover)
+
+    // Asserting against the registered definition keeps the test honest when
+    // the palette is re-declared at another size.
+    XCTAssertEqual(popover.contentSize, library.definitionContentSize)
+
+    let scrollView = try XCTUnwrap(popover.contentViewController?.view as? NSScrollView)
+    scrollView.layoutSubtreeIfNeeded()
+
+    let stack = try XCTUnwrap(scrollView.documentView as? NSStackView)
+    let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }
+
+    XCTAssertEqual(buttons.count, 9)
+    XCTAssertGreaterThanOrEqual(scrollView.frame.width, library.definitionContentSize.width)
+    XCTAssertGreaterThanOrEqual(scrollView.frame.height, library.definitionContentSize.height)
+    XCTAssertGreaterThan(stack.fittingSize.height, libraryViewportHeight)
+    XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
+  }
+
+  func testHistoryPopoverScrollsWithoutItsOwnBackingOrBorder() throws {
+    _ = NSApplication.shared
+    SionPalettes.shared.registerIfNeeded()
+
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+      styleMask: [.titled, .closable],
+      backing: .buffered,
+      defer: false
+    )
+    let anchor = NSView(frame: NSRect(x: 20, y: 20, width: 80, height: 24))
+    try XCTUnwrap(window.contentView).addSubview(anchor)
+    window.orderFrontRegardless()
+    defer { window.close() }
+
+    let history = try XCTUnwrap(
+      PaletteCenter.shared.registeredPalette(for: SionPaletteKind.history.paletteKind)
+    )
+    drainClose(history)
+    defer { drainClose(history) }
+
+    history.present(from: anchor)
+
+    let popover = try XCTUnwrap(history.presentedPopover)
+    let scrollView = try XCTUnwrap(popover.contentViewController?.view as? NSScrollView)
+
+    XCTAssertEqual(popover.contentSize, history.definitionContentSize)
+    XCTAssertTrue(scrollView.hasVerticalScroller)
+    XCTAssertFalse(scrollView.drawsBackground)
+    XCTAssertEqual(scrollView.borderType, .noBorder)
+  }
+
+  private func drainClose(_ palette: Palette) {
+    palette.close()
+    let deadline = Date(timeIntervalSinceNow: 1)
+    while palette.isPresented || palette.presentedPopover != nil, Date() < deadline {
+      RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+    }
   }
 }
 

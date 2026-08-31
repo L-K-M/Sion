@@ -60,6 +60,21 @@ final class SionGlobalLibraryTests: XCTestCase {
     XCTAssertThrowsError(try reopened.payload(id: entry.id))
   }
 
+  func testAPayloadThatGrewOnDiskIsRefusedRatherThanRead() throws {
+    let directory = makeStoreDirectory()
+    let library = SionGlobalLibrary(directoryURL: directory)
+    let entry = try library.add(payload: try payloadData(), name: "Node")
+    let overLimit = SceneLibraryLimits.maximumPayloadByteCount + 1
+
+    // Bounded on the way in, and again on the way out: nothing stops the file
+    // being replaced between the write that bounded it and the read.
+    try Data(count: overLimit).write(to: try onlyPayloadURL(in: directory))
+
+    XCTAssertThrowsError(try library.payload(id: entry.id)) { error in
+      XCTAssertEqual(error as? SceneLibraryError, .payloadTooLarge(byteCount: overLimit))
+    }
+  }
+
   func testRemovingAnEntryTakesItsPayloadWithIt() throws {
     let directory = makeStoreDirectory()
     let library = SionGlobalLibrary(directoryURL: directory)

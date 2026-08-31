@@ -46,21 +46,27 @@
 
     /// An entry's bytes, read now rather than held since launch.
     ///
-    /// The size is checked before the read: a payload file is bounded when it
-    /// is written, but nothing stops it being replaced afterwards, and this is
-    /// the point where it would be pulled into memory.
+    /// The read is bounded: a payload file is bounded when it is written, but
+    /// nothing stops it being replaced afterwards, and this is the point where
+    /// it would be pulled into memory. One capped read rather than a size
+    /// check and then a read, which a file replaced between the two would have
+    /// walked straight through.
     func payload(id: String) throws -> Data {
       guard let row = index.rows.first(where: { $0.id == id }) else {
         throw SceneLibraryError.itemNotFound(id)
       }
 
       let url = try payloadURL(named: row.payloadFileName)
-      let byteCount = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-      guard byteCount <= SceneLibraryLimits.maximumPayloadByteCount else {
-        throw SceneLibraryError.payloadTooLarge(byteCount: byteCount)
+      let handle = try FileHandle(forReadingFrom: url)
+      defer { try? handle.close() }
+
+      let limit = SceneLibraryLimits.maximumPayloadByteCount
+      let bytes = try handle.read(upToCount: limit + 1) ?? Data()
+      guard bytes.count <= limit else {
+        throw SceneLibraryError.payloadTooLarge(byteCount: bytes.count)
       }
 
-      return try Data(contentsOf: url)
+      return bytes
     }
 
     @discardableResult
@@ -219,8 +225,10 @@
             payloadFileName: "\(UUID().uuidString).json"
           )
           let url = try payloadURL(named: row.payloadFileName)
-          try write(item.payload, to: url)
+          // Recorded before the write, so the cleanup does not depend on how
+          // far a failing one got.
           written.append(url)
+          try write(item.payload, to: url)
           index.rows.append(row)
         }
 

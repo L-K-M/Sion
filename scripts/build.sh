@@ -33,6 +33,10 @@ fi
 swift test
 
 if [[ "$(uname -s)" != "$HOST_MACOS" ]]; then
+  if ((install_requested || run_requested)); then
+    echo "--install and --run require macOS; only core verification runs here." >&2
+    exit 1
+  fi
   echo "Core verified; app packaging requires macOS."
   exit 0
 fi

@@ -165,7 +165,9 @@
       draw: SionSceneDrawing
     ) throws -> NSBitmapImageRep {
       guard let pixelWidth = pixelCount(content.width * scale),
-        let pixelHeight = pixelCount(content.height * scale)
+        let pixelHeight = pixelCount(content.height * scale),
+        // Each edge can pass its own cap and still ask for a gigabyte.
+        Double(pixelWidth) * Double(pixelHeight) <= Double(ExportMetrics.maximumPixelCount)
       else {
         throw SionExportError.dimensionsUnsupported
       }
@@ -310,5 +312,8 @@
     static let samplesPerPixel = 4
     static let jpegCompressionFactor = 0.9
     static let maximumPixelDimension = 16_384
+    /// 16384 x 8192 at four bytes a pixel is already half a gigabyte, and PNG
+    /// encoding needs its own buffer on top.
+    static let maximumPixelCount = 134_217_728
   }
 #endif

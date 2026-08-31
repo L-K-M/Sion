@@ -132,10 +132,15 @@
     /// Renders scene content for print and image export without needing a
     /// window, so the on-screen canvas keeps its own interaction state.
     private var sceneRenderer: SionSceneRenderer {
-      if let sceneRendererStorage {
+      // Rebuild rather than trust the cache: a renderer bound to a replaced
+      // editing controller would keep exporting the superseded scene.
+      if let sceneRendererStorage,
+        sceneRendererStorage.editorController === editingController
+      {
         return sceneRendererStorage
       }
 
+      sceneRendererStorage?.invalidate()
       let renderer = SionSceneRenderer(editorController: editingController)
       sceneRendererStorage = renderer
       return renderer
@@ -259,16 +264,20 @@
     @objc func exportImage(_ sender: Any?) {
       commitPendingWindowEdits()
 
-      guard let window = windowControllers.first?.window else { return }
+      guard let window = windowForSheet else { return }
 
       let accessory = SionImageExportAccessoryView()
       let panel = NSSavePanel()
       panel.canCreateDirectories = true
       panel.accessoryView = accessory
-      applyImageExportFormat(accessory.options.format, to: panel)
+      var appliedFormat = accessory.options.format
+      applyImageExportFormat(appliedFormat, to: panel)
       accessory.onChange = { [weak self, weak panel] options in
-        guard let self, let panel else { return }
+        // Scale and transparency change neither the type nor the extension,
+        // so they must not overwrite a name the user typed.
+        guard let self, let panel, options.format != appliedFormat else { return }
 
+        appliedFormat = options.format
         self.applyImageExportFormat(options.format, to: panel)
       }
       panel.beginSheetModal(for: window) { [weak self] response in

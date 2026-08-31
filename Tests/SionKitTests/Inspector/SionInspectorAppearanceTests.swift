@@ -46,8 +46,10 @@ final class SionInspectorAppearanceTests: XCTestCase {
       XCTAssertEqual(button.state, .on)
       XCTAssertTrue(try colorWell(labelled: "Drop shadow color", in: fixture).isEnabled)
 
-      button.state = .off
+      // performClick toggles the checkbox itself, so it must not be preset.
       button.performClick(nil)
+
+      XCTAssertEqual(button.state, .off)
 
       let edited = try XCTUnwrap(fixture.editor.document.scene.element(withID: shape.id))
       XCTAssertTrue(edited.style.shadows.isEmpty)

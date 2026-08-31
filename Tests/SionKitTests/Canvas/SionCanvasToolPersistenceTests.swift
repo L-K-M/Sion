@@ -117,13 +117,15 @@ final class SionCanvasToolPersistenceTests: XCTestCase {
     try drag(
       canvas: canvas,
       from: SionPoint(
-        x: sourceFrame.maxX + TestMetrics.magnetDisplayOffset,
+        x: sourceFrame.maxX + SionCanvasView.magnetDisplayOffset,
         y: sourceFrame.center.y
       ),
       to: SionPoint(x: targetFrame.minX + 1, y: targetFrame.center.y)
     )
 
+    // The drag has to have made a connector, not another rectangle.
     XCTAssertEqual(controller.document.scene.elements.count, 3)
+    XCTAssertNotNil(controller.document.scene.elements.last?.content.connector)
     XCTAssertEqual(controller.tool, .rectangle)
     XCTAssertEqual(controller.toolPersistence, .oneShot)
   }
@@ -184,9 +186,4 @@ final class SionCanvasToolPersistenceTests: XCTestCase {
       )
     )
   }
-}
-
-private enum TestMetrics {
-  /// Mirrors the canvas's outward magnet offset, which is view-private.
-  static let magnetDisplayOffset = 12.0
 }

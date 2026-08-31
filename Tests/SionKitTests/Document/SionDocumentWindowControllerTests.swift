@@ -336,6 +336,38 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     )
   }
 
+  func testChoosingAnArmedToolAgainKeepsItActiveWithoutAClickCount() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    // A keyboard or accessibility press reports no click count at all.
+    windowController.selectTool(.rectangle, clickCount: 1)
+    XCTAssertEqual(editorController.toolPersistence, .oneShot)
+
+    windowController.selectTool(.rectangle, clickCount: 1)
+
+    XCTAssertEqual(editorController.tool, .rectangle)
+    XCTAssertEqual(editorController.toolPersistence, .sticky)
+  }
+
+  func testChoosingAToolAgainAfterItWasSpentArmsAnotherSingleUse() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    windowController.selectTool(.rectangle, clickCount: 1)
+    editorController.toolDidComplete(.rectangle)
+    XCTAssertEqual(editorController.tool, .select)
+
+    // Two quick single uses are not a double click.
+    windowController.selectTool(.rectangle, clickCount: 1)
+
+    XCTAssertEqual(editorController.toolPersistence, .oneShot)
+  }
+
   func testToolClickCountIgnoresEventsWithoutAClickCount() throws {
     let key = try XCTUnwrap(
       NSEvent.keyEvent(

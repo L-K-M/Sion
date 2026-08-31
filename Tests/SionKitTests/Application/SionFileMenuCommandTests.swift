@@ -101,6 +101,7 @@ final class SionFileMenuCommandTests: XCTestCase {
   ) {
     let item = menu.item(withTitle: title)
 
+    XCTAssertNotNil(item, "Missing menu item titled '\(title)'", file: file, line: line)
     XCTAssertEqual(item?.action, action, file: file, line: line)
     XCTAssertNil(item?.target, file: file, line: line)
     XCTAssertEqual(item?.keyEquivalent, key, file: file, line: line)

@@ -82,6 +82,10 @@
     /// A view preference, not document state: it changes how dragging behaves,
     /// not what the drawing contains.
     private(set) var snapsToObjects = true
+
+    /// How far a connection point sits outside the outline it belongs to.
+    /// Module-internal so a test can aim at one without copying the number.
+    static var magnetDisplayOffset: Double { CanvasMetrics.magnetOffset }
     private var pasteboardValidation: PasteboardValidation?
 
     /// Everything that determines one measured text layout. Widths quantize

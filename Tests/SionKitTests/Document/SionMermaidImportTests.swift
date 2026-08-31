@@ -47,9 +47,13 @@ final class SionMermaidImportTests: XCTestCase {
     let url = directory.appendingPathComponent("flow.mmd")
     try Data(MermaidFixture.diagram.utf8).write(to: url)
 
+    // The group has to close before the assertions undo it, and a throwing
+    // import must not leave it open.
     undoManager.beginUndoGrouping()
-    let result = try XCTUnwrap(document.importMermaid(contentsOf: url))
+    let imported = Result { try document.importMermaid(contentsOf: url) }
     undoManager.endUndoGrouping()
+
+    let result = try XCTUnwrap(imported.get())
 
     guard case .diagram(let elementIDs) = result else {
       return XCTFail("Expected a diagram insertion")

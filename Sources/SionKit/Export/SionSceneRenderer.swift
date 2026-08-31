@@ -11,7 +11,8 @@
   /// canvas's lifetime and hands out the drawing seam.
   @MainActor
   final class SionSceneRenderer {
-    private let editorController: SionEditorController
+    let editorController: SionEditorController
+
     private var canvasStorage: SionCanvasView?
 
     init(editorController: SionEditorController) {

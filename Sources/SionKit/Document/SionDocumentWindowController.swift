@@ -12,6 +12,7 @@
     private let scrollView = NSScrollView()
     private var toolControl: NSSegmentedControl?
     private var announcedToolAccessibilityValue: String?
+    private var lastToolActivation: (tool: SionEditorController.Tool, at: Date)?
     private weak var zoomPercentageLabel: NSTextField?
     private var zoomPercentageObservation: NSKeyValueObservation?
     private var observerID: UUID?
@@ -376,8 +377,28 @@
     /// live event provides. One click arms a single use; the second click
     /// upgrades the same tool in place.
     func selectTool(_ tool: SionEditorController.Tool, clickCount: Int) {
-      editorController.setTool(tool, persistence: clickCount >= 2 ? .sticky : .oneShot)
+      let keepsToolActive = clickCount >= 2 || isRepeatActivation(of: tool, at: Date())
+      lastToolActivation = (tool, Date())
+      editorController.setTool(tool, persistence: keepsToolActive ? .sticky : .oneShot)
       window?.makeFirstResponder(canvasView)
+    }
+
+    /// A keyboard or accessibility press carries no click count, so choosing a
+    /// tool that is still armed again counts as the double click. Requiring it
+    /// to be armed keeps two quick one-shot uses from turning sticky by
+    /// accident: a spent tool has already handed the canvas back to Select.
+    private func isRepeatActivation(
+      of tool: SionEditorController.Tool,
+      at moment: Date
+    ) -> Bool {
+      guard let lastToolActivation,
+        lastToolActivation.tool == tool,
+        editorController.tool == tool
+      else {
+        return false
+      }
+
+      return moment.timeIntervalSince(lastToolActivation.at) <= NSEvent.doubleClickInterval
     }
 
     @objc private func performZoomCommand(_ sender: NSSegmentedControl) {

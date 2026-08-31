@@ -19,6 +19,29 @@ final class SionSceneImageExporterTests: XCTestCase {
     XCTAssertTrue(SionImageExportFormat.tiff.supportsScale)
   }
 
+  func testPopupOrderMatchesTheRawValuesTheAccessoryViewSelectsBy() {
+    // The accessory view maps a popup index straight onto a raw value, so a
+    // reorder here would silently export the wrong format or scale.
+    XCTAssertEqual(SionImageExportFormat.allCases.map(\.rawValue), Array(0..<4))
+    XCTAssertEqual(SionImageExportScale.allCases.map(\.rawValue), Array(0..<3))
+  }
+
+  func testAnAreaBeyondTheBudgetIsRejectedEvenWhenEachEdgeFits() {
+    var options = SionImageExportOptions()
+    options.scale = .threeX
+
+    // Each edge stays under the per-edge cap; together they do not.
+    XCTAssertThrowsError(
+      try SionSceneImageExporter.data(
+        options: options,
+        contentBounds: SionRect(x: 0, y: 0, width: 5000, height: 4000),
+        draw: { _, _ in }
+      )
+    ) { error in
+      XCTAssertEqual(error as? SionExportError, .dimensionsUnsupported)
+    }
+  }
+
   func testTransparencyAndScaleOptionsResolvePerFormat() {
     var options = SionImageExportOptions()
     options.hasTransparentBackground = true

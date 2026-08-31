@@ -137,6 +137,10 @@ semantics from unknown fields.
 - Unknown keys outside an `extensions` object MUST be rejected, never dropped.
 - Writers SHOULD use reverse-DNS keys inside `extensions`. Readers MUST
   round-trip every extension key unchanged.
+- Sion itself writes one scene extension, `ch.lkmc.sion.library`: the drawing's
+  own library of reusable fragments, as `{ "format": "sion-library",
+  "version": 1, "items": [{ "id", "name", "payload" }] }`, where `payload` is a
+  base64 `sion-selection` document. Another reader keeps it and ignores it.
 
 Elements form a tagged union:
 

@@ -183,11 +183,24 @@ private enum SionMainMenu {
     submenu.addItem(item("Duplicate", action: AppAction.duplicate, key: "d"))
     submenu.addItem(item("Delete", action: AppAction.delete, key: "\u{8}", modifiers: []))
     submenu.addItem(.separator())
+    submenu.addItem(addToLibraryMenu())
+    submenu.addItem(.separator())
     submenu.addItem(item("Select All", action: AppAction.selectAll, key: "a"))
     submenu.addItem(.separator())
     submenu.addItem(findMenu())
     submenu.addItem(spellingMenu())
     return parentItem(title: "Edit", submenu: submenu)
+  }
+
+  /// The two libraries differ only in how far the stored selection travels,
+  /// so the menu names that rather than the storage behind it.
+  private static func addToLibraryMenu() -> NSMenuItem {
+    let submenu = NSMenu(title: "Add to Library")
+    submenu.addItem(
+      item("This Document", action: AppAction.addSelectionToDocumentLibrary))
+    submenu.addItem(
+      item("All Documents", action: AppAction.addSelectionToGlobalLibrary))
+    return parentItem(title: submenu.title, submenu: submenu)
   }
 
   private static func findMenu() -> NSMenuItem {
@@ -353,51 +366,4 @@ private enum SionMainMenu {
     menuItem.tag = action.rawValue
     return menuItem
   }
-}
-
-private enum AppAction {
-  static let actualSize = Selector(("actualSize:"))
-  static let alignBottom = Selector(("alignBottom:"))
-  static let alignCenterHorizontally = Selector(("alignCenterHorizontally:"))
-  static let alignCenterVertically = Selector(("alignCenterVertically:"))
-  static let alignLeading = Selector(("alignLeading:"))
-  static let alignTop = Selector(("alignTop:"))
-  static let alignTrailing = Selector(("alignTrailing:"))
-  static let bringForward = Selector(("bringForward:"))
-  static let bringToFront = Selector(("bringToFront:"))
-  static let close = Selector(("performClose:"))
-  static let copy = Selector(("copy:"))
-  static let cut = Selector(("cut:"))
-  static let delete = Selector(("delete:"))
-  static let distributeHorizontally = Selector(("distributeHorizontally:"))
-  static let distributeVertically = Selector(("distributeVertically:"))
-  static let duplicate = Selector(("duplicate:"))
-  static let exportImage = Selector(("exportImage:"))
-  static let exportMermaid = Selector(("exportMermaid:"))
-  static let exportSVG = Selector(("exportSVG:"))
-  static let hideSelection = Selector(("hideSelection:"))
-  static let importMermaid = Selector(("importMermaid:"))
-  static let lockSelection = Selector(("lockSelection:"))
-  static let newDocumentFromMermaid = Selector(("newDocumentFromMermaid:"))
-  static let pageSetup = #selector(NSDocument.runPageLayout(_:))
-  static let paste = Selector(("paste:"))
-  static let printDocument = #selector(NSDocument.printDocument(_:))
-  static let redo = Selector(("redo:"))
-  static let revealHiddenElements = Selector(("revealHiddenElements:"))
-  static let revertToSaved = #selector(NSDocument.revertToSaved(_:))
-  static let save = Selector(("saveDocument:"))
-  static let saveAs = Selector(("saveDocumentAs:"))
-  static let selectAll = Selector(("selectAll:"))
-  static let sendBackward = Selector(("sendBackward:"))
-  static let sendToBack = Selector(("sendToBack:"))
-  static let showHistory = Selector(("showHistory:"))
-  static let showInspector = Selector(("showInspector:"))
-  static let showLibrary = Selector(("showLibrary:"))
-  static let toggleGridVisibility = Selector(("toggleGridVisibility:"))
-  static let toggleObjectSnapping = Selector(("toggleObjectSnapping:"))
-  static let undo = Selector(("undo:"))
-  static let unlockSelection = Selector(("unlockSelection:"))
-  static let zoomIn = Selector(("zoomIn:"))
-  static let zoomOut = Selector(("zoomOut:"))
-  static let zoomToFit = Selector(("zoomToFit:"))
 }

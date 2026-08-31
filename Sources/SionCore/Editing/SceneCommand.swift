@@ -26,6 +26,9 @@ public enum SceneCommand: Equatable, Sendable {
   case setLockState(elementID: ElementID, lockState: ElementLockState)
   case rename(elementID: ElementID, name: String?)
   case setCanvas(SionCanvas)
+  /// Namespaced scene-level storage; `nil` removes the key. The scene owns it,
+  /// so it travels with the document and undoes with everything else.
+  case setSceneExtension(key: String, value: PortableValue?)
 }
 
 public struct SceneTransaction: Equatable, Sendable {
@@ -139,7 +142,21 @@ extension SceneCommand {
       }
     case .setCanvas(let canvas):
       scene.canvas = canvas
+    case .setSceneExtension(let key, let value):
+      try setSceneExtension(key: key, value: value, in: &scene)
     }
+  }
+
+  private func setSceneExtension(
+    key: String,
+    value: PortableValue?,
+    in scene: inout SionScene
+  ) throws {
+    guard !key.isEmpty else {
+      throw SceneEditingError.invalidExtensionKey(key)
+    }
+
+    scene.extensions[key] = value
   }
 
   private func insert(
@@ -679,6 +696,7 @@ public enum SceneEditingError: Error, Equatable, Sendable {
   case elementNotFound(ElementID)
   case duplicateElementID(ElementID)
   case elementLocked(ElementID)
+  case invalidExtensionKey(String)
   case elementDoesNotContainText(ElementID)
   case elementIsNotConnector(ElementID)
   case elementIsNotShape(ElementID)

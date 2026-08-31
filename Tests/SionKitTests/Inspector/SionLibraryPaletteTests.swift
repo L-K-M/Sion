@@ -38,7 +38,9 @@ final class SionLibraryPaletteTests: XCTestCase {
       descendants.compactMap { $0 as? NSScrollView }.first
     )
     let stack = try XCTUnwrap(scrollView.documentView as? NSStackView)
-    let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }
+    // Built-ins only: a stored library item is a row of its own below them,
+    // and whoever runs this may have some.
+    let buttons = stack.builtInLibraryButtons
     let expectedShapes: [(title: String, kind: ShapeKind, size: SionSize)] = [
       ("Rectangle", .rectangle, SionSize(width: 160, height: 96)),
       (
@@ -115,7 +117,7 @@ final class SionLibraryPaletteTests: XCTestCase {
     scrollView.layoutSubtreeIfNeeded()
 
     let stack = try XCTUnwrap(scrollView.documentView as? NSStackView)
-    let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }
+    let buttons = stack.builtInLibraryButtons
 
     XCTAssertEqual(
       buttons.map(\.title),
@@ -191,5 +193,14 @@ final class SionLibraryPaletteTests: XCTestCase {
 extension NSView {
   fileprivate var libraryTestDescendants: [NSView] {
     subviews + subviews.flatMap(\.libraryTestDescendants)
+  }
+}
+
+extension NSStackView {
+  @MainActor
+  fileprivate var builtInLibraryButtons: [NSButton] {
+    arrangedSubviews
+      .compactMap { $0 as? NSButton }
+      .filter { $0.identifier == LibraryPaletteController.builtInItemIdentifier }
   }
 }

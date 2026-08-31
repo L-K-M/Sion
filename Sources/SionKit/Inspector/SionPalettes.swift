@@ -73,10 +73,11 @@
         for: PaletteDefinition(
           kind: SionPaletteKind.library.paletteKind,
           title: "Library",
-          contentSize: NSSize(width: 280, height: 250)
+          contentSize: NSSize(width: 280, height: 250),
+          sizing: .resizable(minimumContentSize: NSSize(width: 240, height: 180))
         ),
         target: Self.frontWindowController,
-        makeContent: LibraryPaletteController.init
+        makeContent: { LibraryPaletteController(globalLibrary: .shared) }
       )
       PaletteCenter.shared.palette(
         for: PaletteDefinition(
@@ -619,131 +620,6 @@
   }
 
   @MainActor
-  private final class LibraryPaletteController: NSViewController, PaletteContent {
-    typealias Target = SionDocumentWindowController
-
-    private enum LibraryShape: Int, CaseIterable {
-      case rectangle
-      case roundedRectangle
-      case ellipse
-      case diamond
-      case triangle
-      case hexagon
-      case capsule
-      case cylinder
-
-      var title: String {
-        switch self {
-        case .rectangle: "Rectangle"
-        case .roundedRectangle: "Rounded Rectangle"
-        case .ellipse: "Ellipse"
-        case .diamond: "Diamond"
-        case .triangle: "Triangle"
-        case .hexagon: "Hexagon"
-        case .capsule: "Capsule"
-        case .cylinder: "Cylinder"
-        }
-      }
-
-      var symbolName: String {
-        switch self {
-        case .rectangle: "rectangle"
-        case .roundedRectangle: "rectangle.rounded"
-        case .ellipse: "circle"
-        case .diamond: "diamond"
-        case .triangle: "triangle"
-        case .hexagon: "hexagon"
-        case .capsule: "capsule"
-        case .cylinder: "cylinder"
-        }
-      }
-
-      var kind: ShapeKind {
-        switch self {
-        case .rectangle: .rectangle
-        case .roundedRectangle:
-          .roundedRectangle(radius: SceneElementDefaults.cornerRadius)
-        case .ellipse: .ellipse
-        case .diamond: .diamond
-        case .triangle: .triangle
-        case .hexagon: .hexagon
-        case .capsule: .capsule
-        case .cylinder: .cylinder
-        }
-      }
-    }
-
-    private weak var target: SionDocumentWindowController?
-
-    override func loadView() {
-      let stack = NSStackView()
-      stack.orientation = .vertical
-      stack.alignment = .leading
-      stack.spacing = InspectorMetrics.spacing
-      stack.edgeInsets = InspectorMetrics.insets
-
-      for shape in LibraryShape.allCases {
-        stack.addArrangedSubview(libraryButton(for: shape))
-      }
-
-      stack.addArrangedSubview(
-        libraryButton("Text", symbol: "textformat", action: #selector(addText)))
-
-      view = scrollingPaletteBody(stack)
-    }
-
-    func retarget(to target: SionDocumentWindowController?) {
-      self.target = target
-      for case let button as NSButton in view.subviewsRecursive {
-        button.isEnabled = target != nil
-      }
-    }
-
-    @objc private func addShape(_ sender: NSButton) {
-      guard let target, let shape = LibraryShape(rawValue: sender.tag) else { return }
-
-      _ = try? target.paletteEditorController.insertShape(
-        centeredAt: target.canvasVisibleCenter,
-        kind: shape.kind
-      )
-    }
-
-    @objc private func addText() {
-      guard let target else { return }
-
-      guard
-        let id = try? target.paletteEditorController.insertText(
-          "Text",
-          centeredAt: target.canvasVisibleCenter
-        )
-      else {
-        return
-      }
-
-      target.beginTextEditing(id)
-    }
-
-    private func libraryButton(for shape: LibraryShape) -> NSButton {
-      let button = libraryButton(
-        shape.title,
-        symbol: shape.symbolName,
-        action: #selector(addShape(_:))
-      )
-      button.tag = shape.rawValue
-      return button
-    }
-
-    private func libraryButton(_ title: String, symbol: String, action: Selector) -> NSButton {
-      let button = NSButton(title: title, target: self, action: action)
-      button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-      button.imagePosition = .imageLeading
-      button.alignment = .left
-      button.bezelStyle = .recessed
-      return button
-    }
-  }
-
-  @MainActor
   private final class HistoryPaletteController: NSViewController, PaletteContent {
     typealias Target = SionDocumentWindowController
 
@@ -823,7 +699,7 @@
   /// content size is what has to size the container — see
   /// ``PaletteDefinition/applyContentSizing(to:)``.
   @MainActor
-  private func scrollingPaletteBody(_ stack: NSStackView) -> NSScrollView {
+  func scrollingPaletteBody(_ stack: NSStackView) -> NSScrollView {
     let scrollView = NSScrollView()
     scrollView.hasVerticalScroller = true
     scrollView.autohidesScrollers = true
@@ -915,7 +791,7 @@
     }
   }
 
-  private enum InspectorMetrics {
+  enum InspectorMetrics {
     static let spacing = 10.0
     static let insets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
     static let anchorInstructionWidth: CGFloat = 244
@@ -964,19 +840,6 @@
     }
   }
 
-  extension SceneElement {
-    fileprivate var displayName: String {
-      switch content {
-      case .shape: "Shape"
-      case .path: "Path"
-      case .text: "Text"
-      case .image: "Image"
-      case .group: "Group"
-      case .connector: "Connector"
-      }
-    }
-  }
-
   extension ElementContent {
     fileprivate var supportsFill: Bool {
       switch self {
@@ -1011,7 +874,7 @@
   }
 
   extension NSView {
-    fileprivate var subviewsRecursive: [NSView] {
+    var subviewsRecursive: [NSView] {
       subviews + subviews.flatMap(\.subviewsRecursive)
     }
   }

@@ -342,11 +342,15 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     let windowController = SionDocumentWindowController(editorController: editorController)
     defer { windowController.close() }
 
-    // A keyboard or accessibility press reports no click count at all.
-    windowController.selectTool(.rectangle, clickCount: 1)
+    // A key event carries no click count to read, so the mapping reports one
+    // however many times the tool is chosen.
+    let keyPress = SionDocumentWindowController.toolClickCount(for: try makeKeyEvent())
+    XCTAssertEqual(keyPress, 1)
+
+    windowController.selectTool(.rectangle, clickCount: keyPress)
     XCTAssertEqual(editorController.toolPersistence, .oneShot)
 
-    windowController.selectTool(.rectangle, clickCount: 1)
+    windowController.selectTool(.rectangle, clickCount: keyPress)
 
     XCTAssertEqual(editorController.tool, .rectangle)
     XCTAssertEqual(editorController.toolPersistence, .sticky)
@@ -369,20 +373,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
   }
 
   func testToolClickCountIgnoresEventsWithoutAClickCount() throws {
-    let key = try XCTUnwrap(
-      NSEvent.keyEvent(
-        with: .keyDown,
-        location: .zero,
-        modifierFlags: [],
-        timestamp: 0,
-        windowNumber: 0,
-        context: nil,
-        characters: " ",
-        charactersIgnoringModifiers: " ",
-        isARepeat: false,
-        keyCode: 49
-      )
-    )
+    let key = try makeKeyEvent()
     let doubleClick = try XCTUnwrap(
       NSEvent.mouseEvent(
         with: .leftMouseUp,
@@ -400,6 +391,31 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     XCTAssertEqual(SionDocumentWindowController.toolClickCount(for: nil), 1)
     XCTAssertEqual(SionDocumentWindowController.toolClickCount(for: key), 1)
     XCTAssertEqual(SionDocumentWindowController.toolClickCount(for: doubleClick), 2)
+  }
+
+  func testAHeldToolShortcutIsOnePressRatherThanASecondChoice() throws {
+    XCTAssertFalse(SionDocumentWindowController.isAutoRepeat(nil))
+    XCTAssertFalse(SionDocumentWindowController.isAutoRepeat(try makeKeyEvent()))
+    XCTAssertTrue(
+      SionDocumentWindowController.isAutoRepeat(try makeKeyEvent(isARepeat: true))
+    )
+  }
+
+  private func makeKeyEvent(isARepeat: Bool = false) throws -> NSEvent {
+    try XCTUnwrap(
+      NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: " ",
+        charactersIgnoringModifiers: " ",
+        isARepeat: isARepeat,
+        keyCode: 49
+      )
+    )
   }
 
   func testCustomizationPaletteToolsCopyDoesNotStealSynchronization() throws {

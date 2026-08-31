@@ -38,7 +38,10 @@ final class SionScenePrintViewTests: XCTestCase {
 
     // Content 100x50 on a 200x200 page fits at 2x, so the drawing spans the
     // full width and leaves an empty 50pt band above and below it.
-    XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 100, y: 100)).alphaComponent, 1)
+    let centre = try XCTUnwrap(bitmap.colorAt(x: 100, y: 100))
+    XCTAssertEqual(centre.alphaComponent, 1)
+    XCTAssertEqual(centre.redComponent, 1, accuracy: 0.02)
+    XCTAssertEqual(centre.greenComponent, 0, accuracy: 0.02)
     XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 4, y: 100)).alphaComponent, 1)
     XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 196, y: 100)).alphaComponent, 1)
     XCTAssertEqual(try XCTUnwrap(bitmap.colorAt(x: 100, y: 10)).alphaComponent, 0)
@@ -50,7 +53,9 @@ final class SionScenePrintViewTests: XCTestCase {
       contentBounds: SionRect(x: 40, y: 60, width: 100, height: 50),
       pageSize: NSSize(width: 200, height: 200),
       drawScene: { bounds, _ in
-        NSColor.red.setFill()
+        // A device color survives the device-RGB bitmap unchanged, so the
+        // sampled component is exact rather than colour-managed.
+        NSColor(deviceRed: 1, green: 0, blue: 0, alpha: 1).setFill()
         NSBezierPath(
           rect: NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height)
         ).fill()

@@ -7,6 +7,17 @@
     static let minimumInfiniteSize = SionSize(width: 4_000, height: 3_000)
   }
 
+  extension ElementContent {
+    /// A group paints nothing of its own, so it casts no shadow either. The
+    /// editing commands enforce this, not just the controls that expose it.
+    var supportsShadow: Bool {
+      switch self {
+      case .shape, .path, .text, .image, .connector: true
+      case .group: false
+      }
+    }
+  }
+
   /// The drop shadow a newly enabled shadow starts from, and the range the
   /// inspector offers for it.
   enum SionShadowDefaults {
@@ -1327,7 +1338,11 @@
     /// One drop shadow per element, which is what the inspector exposes and
     /// what canvas rendering reads.
     func setShadow(_ shadow: ShadowStyle?, on id: ElementID) throws {
-      guard var element = editor.document.scene.element(withID: id) else { return }
+      guard var element = editor.document.scene.element(withID: id),
+        element.content.supportsShadow
+      else {
+        return
+      }
 
       let shadows = shadow.map { [$0] } ?? []
       guard element.style.shadows != shadows else { return }

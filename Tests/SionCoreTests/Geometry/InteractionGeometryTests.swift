@@ -461,6 +461,31 @@ final class InteractionGeometryTests: XCTestCase {
     }
   }
 
+  func testRotatedBoundsCoverTheBoxAnElementActuallyOccupies() {
+    let frame = SionRect(x: 100, y: 100, width: 200, height: 100)
+
+    assertRect(
+      InteractionGeometry.rotatedBounds(of: ElementGeometry(frame: frame)),
+      equals: frame
+    )
+
+    // A quarter turn swaps the extents around the same center, (200, 150).
+    assertRect(
+      InteractionGeometry.rotatedBounds(
+        of: ElementGeometry(frame: frame, rotationRadians: .pi / 2)
+      ),
+      equals: SionRect(x: 150, y: 50, width: 100, height: 200)
+    )
+
+    // Half a turn is the frame again.
+    assertRect(
+      InteractionGeometry.rotatedBounds(
+        of: ElementGeometry(frame: frame, rotationRadians: .pi)
+      ),
+      equals: frame
+    )
+  }
+
   private func assertRect(
     _ actual: SionRect,
     equals expected: SionRect,

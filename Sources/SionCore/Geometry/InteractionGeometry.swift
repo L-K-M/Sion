@@ -196,6 +196,44 @@ public enum InteractionGeometry {
     )
   }
 
+  /// The axis-aligned box a rotated frame actually occupies. Anything that
+  /// measures an element from outside it — alignment, snapping, export bounds
+  /// — has to use this rather than the stored frame, whose edges a rotated
+  /// element no longer sits on.
+  package static func rotatedBounds(of geometry: ElementGeometry) -> SionRect {
+    let frame = geometry.frame.standardized
+
+    return rotatedBounds(frame, around: frame.center, by: geometry.rotationRadians)
+  }
+
+  package static func rotatedBounds(
+    _ bounds: SionRect,
+    around center: SionPoint,
+    by radians: Double
+  ) -> SionRect {
+    let frame = bounds.standardized
+    guard radians != 0 else { return frame }
+
+    let corners = [
+      SionPoint(x: frame.minX, y: frame.minY),
+      SionPoint(x: frame.maxX, y: frame.minY),
+      SionPoint(x: frame.maxX, y: frame.maxY),
+      SionPoint(x: frame.minX, y: frame.maxY),
+    ].map { rotated($0, around: center, by: radians) }
+
+    let minimumX = corners.map(\.x).min() ?? frame.minX
+    let maximumX = corners.map(\.x).max() ?? frame.maxX
+    let minimumY = corners.map(\.y).min() ?? frame.minY
+    let maximumY = corners.map(\.y).max() ?? frame.maxY
+
+    return SionRect(
+      x: minimumX,
+      y: minimumY,
+      width: maximumX - minimumX,
+      height: maximumY - minimumY
+    )
+  }
+
   public static func rotated(
     _ point: SionPoint,
     around center: SionPoint,

@@ -424,7 +424,11 @@
       shadowColorWell.isEnabled = supportsShadow && shadow != nil
       shadowBlurSlider.isEnabled = shadowColorWell.isEnabled
       shadowColorWell.color = nsColor(shadow?.color ?? SionShadowDefaults.style.color)
-      shadowBlurSlider.doubleValue = shadow?.blurRadius ?? SionShadowDefaults.style.blurRadius
+      // A document can carry a blur the inspector's range does not reach;
+      // clamping it here would silently shrink it on the first drag.
+      let blurRadius = shadow?.blurRadius ?? SionShadowDefaults.style.blurRadius
+      shadowBlurSlider.maxValue = max(SionShadowDefaults.maximumBlurRadius, blurRadius)
+      shadowBlurSlider.doubleValue = blurRadius
     }
 
     private func clearShadowControls() {
@@ -983,14 +987,6 @@
       switch self {
       case .shape, .path, .image, .connector: true
       case .text, .group: false
-      }
-    }
-
-    /// A group paints nothing of its own, so it casts no shadow either.
-    fileprivate var supportsShadow: Bool {
-      switch self {
-      case .shape, .path, .text, .image, .connector: true
-      case .group: false
       }
     }
   }

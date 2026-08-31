@@ -10,6 +10,7 @@ final class SionCanvasResizeAspectTests: XCTestCase {
 
   func testResizingAnImageKeepsItsProportions() throws {
     let (controller, canvas, id) = try makeSelection(.image)
+    defer { canvas.invalidate() }
 
     try dragSouthEastCorner(canvas, to: SionPoint(x: 500, y: 220))
 
@@ -22,6 +23,7 @@ final class SionCanvasResizeAspectTests: XCTestCase {
 
   func testShiftFreesAnImageFromItsProportions() throws {
     let (controller, canvas, id) = try makeSelection(.image)
+    defer { canvas.invalidate() }
 
     try dragSouthEastCorner(canvas, to: SionPoint(x: 500, y: 220), modifierFlags: .shift)
 
@@ -33,6 +35,7 @@ final class SionCanvasResizeAspectTests: XCTestCase {
 
   func testResizingAShapeStaysFree() throws {
     let (controller, canvas, id) = try makeSelection(.shape)
+    defer { canvas.invalidate() }
 
     try dragSouthEastCorner(canvas, to: SionPoint(x: 500, y: 220))
 
@@ -44,6 +47,7 @@ final class SionCanvasResizeAspectTests: XCTestCase {
 
   func testShiftConstrainsAShape() throws {
     let (controller, canvas, id) = try makeSelection(.shape)
+    defer { canvas.invalidate() }
 
     try dragSouthEastCorner(canvas, to: SionPoint(x: 500, y: 220), modifierFlags: .shift)
 

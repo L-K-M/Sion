@@ -354,9 +354,13 @@
     @objc private func selectTool(_ sender: NSSegmentedControl) {
       guard let tool = SionEditorController.Tool(rawValue: sender.selectedSegment) else { return }
 
+      let event = NSApplication.shared.currentEvent
+      // Holding a shortcut is one press, not a second choice of the tool.
+      guard !Self.isAutoRepeat(event) else { return }
+
       // The control sends its action once per click, from inside its own mouse
       // tracking, so the event AppKit is dispatching carries the click count.
-      selectTool(tool, clickCount: Self.toolClickCount(for: NSApplication.shared.currentEvent))
+      selectTool(tool, clickCount: Self.toolClickCount(for: event))
     }
 
     /// `NSEvent.clickCount` traps on anything that is not a mouse event, and
@@ -371,6 +375,13 @@
       default:
         return 1
       }
+    }
+
+    /// `NSEvent.isARepeat` traps on anything that is not a key event.
+    static func isAutoRepeat(_ event: NSEvent?) -> Bool {
+      guard let event, event.type == .keyDown else { return false }
+
+      return event.isARepeat
     }
 
     /// Split from the action so tests can supply the click count that only a

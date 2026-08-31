@@ -52,9 +52,25 @@ final class SionEditorControllerShadowTests: XCTestCase {
     controller.observeChanges { changes += 1 }
     let existing = try XCTUnwrap(try style(of: id, in: controller).shadows.first)
 
+    // Prove the observer fires at all before asserting that it stays quiet.
+    try controller.setShadowEnabled(false, on: id)
+    XCTAssertEqual(changes, 1)
+    try controller.setShadow(existing, on: id)
+    XCTAssertEqual(changes, 2)
+
     try controller.setShadow(existing, on: id)
 
-    XCTAssertEqual(changes, 0)
+    XCTAssertEqual(changes, 2)
+  }
+
+  func testAGroupNeverTakesAShadowEvenThroughTheCommand() throws {
+    let group = SceneElement.group(frame: SionRect(x: 0, y: 0, width: 120, height: 80))
+    let controller = try makeController(elements: [group])
+
+    try controller.setShadowEnabled(true, on: group.id)
+    try controller.setShadowBlurRadius(12, on: group.id)
+
+    XCTAssertTrue(try style(of: group.id, in: controller).shadows.isEmpty)
   }
 
   func testANegativeOrInfiniteBlurIsRefused() throws {

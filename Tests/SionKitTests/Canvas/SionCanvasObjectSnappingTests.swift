@@ -11,6 +11,7 @@ final class SionCanvasObjectSnappingTests: XCTestCase {
 
   func testDraggingLinesAnObjectUpWithANeighboursEdge() throws {
     let (controller, canvas, moving) = try makeDrag()
+    defer { canvas.invalidate() }
 
     // The drag alone would leave the leading edge four points past the anchor's.
     try drag(canvas: canvas, from: SionPoint(x: 430, y: 430), to: SionPoint(x: 134, y: 430))
@@ -20,6 +21,7 @@ final class SionCanvasObjectSnappingTests: XCTestCase {
 
   func testSnappingOffLeavesTheDragExactlyWhereItLanded() throws {
     let (controller, canvas, moving) = try makeDrag()
+    defer { canvas.invalidate() }
     canvas.toggleObjectSnapping(nil)
 
     try drag(canvas: canvas, from: SionPoint(x: 430, y: 430), to: SionPoint(x: 134, y: 430))
@@ -30,6 +32,7 @@ final class SionCanvasObjectSnappingTests: XCTestCase {
 
   func testADragBeyondToleranceIsNotPulledIn() throws {
     let (controller, canvas, moving) = try makeDrag()
+    defer { canvas.invalidate() }
 
     // Twenty points out is well past the snapping tolerance.
     try drag(canvas: canvas, from: SionPoint(x: 430, y: 430), to: SionPoint(x: 150, y: 430))
@@ -37,8 +40,31 @@ final class SionCanvasObjectSnappingTests: XCTestCase {
     XCTAssertEqual(try frame(of: moving, in: controller).minX, 120, accuracy: 0.001)
   }
 
+  func testARotatedNeighbourSnapsOnTheEdgesItActuallyShows() throws {
+    // Turned a quarter turn, the anchor's 200x100 frame occupies x 150...250.
+    var anchor = SceneElement.shape(frame: anchorFrame, kind: .rectangle)
+    anchor.geometry.rotationRadians = .pi / 2
+    let moving = SceneElement.shape(frame: movingFrame, kind: .rectangle)
+    let controller = try SionEditorController(
+      package: SionPackage(
+        document: SionDocument(scene: SionScene(elements: [anchor, moving]))
+      ),
+      undoManagerProvider: { nil },
+      didChange: { _ in }
+    )
+    let canvas = SionCanvasView(editorController: controller)
+    defer { canvas.invalidate() }
+    controller.select(moving.id)
+
+    // Land the leading edge four points past the rotated left edge at 150.
+    try drag(canvas: canvas, from: SionPoint(x: 430, y: 430), to: SionPoint(x: 184, y: 430))
+
+    XCTAssertEqual(try frame(of: moving.id, in: controller).minX, 150, accuracy: 0.001)
+  }
+
   func testTheMenuItemMirrorsTheSnappingState() throws {
     let (_, canvas, _) = try makeDrag()
+    defer { canvas.invalidate() }
     let item = NSMenuItem(
       title: "Snap to Objects",
       action: #selector(SionCanvasView.toggleObjectSnapping(_:)),

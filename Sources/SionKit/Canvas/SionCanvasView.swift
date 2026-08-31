@@ -79,6 +79,7 @@
     private var canvasExtent: CanvasExtent
     private var textRenderCache: [TextRenderKey: TextRender] = [:]
     private var snapGuides: [SceneSnapGuide] = []
+    private var acceptedDragSequence: (number: Int, accepts: Bool)?
     /// A view preference, not document state: it changes how dragging behaves,
     /// not what the drawing contains.
     private(set) var snapsToObjects = true
@@ -429,10 +430,17 @@
       hasImportableImage(in: pasteboard)
     }
 
+    /// `draggingUpdated` fires on every mouse move, so the pasteboard is read
+    /// once per drag session rather than once per frame.
     private func dragOperation(for sender: any NSDraggingInfo) -> NSDragOperation {
-      guard acceptsImageDrop(from: sender.draggingPasteboard) else { return [] }
+      let sequence = sender.draggingSequenceNumber
+      if let acceptedDragSequence, acceptedDragSequence.number == sequence {
+        return acceptedDragSequence.accepts ? .copy : []
+      }
 
-      return .copy
+      let accepts = acceptsImageDrop(from: sender.draggingPasteboard)
+      acceptedDragSequence = (sequence, accepts)
+      return accepts ? .copy : []
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -2483,11 +2491,13 @@
       path.stroke()
     }
 
-    /// The union of what is being dragged, which is what lines up with the rest.
+    /// The union of what is being dragged, which is what lines up with the
+    /// rest. A rotated element does not sit on its stored frame's edges, so
+    /// this measures the box it actually occupies — what the user sees.
     private func selectionBounds() -> SionRect {
       let frames = editorController.selectedElements
         .filter { $0.content.connector == nil }
-        .map { $0.geometry.frame.standardized }
+        .map { InteractionGeometry.rotatedBounds(of: $0.geometry) }
 
       return frames.dropFirst().reduce(frames.first ?? .zero) { $0.union($1) }
     }
@@ -2509,7 +2519,7 @@
             && $0.content.connector == nil
             && !selection.contains($0.id)
         }
-        .map { $0.geometry.frame.standardized }
+        .map { InteractionGeometry.rotatedBounds(of: $0.geometry) }
 
       return SceneSnapping.snap(
         proposedBounds,

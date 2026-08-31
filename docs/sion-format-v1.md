@@ -174,8 +174,8 @@ like any other extension and need not understand it.
 
 `payload` is a base64 `sion-selection` document. Item IDs are opaque strings
 unique within the library; names are single-line and at most 120 characters.
-A library holds at most 200 items and each payload at most 512 KiB, so that a
-library cannot outweigh the drawing it is stored beside.
+Writers MUST keep a library to at most 200 items and each payload to at most
+512 KiB, so a library cannot outweigh the drawing it is stored beside.
 
 ### Selection payloads
 
@@ -188,16 +188,20 @@ with the same rules as `scene.json`.
   "format": "sion-selection",
   "version": 1,
   "elements": [],
-  "assets": [
-    {
-      "id": "sha256:64-lowercase-hex",
-      "mediaType": "image/png",
-      "fileExtension": "png",
-      "originalFilename": "diagram.png",
-      "pixelSize": { "width": 640, "height": 480 },
-      "data": "base64 of the exact bytes"
-    }
-  ]
+  "assets": []
+}
+```
+
+An entry in `assets` carries one asset whole:
+
+```json
+{
+  "id": "sha256:64-lowercase-hex",
+  "mediaType": "image/png",
+  "fileExtension": "png",
+  "originalFilename": "diagram.png",
+  "pixelSize": { "width": 640, "height": 480 },
+  "data": "base64 of the exact bytes"
 }
 ```
 

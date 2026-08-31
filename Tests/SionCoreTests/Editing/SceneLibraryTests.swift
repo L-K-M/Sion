@@ -27,7 +27,9 @@ final class SceneLibraryTests: XCTestCase {
     )
   }
 
-  func testTheTwoStoresAgreeOnWhenALibraryIsFull() throws {
+  /// Both stores call this rather than checking for themselves, which is what
+  /// keeps them from coming to different answers.
+  func testOneCheckBoundsPayloadSizeAndItemCount() throws {
     XCTAssertNoThrow(
       try SceneLibraryLimits.validateAddition(
         payloadByteCount: SceneLibraryLimits.maximumPayloadByteCount,

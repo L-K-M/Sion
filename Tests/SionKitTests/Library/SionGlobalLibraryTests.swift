@@ -53,6 +53,9 @@ final class SionGlobalLibraryTests: XCTestCase {
     // index alone — a library of large entries is not read in to draw rows.
     let reopened = SionGlobalLibrary(directoryURL: directory)
 
+    // One missing payload degrades that one entry, not the whole store: the
+    // library stays writable rather than freezing over a single damaged file.
+    XCTAssertTrue(reopened.isReadable)
     XCTAssertEqual(reopened.entries.map(\.name), ["Node"])
     XCTAssertThrowsError(try reopened.payload(id: entry.id))
   }
@@ -127,6 +130,18 @@ final class SionGlobalLibraryTests: XCTestCase {
 
     XCTAssertTrue(GlobalLibraryIndex.isSafePayloadFileName("A0BE-1234.json"))
 
+    // The positive control: the same document with a safe name decodes, so
+    // the refusal below can only come from the name and not from some other
+    // mismatch in the fixture.
+    let safe = Data(
+      """
+      {"format":"sion-library-index","version":1,\
+      "items":[{"id":"a","name":"A","payload":"A0BE-1234.json"}]}
+      """.utf8
+    )
+
+    XCTAssertEqual(try GlobalLibraryIndex(data: safe).rows.map(\.id), ["a"])
+
     let escaping = Data(
       """
       {"format":"sion-library-index","version":1,\
@@ -137,6 +152,54 @@ final class SionGlobalLibraryTests: XCTestCase {
     XCTAssertThrowsError(try GlobalLibraryIndex(data: escaping)) { error in
       XCTAssertEqual(error as? SceneLibraryError, .malformedStorage)
     }
+  }
+
+  func testAnIndexMayNotRepeatAnIdOrShareAPayloadFile() {
+    let repeatedID = Data(
+      """
+      {"format":"sion-library-index","version":1,"items":[\
+      {"id":"a","name":"A","payload":"one.json"},\
+      {"id":"a","name":"B","payload":"two.json"}]}
+      """.utf8
+    )
+    // Sharing a file would have a removal take bytes another row still names.
+    let sharedPayload = Data(
+      """
+      {"format":"sion-library-index","version":1,"items":[\
+      {"id":"a","name":"A","payload":"one.json"},\
+      {"id":"b","name":"B","payload":"one.json"}]}
+      """.utf8
+    )
+
+    for index in [repeatedID, sharedPayload] {
+      XCTAssertThrowsError(try GlobalLibraryIndex(data: index)) { error in
+        XCTAssertEqual(error as? SceneLibraryError, .malformedStorage)
+      }
+    }
+  }
+
+  func testALegacyFileThatCannotBeReadIsNotTakenAsAnAbsentOne() throws {
+    let directory = makeStoreDirectory()
+    let legacyURL = directory.deletingLastPathComponent()
+      .appendingPathComponent("Library.json")
+    try FileManager.default.createDirectory(
+      at: legacyURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    // A directory where the file should be. Reading one as data fails for
+    // anyone, so this does not depend on who is running the tests the way a
+    // permission bit would.
+    try FileManager.default.createDirectory(at: legacyURL, withIntermediateDirectories: true)
+
+    let library = SionGlobalLibrary(directoryURL: directory)
+
+    // Reading it as absent would leave the store writable, and the first write
+    // would put an index beside it that stops the migration ever running.
+    XCTAssertFalse(library.isReadable)
+    XCTAssertThrowsError(try library.add(payload: try payloadData(), name: "Node"))
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: directory.appendingPathComponent("index.json").path)
+    )
   }
 
   func testEveryChangeAnnouncesItselfSoOpenPalettesCatchUp() throws {

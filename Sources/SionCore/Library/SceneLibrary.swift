@@ -25,7 +25,7 @@ public struct SceneLibraryItem: Equatable, Sendable {
 /// apart on disk and reads the bytes when something asks for them.
 public struct SceneLibraryEntry: Equatable, Sendable {
   public let id: String
-  public var name: String
+  public let name: String
 
   public init(id: String, name: String) {
     self.id = id
@@ -149,6 +149,14 @@ public struct SceneLibrary: Equatable, Sendable {
 
   public func item(id: String) -> SceneLibraryItem? {
     items.first { $0.id == id }
+  }
+
+  /// The same lookup as ``item(id:)`` without the payload attached, so both
+  /// stores answer it the same way.
+  public func entry(id: String) -> SceneLibraryEntry? {
+    guard let item = item(id: id) else { return nil }
+
+    return SceneLibraryEntry(id: item.id, name: item.name)
   }
 
   /// What a palette needs to draw its rows.

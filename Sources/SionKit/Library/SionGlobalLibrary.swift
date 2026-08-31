@@ -45,12 +45,22 @@
     }
 
     /// An entry's bytes, read now rather than held since launch.
+    ///
+    /// The size is checked before the read: a payload file is bounded when it
+    /// is written, but nothing stops it being replaced afterwards, and this is
+    /// the point where it would be pulled into memory.
     func payload(id: String) throws -> Data {
       guard let row = index.rows.first(where: { $0.id == id }) else {
         throw SceneLibraryError.itemNotFound(id)
       }
 
-      return try Data(contentsOf: payloadURL(named: row.payloadFileName))
+      let url = try payloadURL(named: row.payloadFileName)
+      let byteCount = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+      guard byteCount <= SceneLibraryLimits.maximumPayloadByteCount else {
+        throw SceneLibraryError.payloadTooLarge(byteCount: byteCount)
+      }
+
+      return try Data(contentsOf: url)
     }
 
     @discardableResult
@@ -73,7 +83,8 @@
 
       // The payload lands first, so the index never names a file that is not
       // there yet; a write that fails between the two leaves an inert file.
-      try write(payload, to: payloadURL(named: row.payloadFileName))
+      let url = try payloadURL(named: row.payloadFileName)
+      try write(payload, to: url)
       index.rows.insert(row, at: 0)
       try store(index)
       return SceneLibraryEntry(id: row.id, name: row.name)
@@ -88,7 +99,10 @@
       let row = index.rows.remove(at: position)
       // The index goes first here, for the same reason it goes last above.
       try store(index)
-      try? FileManager.default.removeItem(at: payloadURL(named: row.payloadFileName))
+
+      if let url = try? payloadURL(named: row.payloadFileName) {
+        try? FileManager.default.removeItem(at: url)
+      }
     }
 
     /// The write the split layout exists for: the index alone.
@@ -130,7 +144,15 @@
       return container.appendingPathComponent(GlobalLibraryStorage.legacyFileName)
     }
 
-    private func payloadURL(named fileName: String) -> URL {
+    /// Every payload path is built here, so this is where a name that would
+    /// reach outside the library is stopped. The index rejects one on the way
+    /// in as well; a rule this cheap is worth holding at the funnel too, since
+    /// what comes out of it is passed to `removeItem`.
+    private func payloadURL(named fileName: String) throws -> URL {
+      guard GlobalLibraryIndex.isSafePayloadFileName(fileName) else {
+        throw SceneLibraryError.malformedStorage
+      }
+
       let payloads = directoryURL.appendingPathComponent(
         GlobalLibraryStorage.payloadDirectoryName
       )
@@ -172,10 +194,20 @@
     /// Payload names are generated rather than taken from the item IDs, which
     /// that file never had to keep usable as file names.
     private func adoptedLegacyLibrary() -> (index: GlobalLibraryIndex, failure: Error?) {
-      guard let data = try? Data(contentsOf: legacyFileURL) else {
+      let data: Data
+      do {
+        data = try Data(contentsOf: legacyFileURL)
+      } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
         return (GlobalLibraryIndex(), nil)
+      } catch {
+        // A legacy file that is there but unreadable is not an absent one.
+        // Reading it as absent would leave the store writable, and the first
+        // write would put an index beside it that stops the migration from
+        // ever being tried again.
+        return (GlobalLibraryIndex(), error)
       }
 
+      var written = [URL]()
       do {
         let library = try SceneLibrary(data: data)
         var index = GlobalLibraryIndex()
@@ -186,7 +218,9 @@
             name: item.name,
             payloadFileName: "\(UUID().uuidString).json"
           )
-          try write(item.payload, to: payloadURL(named: row.payloadFileName))
+          let url = try payloadURL(named: row.payloadFileName)
+          try write(item.payload, to: url)
+          written.append(url)
           index.rows.append(row)
         }
 
@@ -194,6 +228,12 @@
         try? FileManager.default.removeItem(at: legacyFileURL)
         return (index, nil)
       } catch {
+        // Names are generated per attempt, so what a failed one wrote would
+        // otherwise be left behind again on every launch.
+        for url in written {
+          try? FileManager.default.removeItem(at: url)
+        }
+
         return (GlobalLibraryIndex(), error)
       }
     }
@@ -259,7 +299,24 @@
         throw SceneLibraryError.unsupportedVersion(Int(version))
       }
 
-      self.init(rows: try encodedRows.map(Self.row))
+      var rows = [Row]()
+      var ids = Set<String>()
+      var fileNames = Set<String>()
+
+      for encodedRow in encodedRows {
+        let row = try Self.row(encodedRow)
+        // Two rows over one file would have a removal take the bytes another
+        // row still names; two rows under one id would leave one of them
+        // unreachable and the other only half removable.
+        guard ids.insert(row.id).inserted, fileNames.insert(row.payloadFileName).inserted
+        else {
+          throw SceneLibraryError.malformedStorage
+        }
+
+        rows.append(row)
+      }
+
+      self.init(rows: rows)
     }
 
     func dataRepresentation() throws -> Data {
@@ -286,7 +343,9 @@
     static func isSafePayloadFileName(_ name: String) -> Bool {
       guard !name.isEmpty, name != ".", name != ".." else { return false }
 
-      return !name.contains("/") && !name.contains(":") && !name.contains("\0")
+      let separators: Set<Character> = ["/", "\\", ":", "\0"]
+
+      return !name.contains(where: separators.contains)
     }
 
     private static func row(_ value: PortableValue) throws -> Row {

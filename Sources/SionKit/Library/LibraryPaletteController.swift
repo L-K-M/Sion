@@ -178,8 +178,7 @@
     func entry(for reference: ItemReference) -> SceneLibraryEntry? {
       switch reference.scope {
       case .document:
-        target?.paletteEditorController.documentLibrary.entries
-          .first { $0.id == reference.id }
+        target?.paletteEditorController.documentLibrary.entry(id: reference.id)
       case .global:
         globalLibrary.entry(id: reference.id)
       }

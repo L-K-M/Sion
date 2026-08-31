@@ -40,6 +40,15 @@ final class SionEditorControllerToolPersistenceTests: XCTestCase {
     XCTAssertEqual(controller.toolPersistence, .oneShot)
   }
 
+  func testCompletingSelectNeverSpendsAnArmedTool() throws {
+    let controller = try makeController()
+    controller.setTool(.text, persistence: .oneShot)
+
+    XCTAssertFalse(controller.toolDidComplete(.select))
+    XCTAssertEqual(controller.tool, .text)
+    XCTAssertEqual(controller.toolPersistence, .oneShot)
+  }
+
   func testSelectIsAlwaysSticky() throws {
     let controller = try makeController()
     controller.setTool(.select, persistence: .oneShot)

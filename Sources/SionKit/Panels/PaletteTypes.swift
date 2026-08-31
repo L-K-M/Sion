@@ -51,21 +51,16 @@
   extension PaletteDefinition {
     /// Gives a palette's root view a definite size before it is presented.
     ///
-    /// `NSPopover` derives its size from the content view controller once one
-    /// is attached, so a root view whose Auto Layout fitting size is
-    /// indeterminate — an `NSScrollView`, for example — would otherwise
-    /// collapse to nothing. The constraints stay optional so a container that
-    /// imposes its own size, like the floating panel's chrome, still wins.
+    /// `NSPopover` sizes itself from the content view controller once one is
+    /// attached — its preferred size, else its view's frame. A root whose Auto
+    /// Layout fitting size is indeterminate, an `NSScrollView` for example,
+    /// reports neither, so both channels are seeded here. The popover
+    /// positions its content view by frame, so its autoresizing translation is
+    /// deliberately left alone.
     @MainActor
     func applyContentSizing(to controller: NSViewController) {
       controller.preferredContentSize = contentSize
-
-      let root = controller.view
-      let width = root.widthAnchor.constraint(equalToConstant: contentSize.width)
-      let height = root.heightAnchor.constraint(equalToConstant: contentSize.height)
-      width.priority = .defaultHigh
-      height.priority = .defaultHigh
-      NSLayoutConstraint.activate([width, height])
+      controller.view.setFrameSize(contentSize)
     }
   }
 

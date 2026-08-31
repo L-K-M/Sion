@@ -73,7 +73,7 @@
       popover.behavior = .transient
       popover.animates = true
       // Attaching a content view controller re-derives the popover's size from
-      // it, so the requested size only survives when it is applied afterwards.
+      // it, so the requested size is applied afterwards and wins either way.
       popover.contentViewController = content.viewController
       popover.contentSize = definition.contentSize
       popover.delegate = self

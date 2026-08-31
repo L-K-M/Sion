@@ -11,6 +11,7 @@
     private let feedbackPresenter: SionEditorFeedbackPresenter
     private let scrollView = NSScrollView()
     private var toolControl: NSSegmentedControl?
+    private var announcedToolAccessibilityValue: String?
     private weak var zoomPercentageLabel: NSTextField?
     private var zoomPercentageObservation: NSKeyValueObservation?
     private var observerID: UUID?
@@ -146,7 +147,7 @@
     ) -> NSToolbarItem? {
       switch itemIdentifier {
       case .tools:
-        return toolsItem()
+        return toolsItem(placement: flag ? .installed : .customizationPalette)
       case .zoom:
         let placement: ToolbarItemPlacement = flag ? .installed : .customizationPalette
         return zoomItem(placement: placement)
@@ -254,7 +255,7 @@
       SionPalettes.shared.registerIfNeeded()
     }
 
-    private func toolsItem() -> NSToolbarItem {
+    private func toolsItem(placement: ToolbarItemPlacement) -> NSToolbarItem {
       let images = SionEditorController.Tool.allCases.map {
         NSImage(systemSymbolName: $0.symbolName, accessibilityDescription: $0.title) ?? NSImage()
       }
@@ -266,8 +267,21 @@
       )
       control.segmentStyle = .texturedRounded
       control.setAccessibilityLabel("Editing tool")
-      toolControl = control
-      synchronizeUI()
+      control.selectedSegment = editorController.tool.rawValue
+      for tool in SionEditorController.Tool.allCases {
+        control.setToolTip(tool.help, forSegment: tool.rawValue)
+      }
+
+      // Only the installed copy tracks the editor; a customization-palette copy
+      // must not take over as the control that gets synchronized.
+      switch placement {
+      case .installed:
+        toolControl = control
+        announcedToolAccessibilityValue = nil
+        synchronizeUI()
+      case .customizationPalette:
+        break
+      }
 
       let item = NSToolbarItem(itemIdentifier: .tools)
       item.label = "Tools"
@@ -341,7 +355,21 @@
 
       // The control sends its action once per click, from inside its own mouse
       // tracking, so the event AppKit is dispatching carries the click count.
-      selectTool(tool, clickCount: NSApplication.shared.currentEvent?.clickCount ?? 1)
+      selectTool(tool, clickCount: Self.toolClickCount(for: NSApplication.shared.currentEvent))
+    }
+
+    /// `NSEvent.clickCount` traps on anything that is not a mouse event, and
+    /// this action also arrives from keyboard and accessibility presses.
+    static func toolClickCount(for event: NSEvent?) -> Int {
+      guard let event else { return 1 }
+
+      switch event.type {
+      case .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+        .otherMouseDown, .otherMouseUp:
+        return event.clickCount
+      default:
+        return 1
+      }
     }
 
     /// Split from the action so tests can supply the click count that only a
@@ -374,7 +402,15 @@
       for tool in SionEditorController.Tool.allCases {
         toolControl.setToolTip(toolTip(for: tool), forSegment: tool.rawValue)
       }
-      toolControl.setAccessibilityValue(toolAccessibilityValue)
+
+      let value = toolAccessibilityValue
+      guard value != announcedToolAccessibilityValue else { return }
+
+      // A one-shot tool reverting on its own is the least expected moment in
+      // the feature, so assistive clients are told rather than left to poll.
+      announcedToolAccessibilityValue = value
+      toolControl.setAccessibilityValue(value)
+      NSAccessibility.post(element: toolControl, notification: .valueChanged)
     }
 
     /// The active tool advertises the mode it is in; the others advertise the

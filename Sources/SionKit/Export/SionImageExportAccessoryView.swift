@@ -19,7 +19,8 @@
     )
 
     init() {
-      super.init(frame: NSRect(origin: .zero, size: AccessoryMetrics.initialSize))
+      // The final frame needs the stack, so it is set once that exists.
+      super.init(frame: .zero)
 
       formatPopUp.addItems(withTitles: SionImageExportFormat.allCases.map(\.title))
       formatPopUp.selectItem(at: options.format.rawValue)
@@ -47,11 +48,18 @@
       stack.spacing = AccessoryMetrics.spacing
       stack.translatesAutoresizingMaskIntoConstraints = false
       addSubview(stack)
+      // Centering only: the save panel resizes this view, so a pinned edge
+      // would fight the frame-derived constraints it installs.
       NSLayoutConstraint.activate([
         stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-        stack.topAnchor.constraint(equalTo: topAnchor, constant: AccessoryMetrics.inset),
-        stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -AccessoryMetrics.inset),
+        stack.centerYAnchor.constraint(equalTo: centerYAnchor),
       ])
+      setFrameSize(
+        NSSize(
+          width: AccessoryMetrics.width,
+          height: stack.fittingSize.height + (AccessoryMetrics.inset * 2)
+        )
+      )
       synchronizeEnabledState()
     }
 
@@ -78,15 +86,15 @@
     }
 
     private func label(_ title: String) -> NSTextField {
-      let label = NSTextField(labelWithString: title)
-      label.textColor = .secondaryLabelColor
-      label.setContentHuggingPriority(.required, for: .horizontal)
-      return label
+      let field = NSTextField(labelWithString: title)
+      field.textColor = .secondaryLabelColor
+      field.setContentHuggingPriority(.required, for: .horizontal)
+      return field
     }
   }
 
   private enum AccessoryMetrics {
-    static let initialSize = NSSize(width: 520, height: 48)
+    static let width: CGFloat = 520
     static let spacing: CGFloat = 8
     static let inset: CGFloat = 12
   }

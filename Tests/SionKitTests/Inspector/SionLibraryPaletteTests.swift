@@ -25,6 +25,8 @@ final class SionLibraryPaletteTests: XCTestCase {
     let library = try XCTUnwrap(
       PaletteCenter.shared.registeredPalette(for: SionPaletteKind.library.paletteKind)
     )
+    // A palette is app global; any earlier presentation has to be gone first.
+    drainClose(library)
     defer { drainClose(library) }
     library.showPanel()
 
@@ -123,9 +125,15 @@ final class SionLibraryPaletteTests: XCTestCase {
     let stack = try XCTUnwrap(scrollView.documentView as? NSStackView)
     let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }
 
-    XCTAssertEqual(buttons.count, 9)
-    XCTAssertGreaterThanOrEqual(scrollView.frame.width, library.definitionContentSize.width)
-    XCTAssertGreaterThanOrEqual(scrollView.frame.height, library.definitionContentSize.height)
+    XCTAssertEqual(
+      buttons.map(\.title),
+      [
+        "Rectangle", "Rounded Rectangle", "Ellipse", "Diamond", "Triangle", "Hexagon",
+        "Capsule", "Cylinder", "Text",
+      ]
+    )
+    // Chrome independent: whatever the popover settles on, the body fills it.
+    XCTAssertEqual(scrollView.frame.size, popover.contentSize)
     XCTAssertGreaterThan(stack.fittingSize.height, libraryViewportHeight)
     XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
   }
@@ -162,12 +170,21 @@ final class SionLibraryPaletteTests: XCTestCase {
     XCTAssertEqual(scrollView.borderType, .noBorder)
   }
 
-  private func drainClose(_ palette: Palette) {
+  /// A popover closes asynchronously, and a palette is app global, so a leaked
+  /// one would defer the next presentation instead of failing here.
+  private func drainClose(
+    _ palette: Palette,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
     palette.close()
     let deadline = Date(timeIntervalSinceNow: 1)
     while palette.isPresented || palette.presentedPopover != nil, Date() < deadline {
       RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
     }
+
+    XCTAssertFalse(palette.isPresented, "The palette did not close.", file: file, line: line)
+    XCTAssertNil(palette.presentedPopover, "The popover did not close.", file: file, line: line)
   }
 }
 

@@ -102,6 +102,32 @@ final class SionCanvasToolPersistenceTests: XCTestCase {
     XCTAssertEqual(controller.toolPersistence, .oneShot)
   }
 
+  func testMagnetConnectorDragKeepsTheArmedShapeTool() throws {
+    let sourceFrame = SionRect(x: 100, y: 100, width: 160, height: 96)
+    let targetFrame = SionRect(x: 400, y: 100, width: 160, height: 96)
+    let source = SceneElement.shape(frame: sourceFrame, kind: .rectangle)
+    let target = SceneElement.shape(frame: targetFrame, kind: .rectangle)
+    let controller = try makeController(elements: [source, target])
+    let canvas = makeCanvas(controller: controller)
+    controller.select(source.id)
+    controller.setTool(.rectangle, persistence: .oneShot)
+
+    // A visible connection point stays draggable under a placement tool, and
+    // the connector it makes is not that tool's use.
+    try drag(
+      canvas: canvas,
+      from: SionPoint(
+        x: sourceFrame.maxX + TestMetrics.magnetDisplayOffset,
+        y: sourceFrame.center.y
+      ),
+      to: SionPoint(x: targetFrame.minX + 1, y: targetFrame.center.y)
+    )
+
+    XCTAssertEqual(controller.document.scene.elements.count, 3)
+    XCTAssertEqual(controller.tool, .rectangle)
+    XCTAssertEqual(controller.toolPersistence, .oneShot)
+  }
+
   private func makeController(elements: [SceneElement] = []) throws -> SionEditorController {
     let scene = SionScene(
       canvas: SionCanvas(extent: .fixed(SionSize(width: 640, height: 480))),
@@ -158,4 +184,9 @@ final class SionCanvasToolPersistenceTests: XCTestCase {
       )
     )
   }
+}
+
+private enum TestMetrics {
+  /// Mirrors the canvas's outward magnet offset, which is view-private.
+  static let magnetDisplayOffset = 12.0
 }

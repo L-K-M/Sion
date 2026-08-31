@@ -11,13 +11,7 @@
 
     /// Declared text types plus the dynamic types unregistered extensions take.
     static var contentTypes: [UTType] {
-      var types: [UTType] = [.plainText, .text]
-      for fileExtension in fileExtensions {
-        guard let type = UTType(filenameExtension: fileExtension) else { continue }
-
-        types.append(type)
-      }
-      return types
+      [.plainText, .text] + fileExtensions.compactMap { UTType(filenameExtension: $0) }
     }
 
     static func makeOpenPanel() -> NSOpenPanel {

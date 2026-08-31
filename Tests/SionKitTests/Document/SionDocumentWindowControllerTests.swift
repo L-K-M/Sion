@@ -336,15 +336,68 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     )
   }
 
+  func testToolClickCountIgnoresEventsWithoutAClickCount() throws {
+    let key = try XCTUnwrap(
+      NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: " ",
+        charactersIgnoringModifiers: " ",
+        isARepeat: false,
+        keyCode: 49
+      )
+    )
+    let doubleClick = try XCTUnwrap(
+      NSEvent.mouseEvent(
+        with: .leftMouseUp,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        eventNumber: 0,
+        clickCount: 2,
+        pressure: 1
+      )
+    )
+
+    XCTAssertEqual(SionDocumentWindowController.toolClickCount(for: nil), 1)
+    XCTAssertEqual(SionDocumentWindowController.toolClickCount(for: key), 1)
+    XCTAssertEqual(SionDocumentWindowController.toolClickCount(for: doubleClick), 2)
+  }
+
+  func testCustomizationPaletteToolsCopyDoesNotStealSynchronization() throws {
+    _ = NSApplication.shared
+    let editorController = try makeEditorController()
+    let windowController = SionDocumentWindowController(editorController: editorController)
+    defer { windowController.close() }
+
+    let installed = try toolsSegmentedControl(in: windowController, willBeInserted: true)
+    _ = try toolsSegmentedControl(in: windowController, willBeInserted: false)
+
+    windowController.selectTool(.circle, clickCount: 2)
+
+    XCTAssertEqual(installed.selectedSegment, SionEditorController.Tool.circle.rawValue)
+    XCTAssertEqual(
+      installed.toolTip(forSegment: SionEditorController.Tool.circle.rawValue),
+      "\(SionEditorController.Tool.circle.help). Stays active until another tool is chosen"
+    )
+  }
+
   private func toolsSegmentedControl(
-    in windowController: SionDocumentWindowController
+    in windowController: SionDocumentWindowController,
+    willBeInserted: Bool = true
   ) throws -> NSSegmentedControl {
     let toolbar = NSToolbar(identifier: "Sion.Tests.Tools")
     let item = try XCTUnwrap(
       windowController.toolbar(
         toolbar,
         itemForItemIdentifier: NSToolbarItem.Identifier("Sion.Tools"),
-        willBeInsertedIntoToolbar: true
+        willBeInsertedIntoToolbar: willBeInserted
       )
     )
 

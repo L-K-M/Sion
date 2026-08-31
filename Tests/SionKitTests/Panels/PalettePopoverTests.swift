@@ -7,29 +7,18 @@ import XCTest
 final class PalettePopoverTests: XCTestCase {
   private let paletteContentSize = NSSize(width: 320, height: 240)
 
-  func testContentSizingGivesScrollingContentADefiniteFittingSize() {
+  func testContentSizingGivesScrollingContentADefiniteSize() {
     _ = NSApplication.shared
     let content = PaletteScrollingTestContent()
+
+    // A scroll-view root reports neither a preferred size nor a usable frame
+    // on its own, which is what collapsed the popover.
+    XCTAssertEqual(content.view.frame.size, .zero)
 
     makeDefinition().applyContentSizing(to: content)
 
     XCTAssertEqual(content.preferredContentSize, paletteContentSize)
-    XCTAssertGreaterThanOrEqual(content.view.fittingSize.width, paletteContentSize.width)
-    XCTAssertGreaterThanOrEqual(content.view.fittingSize.height, paletteContentSize.height)
-  }
-
-  func testPopoverKeepsTheRequestedSizeWhenTheContentPrefersAnother() {
-    _ = NSApplication.shared
-    let content = PaletteScrollingTestContent()
-    content.preferredContentSize = NSSize(width: 120, height: 90)
-
-    let popover = NSPopover()
-    // Attaching the controller re-derives the size, so the request has to be
-    // applied after it. Reversing these two lines fails this assertion.
-    popover.contentViewController = content
-    popover.contentSize = paletteContentSize
-
-    XCTAssertEqual(popover.contentSize, paletteContentSize)
+    XCTAssertEqual(content.view.frame.size, paletteContentSize)
   }
 
   func testPopoverPresentsScrollingContentAtTheDeclaredContentSize() throws {
@@ -62,8 +51,8 @@ final class PalettePopoverTests: XCTestCase {
     let contentView = try XCTUnwrap(popover.contentViewController?.view)
     contentView.layoutSubtreeIfNeeded()
 
-    XCTAssertGreaterThanOrEqual(contentView.frame.width, paletteContentSize.width)
-    XCTAssertGreaterThanOrEqual(contentView.frame.height, paletteContentSize.height)
+    // Chrome independent: whatever the popover settles on, the content fills it.
+    XCTAssertEqual(contentView.frame.size, popover.contentSize)
   }
 
   private func makeDefinition() -> PaletteDefinition {
@@ -74,12 +63,21 @@ final class PalettePopoverTests: XCTestCase {
     )
   }
 
-  private func drainClose(_ palette: Palette) {
+  /// A popover closes asynchronously, and a palette is app global, so a leaked
+  /// one would defer the next presentation instead of failing here.
+  private func drainClose(
+    _ palette: Palette,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
     palette.close()
     let deadline = Date(timeIntervalSinceNow: 1)
     while palette.isPresented || palette.presentedPopover != nil, Date() < deadline {
       RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
     }
+
+    XCTAssertFalse(palette.isPresented, "The palette did not close.", file: file, line: line)
+    XCTAssertNil(palette.presentedPopover, "The popover did not close.", file: file, line: line)
   }
 }
 

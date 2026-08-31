@@ -93,11 +93,16 @@ final class SionGlobalLibraryTests: XCTestCase {
 
     XCTAssertThrowsError(try library.add(payload: try payloadData(), name: "Node"))
 
-    let leftBehind =
-      (try? FileManager.default.contentsOfDirectory(
-        at: directory.appendingPathComponent("payloads"),
-        includingPropertiesForKeys: nil
-      )) ?? []
+    // Nor in memory: the store adopts an index only once its write lands, so
+    // a later one cannot persist a row whose payload was just taken back.
+    XCTAssertTrue(library.entries.isEmpty)
+
+    // Read without `try?`: the payload write created this folder, so failing
+    // to list it is a failure rather than an empty answer.
+    let leftBehind = try FileManager.default.contentsOfDirectory(
+      at: directory.appendingPathComponent("payloads"),
+      includingPropertiesForKeys: nil
+    )
 
     XCTAssertEqual(leftBehind, [], "A payload no index names is one nothing can reach")
   }

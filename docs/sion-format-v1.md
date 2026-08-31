@@ -137,10 +137,6 @@ semantics from unknown fields.
 - Unknown keys outside an `extensions` object MUST be rejected, never dropped.
 - Writers SHOULD use reverse-DNS keys inside `extensions`. Readers MUST
   round-trip every extension key unchanged.
-- Sion itself writes one scene extension, `ch.lkmc.sion.library`: the drawing's
-  own library of reusable fragments, as `{ "format": "sion-library",
-  "version": 1, "items": [{ "id", "name", "payload" }] }`, where `payload` is a
-  base64 `sion-selection` document. Another reader keeps it and ignores it.
 
 Elements form a tagged union:
 
@@ -155,6 +151,70 @@ Elements form a tagged union:
 
 Associated values MUST use explicit `type` or `kind` discriminators. Swift's
 synthesized `_0` enum payload representation is forbidden.
+
+### Library
+
+Sion writes one scene extension of its own, `ch.lkmc.sion.library`: the
+drawing's library of fragments kept for reuse. Another reader round-trips it
+like any other extension and need not understand it.
+
+```json
+{
+  "format": "sion-library",
+  "version": 1,
+  "items": [
+    {
+      "id": "1B9E4C10-0F4A-4C0E-9C2E-2C52F655CB10",
+      "name": "Decision",
+      "payload": "eyJmb3JtYXQiOiAic2lvbi1zZWxlY3Rpb24iLCAuLi59"
+    }
+  ]
+}
+```
+
+`payload` is a base64 `sion-selection` document. Item IDs are opaque strings
+unique within the library; names are single-line and at most 120 characters.
+A library holds at most 200 items and each payload at most 512 KiB, so that a
+library cannot outweigh the drawing it is stored beside.
+
+### Selection payloads
+
+A `sion-selection` document is a self-contained group of elements: what the
+clipboard carries, and what a library item stores. It is UTF-8 JSON written
+with the same rules as `scene.json`.
+
+```json
+{
+  "format": "sion-selection",
+  "version": 1,
+  "elements": [],
+  "assets": [
+    {
+      "id": "sha256:64-lowercase-hex",
+      "mediaType": "image/png",
+      "fileExtension": "png",
+      "originalFilename": "diagram.png",
+      "pixelSize": { "width": 640, "height": 480 },
+      "data": "base64 of the exact bytes"
+    }
+  ]
+}
+```
+
+- Elements use the same representation as `scene.elements`, in the same
+  back-to-front order, and MUST validate as a scene does.
+- The document carries every asset its elements reference and no others, so it
+  can be read without the file it was taken from.
+- A parent reference leaving the selection is cleared; the elements come in as
+  roots.
+- A connector whose two endpoints are both inside the selection keeps them. One
+  that reaches outside has that endpoint rewritten to a free point at the
+  position the connector was last routed to.
+- Element IDs are the source document's. A reader placing a payload MUST assign
+  fresh IDs, remapping parent references, connector endpoints, and manual
+  routes together, and MUST translate the whole group so its content bounds are
+  centered on the insertion point.
+- Readers reject unknown members and duplicate keys, as they do for a scene.
 
 ### Assets
 

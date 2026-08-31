@@ -86,6 +86,20 @@ final class SionEditorControllerShadowTests: XCTestCase {
     XCTAssertTrue(try style(of: group.id, in: controller).shadows.isEmpty)
   }
 
+  /// The clearing path stays open to content that cannot take a shadow, so it
+  /// has to stay quiet when there is nothing there to clear.
+  func testClearingAShadowThatIsNotThereRecordsNoEdit() throws {
+    let group = SceneElement.group(frame: SionRect(x: 0, y: 0, width: 120, height: 80))
+    let controller = try makeController(elements: [group])
+    var changes = 0
+    controller.observeChanges { changes += 1 }
+
+    try controller.setShadow(nil, on: group.id)
+    try controller.setShadowEnabled(false, on: group.id)
+
+    XCTAssertEqual(changes, 0)
+  }
+
   func testANegativeOrInfiniteBlurIsRefused() throws {
     let (controller, id) = try makeShape()
     let before = try style(of: id, in: controller).shadows

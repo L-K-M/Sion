@@ -29,14 +29,17 @@ final class SionCanvasImageDropTests: XCTestCase {
     defer { canvas.invalidate() }
 
     let empty = makePasteboard()
+    defer { empty.releaseGlobally() }
     empty.declareTypes([.string], owner: nil)
     empty.setString("just words", forType: .string)
 
     let artwork = makePasteboard()
+    defer { artwork.releaseGlobally() }
     artwork.declareTypes([.tiff], owner: nil)
     XCTAssertTrue(artwork.setData(try makeImageData(), forType: .tiff))
 
     let vector = makePasteboard()
+    defer { vector.releaseGlobally() }
     vector.declareTypes([.string], owner: nil)
     vector.setString("<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>", forType: .string)
 
@@ -59,6 +62,7 @@ final class SionCanvasImageDropTests: XCTestCase {
     defer { canvas.invalidate() }
 
     let pasteboard = makePasteboard()
+    defer { pasteboard.releaseGlobally() }
     pasteboard.declareTypes([.tiff], owner: nil)
     XCTAssertTrue(pasteboard.setData(sourceData, forType: .tiff))
     let location = NSPoint(x: 220, y: 140)
@@ -92,6 +96,7 @@ final class SionCanvasImageDropTests: XCTestCase {
     defer { canvas.invalidate() }
 
     let pasteboard = makePasteboard()
+    defer { pasteboard.releaseGlobally() }
     pasteboard.declareTypes([.tiff], owner: nil)
     XCTAssertTrue(pasteboard.setData(sourceData, forType: .tiff))
 
@@ -127,6 +132,8 @@ final class SionCanvasImageDropTests: XCTestCase {
     return try XCTUnwrap(image.tiffRepresentation)
   }
 
+  /// A named pasteboard outlives the test in the pasteboard server, so every
+  /// caller releases the one it made.
   private func makePasteboard() -> NSPasteboard {
     NSPasteboard(name: NSPasteboard.Name(rawValue: "ch.lkmc.sion.tests.\(UUID().uuidString)"))
   }

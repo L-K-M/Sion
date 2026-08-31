@@ -140,6 +140,7 @@ final class PalettePanelTests: XCTestCase {
     XCTAssertGreaterThan(resizable.contentMaxSize.width, resizable.contentMinSize.width)
     XCTAssertGreaterThan(resizable.contentMaxSize.height, resizable.contentMinSize.height)
     XCTAssertTrue(resizable.contentMaxSize.width.isFinite)
+    XCTAssertTrue(resizable.contentMaxSize.height.isFinite)
   }
 
   func testTheDragBandsRunDownTheSidesAndAlongTheBottomOnly() {

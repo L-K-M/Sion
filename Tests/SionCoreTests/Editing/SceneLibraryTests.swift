@@ -132,7 +132,9 @@ final class SceneLibraryTests: XCTestCase {
     XCTAssertThrowsError(try library.remove(id: "blank")) { error in
       XCTAssertEqual(error as? SceneLibraryError, .itemNotFound("blank"))
     }
-    XCTAssertThrowsError(try library.rename(id: "blank", to: "Nope"))
+    XCTAssertThrowsError(try library.rename(id: "blank", to: "Nope")) { error in
+      XCTAssertEqual(error as? SceneLibraryError, .itemNotFound("blank"))
+    }
   }
 
   func testASceneKeepsItsLibraryThroughAnUndoableTransaction() throws {

@@ -56,19 +56,19 @@
       library.item(id: id)
     }
 
+    /// Application Support, under the bundle identifier the way every other
+    /// app's own folder is named. A build with no Application Support to write
+    /// to keeps the library for the session rather than losing the command.
     static func defaultFileURL() -> URL {
-      let support = FileManager.default.urls(
+      let container = FileManager.default.urls(
         for: .applicationSupportDirectory,
         in: .userDomainMask
-      ).first
+      ).first ?? FileManager.default.temporaryDirectory
+      let folderName = Bundle.main.bundleIdentifier ?? Storage.fallbackDirectoryName
 
-      let directory =
-        support?
-        .appendingPathComponent(Bundle.main.bundleIdentifier ?? Storage.fallbackDirectoryName)
-        ?? FileManager.default.temporaryDirectory
-        .appendingPathComponent(Storage.fallbackDirectoryName)
-
-      return directory.appendingPathComponent(Storage.fileName)
+      return container
+        .appendingPathComponent(folderName)
+        .appendingPathComponent(Storage.fileName)
     }
 
     /// Read once per launch. A missing file is an empty library; anything else

@@ -76,6 +76,18 @@
       fatalError("init(coder:) is unavailable")
     }
 
+    /// AppKit presents the document's display name as the window title, but only
+    /// strips the owned filename extension when the running system considers it
+    /// hidden; a programmatic Save As can therefore title the window "Name.sion".
+    /// Sion owns the extension, so the window title never shows it.
+    override func windowTitle(forDocumentDisplayName displayName: String) -> String {
+      let suffix = ".\(SionDrawingDocument.filenameExtension)".lowercased()
+      guard displayName.count > suffix.count, displayName.lowercased().hasSuffix(suffix) else {
+        return super.windowTitle(forDocumentDisplayName: displayName)
+      }
+      return String(displayName.dropLast(suffix.count))
+    }
+
     override func windowDidLoad() {
       super.windowDidLoad()
 

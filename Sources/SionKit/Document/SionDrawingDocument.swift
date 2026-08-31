@@ -90,6 +90,9 @@
 
     public override class var autosavesInPlace: Bool { true }
 
+    /// The filename extension owned by Sion's exported document type.
+    public static let filenameExtension = "sion"
+
     public override func updateChangeCount(_ change: NSDocument.ChangeType) {
       switch change {
       case .changeDone, .changeUndone, .changeRedone:

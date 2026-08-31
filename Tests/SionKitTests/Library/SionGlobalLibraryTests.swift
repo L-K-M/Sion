@@ -7,7 +7,7 @@ import XCTest
 @MainActor
 final class SionGlobalLibraryTests: XCTestCase {
   func testStoredItemsOutliveTheInstanceThatWroteThem() throws {
-    let fileURL = try makeStoreURL()
+    let fileURL = makeStoreURL()
     let library = SionGlobalLibrary(fileURL: fileURL)
     let payload = try payloadData()
 
@@ -26,17 +26,27 @@ final class SionGlobalLibraryTests: XCTestCase {
     XCTAssertTrue(SionGlobalLibrary(fileURL: fileURL).items.isEmpty)
   }
 
-  func testAMissingFileIsAnEmptyLibraryRatherThanAFailure() throws {
-    let library = SionGlobalLibrary(fileURL: try makeStoreURL())
+  func testAMissingFileAndItsMissingFolderAreAnEmptyLibrary() throws {
+    let fileURL = makeStoreURL()
+    let library = SionGlobalLibrary(fileURL: fileURL)
 
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.deletingLastPathComponent().path))
     XCTAssertTrue(library.items.isEmpty)
     XCTAssertTrue(library.isReadable)
+
+    // The store makes the folder it was pointed at, so a first launch stores.
     XCTAssertNoThrow(try library.add(payload: try payloadData(), name: "Node"))
+    XCTAssertEqual(SionGlobalLibrary(fileURL: fileURL).items.map(\.name), ["Node"])
   }
 
   func testAFileThisBuildCannotReadIsNeverOverwritten() throws {
-    let fileURL = try makeStoreURL()
+    let fileURL = makeStoreURL()
     let foreign = Data("{\"format\":\"something-else\"}\n".utf8)
+    // This one has to exist before the store would have made it.
+    try FileManager.default.createDirectory(
+      at: fileURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
     try foreign.write(to: fileURL)
 
     let library = SionGlobalLibrary(fileURL: fileURL)
@@ -47,7 +57,7 @@ final class SionGlobalLibraryTests: XCTestCase {
   }
 
   func testEveryChangeAnnouncesItselfSoOpenPalettesCatchUp() throws {
-    let library = SionGlobalLibrary(fileURL: try makeStoreURL())
+    let library = SionGlobalLibrary(fileURL: makeStoreURL())
     var changeCount = 0
     let observer = NotificationCenter.default.addObserver(
       forName: SionGlobalLibrary.didChangeNotification,
@@ -66,14 +76,13 @@ final class SionGlobalLibraryTests: XCTestCase {
   }
 
   /// A directory that does not exist yet, so the store has to create its own.
-  private func makeStoreURL() throws -> URL {
+  private func makeStoreURL() -> URL {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("SionGlobalLibraryTests-\(UUID().uuidString)")
     addTeardownBlock {
       try? FileManager.default.removeItem(at: directory)
     }
 
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appendingPathComponent("Library.json")
   }
 

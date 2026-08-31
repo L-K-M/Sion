@@ -446,23 +446,72 @@
       return self
     }
 
-    override func resetCursorRects() {
-      let band = Self.bandWidth
+    /// Cursor rectangles are only consulted for the key window, and a floating
+    /// nonactivating palette is usually not it: the bands would show the plain
+    /// arrow for the whole time a document window has focus, and the resize
+    /// would ship with nothing to find it by. Tracking areas set to
+    /// `.activeAlways` change the pointer either way.
+    override func updateTrackingAreas() {
+      super.updateTrackingAreas()
 
-      addCursorRect(
-        NSRect(x: bounds.minX, y: bounds.minY, width: band, height: bounds.height),
-        cursor: .resizeLeftRight
-      )
-      addCursorRect(
-        NSRect(x: bounds.maxX - band, y: bounds.minY, width: band, height: bounds.height),
-        cursor: .resizeLeftRight
-      )
-      // Added last so the corners, where the bands overlap, read as the edge
-      // that is only ever dragged one way.
-      addCursorRect(
-        NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: band),
-        cursor: .resizeUpDown
-      )
+      for area in trackingAreas {
+        removeTrackingArea(area)
+      }
+
+      for band in Self.cursorBands(in: bounds) {
+        addTrackingArea(
+          NSTrackingArea(
+            rect: band.rect,
+            options: [.cursorUpdate, .activeAlways],
+            owner: self,
+            userInfo: [CursorBand.cursorKey: band.cursor]
+          )
+        )
+      }
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+      guard let cursor = event.trackingArea?.userInfo?[CursorBand.cursorKey] as? NSCursor else {
+        super.cursorUpdate(with: event)
+        return
+      }
+
+      cursor.set()
+    }
+
+    /// Where the pointer changes shape, which is not quite where a drag is
+    /// picked up: the bands here do not overlap, so a corner reads as one
+    /// thing rather than as whichever region was added last.
+    ///
+    /// The corner belongs to the bottom band and shows the vertical arrow,
+    /// while a drag from it still resizes both edges — AppKit publishes no
+    /// diagonal resize cursor to say so.
+    static func cursorBands(in bounds: NSRect) -> [CursorBand] {
+      let band = bandWidth
+      let sideY = bounds.minY + band
+      let sideHeight = max(0, bounds.height - band)
+
+      return [
+        CursorBand(
+          rect: NSRect(x: bounds.minX, y: sideY, width: band, height: sideHeight),
+          cursor: .resizeLeftRight
+        ),
+        CursorBand(
+          rect: NSRect(x: bounds.maxX - band, y: sideY, width: band, height: sideHeight),
+          cursor: .resizeLeftRight
+        ),
+        CursorBand(
+          rect: NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: band),
+          cursor: .resizeUpDown
+        ),
+      ]
+    }
+
+    struct CursorBand {
+      static let cursorKey = "cursor"
+
+      let rect: NSRect
+      let cursor: NSCursor
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {

@@ -73,16 +73,24 @@ final class LibraryPaletteItemsTests: XCTestCase {
 
     fixture.editor.select(fixture.elementID)
     _ = try fixture.editor.addSelectionToDocumentLibrary(named: "Node")
-
-    let row = try XCTUnwrap(fixture.itemButtons.first)
-    let menu = try XCTUnwrap(row.menu)
-
-    XCTAssertEqual(menu.items.map(\.title), ["Rename…", "Remove from Library"])
-    XCTAssertTrue(
-      menu.items.allSatisfy {
-        $0.representedObject is LibraryPaletteController.ItemReference
-      }
+    _ = try fixture.globalLibrary.add(
+      payload: try fixture.editor.selectionPayloadData(),
+      name: "Everywhere"
     )
+
+    XCTAssertEqual(fixture.itemButtons.count, 2)
+
+    for row in fixture.itemButtons {
+      let menu = try XCTUnwrap(row.menu, row.title)
+
+      XCTAssertEqual(menu.items.map(\.title), ["Rename…", "Remove from Library"], row.title)
+      XCTAssertTrue(
+        menu.items.allSatisfy {
+          $0.representedObject is LibraryPaletteController.ItemReference
+        },
+        row.title
+      )
+    }
   }
 
   @MainActor
@@ -94,7 +102,11 @@ final class LibraryPaletteItemsTests: XCTestCase {
     let elementID: ElementID
 
     var stack: NSStackView {
-      (controller.view as? NSScrollView)?.documentView as? NSStackView ?? NSStackView()
+      guard let stack = (controller.view as? NSScrollView)?.documentView as? NSStackView else {
+        preconditionFailure("The library palette is a scroll view over a stack view")
+      }
+
+      return stack
     }
 
     var builtInButtons: [NSButton] {

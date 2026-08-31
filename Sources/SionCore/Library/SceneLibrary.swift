@@ -74,12 +74,11 @@ public struct SceneLibrary: Equatable, Sendable {
   }
 
   /// The same shape as the scene-extension form, as a standalone JSON file.
+  ///
+  /// A library that has never been written is an absent file, which a caller
+  /// can see for itself; empty bytes are a truncated one, and reading those as
+  /// an empty library would invite the next write to finish the job.
   public init(data: Data) throws {
-    guard !data.isEmpty else {
-      self.init()
-      return
-    }
-
     let value = try JSONDecoder().decode(PortableValue.self, from: data)
     try self.init(portableValue: value)
   }

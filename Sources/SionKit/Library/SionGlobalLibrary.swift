@@ -15,7 +15,7 @@
 
     private let fileURL: URL
     private var loadedLibrary: SceneLibrary?
-    private var loadFailed = false
+    private var loadFailure: Error?
 
     init(fileURL: URL = SionGlobalLibrary.defaultFileURL()) {
       self.fileURL = fileURL
@@ -29,7 +29,7 @@
     /// without discarding what is in it.
     var isReadable: Bool {
       _ = library
-      return !loadFailed
+      return loadFailure == nil
     }
 
     @discardableResult
@@ -85,7 +85,9 @@
       } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
         library = SceneLibrary()
       } catch {
-        loadFailed = true
+        // Kept, not flattened: a file held open or unreadable by permission is
+        // not malformed, and the banner reads whatever comes back out.
+        loadFailure = error
         library = SceneLibrary()
       }
 
@@ -95,8 +97,8 @@
 
     private func writableLibrary() throws -> SceneLibrary {
       let library = self.library
-      guard !loadFailed else {
-        throw SceneLibraryError.malformedStorage
+      if let loadFailure {
+        throw loadFailure
       }
 
       return library

@@ -168,6 +168,30 @@ final class PalettePanelTests: XCTestCase {
     XCTAssertEqual(PaletteResizeBorderView.edges(at: NSPoint(x: -5, y: 172), in: bounds), [])
   }
 
+  func testThePointerChangesOverEachBandAndTheBandsDoNotOverlap() throws {
+    let bounds = NSRect(x: 0, y: 0, width: 300, height: 344)
+    let bands = PaletteResizeBorderView.cursorBands(in: bounds)
+
+    XCTAssertEqual(bands.count, 3)
+    XCTAssertIdentical(bands.first?.cursor, NSCursor.resizeLeftRight)
+    XCTAssertIdentical(bands.dropFirst().first?.cursor, NSCursor.resizeLeftRight)
+    XCTAssertIdentical(bands.last?.cursor, NSCursor.resizeUpDown)
+
+    // Overlapping would leave a corner reading as whichever tracking area was
+    // added last; it belongs to the bottom band, which is the last one here.
+    for (index, band) in bands.enumerated() {
+      XCTAssertTrue(bounds.contains(band.rect), "\(band.rect) leaves the palette")
+
+      for other in bands.dropFirst(index + 1) {
+        XCTAssertFalse(band.rect.intersects(other.rect), "\(band.rect) meets \(other.rect)")
+      }
+    }
+
+    XCTAssertTrue(
+      try XCTUnwrap(bands.last).rect.contains(NSPoint(x: bounds.maxX - 1, y: bounds.minY + 1))
+    )
+  }
+
   func testADraggedEdgeMovesAndTheOnesOppositeItStayPut() {
     let start = NSRect(x: 100, y: 100, width: 300, height: 344)
     let minimum = NSSize(width: 200, height: 200)

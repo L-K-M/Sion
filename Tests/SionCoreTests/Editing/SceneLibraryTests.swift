@@ -17,9 +17,12 @@ final class SceneLibraryTests: XCTestCase {
     XCTAssertEqual(library.item(id: first.id), first)
   }
 
-  func testAnAbsentOrEmptyStoreReadsAsAnEmptyLibrary() throws {
+  func testAnAbsentStoreReadsAsAnEmptyLibraryAndAnEmptyOneDoesNot() throws {
+    // A document that never stored a library has no key, which is the same
+    // thing as an empty library. A file of zero bytes is a truncated one, and
+    // reading it as empty would let the next write finish destroying it.
     XCTAssertEqual(try SceneLibrary(portableValue: nil), SceneLibrary())
-    XCTAssertEqual(try SceneLibrary(data: Data()), SceneLibrary())
+    XCTAssertThrowsError(try SceneLibrary(data: Data()))
   }
 
   func testStorageWrittenBySomethingElseIsRefusedRatherThanRead() throws {

@@ -272,33 +272,23 @@
       (try? SceneLibrary(portableValue: documentLibraryStorage)) ?? SceneLibrary()
     }
 
-    var canReadDocumentLibrary: Bool {
-      (try? SceneLibrary(portableValue: documentLibraryStorage)) != nil
-    }
-
     @discardableResult
     func addSelectionToDocumentLibrary(named name: String) throws -> SceneLibraryItem {
-      try requireReadableDocumentLibrary()
-
       let payload = try selectionPayloadData()
-      var library = documentLibrary
+      var library = try writableDocumentLibrary()
       let item = try library.add(payload: payload, name: name)
       try storeDocumentLibrary(library, undoName: "Add to Library")
       return item
     }
 
     func removeDocumentLibraryItem(id: String) throws {
-      try requireReadableDocumentLibrary()
-
-      var library = documentLibrary
+      var library = try writableDocumentLibrary()
       try library.remove(id: id)
       try storeDocumentLibrary(library, undoName: "Remove from Library")
     }
 
     func renameDocumentLibraryItem(id: String, to name: String) throws {
-      try requireReadableDocumentLibrary()
-
-      var library = documentLibrary
+      var library = try writableDocumentLibrary()
       try library.rename(id: id, to: name)
       try storeDocumentLibrary(library, undoName: "Rename Library Item")
     }
@@ -310,13 +300,15 @@
       editor.document.scene.extensions[SceneLibrary.extensionKey]
     }
 
-    /// Overwriting storage this build cannot read would discard whatever wrote
-    /// it, so a document that carries something else under the key is left
-    /// untouched and the command reports why.
-    private func requireReadableDocumentLibrary() throws {
-      guard canReadDocumentLibrary else {
+    /// The one decode a mutation needs. Overwriting storage this build cannot
+    /// read would discard whatever wrote it, so a document that carries
+    /// something else under the key is left untouched and the command says so.
+    private func writableDocumentLibrary() throws -> SceneLibrary {
+      guard let library = try? SceneLibrary(portableValue: documentLibraryStorage) else {
         throw SceneLibraryError.malformedStorage
       }
+
+      return library
     }
 
     private func storeDocumentLibrary(_ library: SceneLibrary, undoName: String) throws {
@@ -337,7 +329,7 @@
         return "\(elements.count) Objects"
       }
 
-      if let name = element.name, !name.trimmingCharacters(in: .whitespaces).isEmpty {
+      if let name = element.name?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
         return name
       }
 

@@ -36,18 +36,30 @@ final class SceneLibraryTests: XCTestCase {
         itemCount: SceneLibraryLimits.maximumItemCount - 1
       )
     )
+    // Which limit fired, not merely that one did: a caller reads the case to
+    // decide what to say, so the two must not be able to swap.
     XCTAssertThrowsError(
       try SceneLibraryLimits.validateAddition(
         payloadByteCount: SceneLibraryLimits.maximumPayloadByteCount + 1,
         itemCount: 0
       )
-    )
+    ) { error in
+      XCTAssertEqual(
+        error as? SceneLibraryError,
+        .payloadTooLarge(byteCount: SceneLibraryLimits.maximumPayloadByteCount + 1)
+      )
+    }
     XCTAssertThrowsError(
       try SceneLibraryLimits.validateAddition(
         payloadByteCount: 1,
         itemCount: SceneLibraryLimits.maximumItemCount
       )
-    )
+    ) { error in
+      XCTAssertEqual(
+        error as? SceneLibraryError,
+        .libraryIsFull(itemCount: SceneLibraryLimits.maximumItemCount)
+      )
+    }
   }
 
   func testAnAbsentStoreReadsAsAnEmptyLibraryAndAnEmptyOneDoesNot() throws {

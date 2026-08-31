@@ -239,7 +239,11 @@
     static let formatIdentifier = "sion-library-index"
     static let formatVersion = 1
 
-    var rows: [Row] = []
+    var rows: [Row]
+
+    init(rows: [Row] = []) {
+      self.rows = rows
+    }
 
     init(data: Data) throws {
       let value = try JSONDecoder().decode(PortableValue.self, from: data)

@@ -462,7 +462,11 @@
         addTrackingArea(
           NSTrackingArea(
             rect: band.rect,
-            options: [.cursorUpdate, .activeAlways],
+            // A resize calls this back with the pointer inside the band it is
+            // being dragged by. Without `.assumeInside` the replacement area
+            // is never entered and so never exited, and the resize cursor
+            // stays on over the palette once the drag ends.
+            options: [.cursorUpdate, .activeAlways, .assumeInside],
             owner: self,
             userInfo: [CursorBand.cursorKey: band.cursor]
           )

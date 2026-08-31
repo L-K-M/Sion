@@ -55,14 +55,19 @@
         editorFeedback: { feedbackPresenter.handle($0) }
       )
 
+      // The title bar stays opaque and the content stays out from under it.
+      // The canvas is a light document surface whatever the system appearance
+      // is, so letting it show through a transparent title bar puts the
+      // chrome's dark-appearance title and toolbar glyphs on white paper: the
+      // header reads black until the drawing scrolls up under it and white,
+      // against white, from then on.
       let window = NSWindow(
         contentRect: NSRect(origin: .zero, size: WindowMetrics.initialSize),
-        styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
         backing: .buffered,
         defer: false
       )
       window.title = editorController.document.title
-      window.titlebarAppearsTransparent = true
       window.tabbingMode = .preferred
       window.isRestorable = true
       window.setFrameAutosaveName("SionDocumentWindow")

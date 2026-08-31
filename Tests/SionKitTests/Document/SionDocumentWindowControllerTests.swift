@@ -484,6 +484,24 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     )
   }
 
+  func testTheDrawingNeverScrollsUnderTheTitleBar() throws {
+    _ = NSApplication.shared
+    let windowController = try makeZoomWindowController()
+    defer { windowController.close() }
+
+    let window = try XCTUnwrap(windowController.window)
+    let contentView = try XCTUnwrap(window.contentView)
+
+    // The canvas is a light document surface whatever the system appearance
+    // is. Letting it show through the title bar leaves the chrome's own title
+    // and toolbar glyphs — drawn for the appearance, not for the paper —
+    // white on white, so the content stays out from under it entirely.
+    XCTAssertFalse(window.styleMask.contains(.fullSizeContentView))
+    XCTAssertFalse(window.titlebarAppearsTransparent)
+    XCTAssertEqual(window.contentLayoutRect, contentView.bounds)
+    XCTAssertTrue(contentView is NSScrollView)
+  }
+
   private func makeZoomWindowController() throws -> SionDocumentWindowController {
     let editorController = try SionEditorController(
       package: SionPackage(document: SionDocument()),

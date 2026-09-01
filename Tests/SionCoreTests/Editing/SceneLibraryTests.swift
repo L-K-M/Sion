@@ -15,6 +15,64 @@ final class SceneLibraryTests: XCTestCase {
     XCTAssertEqual(try SceneLibrary(portableValue: library.portableValue), library)
     XCTAssertEqual(try SceneLibrary(data: library.dataRepresentation()), library)
     XCTAssertEqual(library.item(id: first.id), first)
+
+    // What a palette draws its rows from, in the same order and without the
+    // bytes behind them.
+    XCTAssertEqual(
+      library.entries,
+      [
+        SceneLibraryEntry(id: second.id, name: "Wide Node"),
+        SceneLibraryEntry(id: first.id, name: "Node"),
+      ]
+    )
+  }
+
+  /// Both stores call this rather than checking for themselves, which is what
+  /// keeps them from coming to different answers.
+  func testOneCheckBoundsPayloadSizeAndItemCount() throws {
+    XCTAssertNoThrow(
+      try SceneLibraryLimits.validateAddition(
+        payloadByteCount: SceneLibraryLimits.maximumPayloadByteCount,
+        itemCount: SceneLibraryLimits.maximumItemCount - 1
+      )
+    )
+    // Which limit fired, not merely that one did: a caller reads the case to
+    // decide what to say, so the two must not be able to swap.
+    XCTAssertThrowsError(
+      try SceneLibraryLimits.validateAddition(
+        payloadByteCount: SceneLibraryLimits.maximumPayloadByteCount + 1,
+        itemCount: 0
+      )
+    ) { error in
+      XCTAssertEqual(
+        error as? SceneLibraryError,
+        .payloadTooLarge(byteCount: SceneLibraryLimits.maximumPayloadByteCount + 1)
+      )
+    }
+    XCTAssertThrowsError(
+      try SceneLibraryLimits.validateAddition(
+        payloadByteCount: 1,
+        itemCount: SceneLibraryLimits.maximumItemCount
+      )
+    ) { error in
+      XCTAssertEqual(
+        error as? SceneLibraryError,
+        .libraryIsFull(itemCount: SceneLibraryLimits.maximumItemCount)
+      )
+    }
+    // And which one wins when both are over, so reordering the two guards
+    // cannot quietly change what a full library says about a huge selection.
+    XCTAssertThrowsError(
+      try SceneLibraryLimits.validateAddition(
+        payloadByteCount: SceneLibraryLimits.maximumPayloadByteCount + 1,
+        itemCount: SceneLibraryLimits.maximumItemCount
+      )
+    ) { error in
+      XCTAssertEqual(
+        error as? SceneLibraryError,
+        .payloadTooLarge(byteCount: SceneLibraryLimits.maximumPayloadByteCount + 1)
+      )
+    }
   }
 
   func testAnAbsentStoreReadsAsAnEmptyLibraryAndAnEmptyOneDoesNot() throws {

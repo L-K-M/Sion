@@ -143,9 +143,9 @@ final class LibraryPaletteItemsTests: XCTestCase {
     }
 
     // One store, shared by the palette and the test: a second instance over
-    // the same file would keep its own cache and never see these writes.
+    // the same folder would keep its own cache and never see these writes.
     let globalLibrary = SionGlobalLibrary(
-      fileURL: directory.appendingPathComponent("Library.json")
+      directoryURL: directory.appendingPathComponent("Library")
     )
     let controller = LibraryPaletteController(globalLibrary: globalLibrary)
     controller.retarget(to: windowController)

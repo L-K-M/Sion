@@ -4,11 +4,17 @@
 
 Use Swift 6.3.3 (`.swift-version` pins the toolchain).
 
-- `swift test` verifies the portable core.
+- `swift test` verifies the portable core and the shared editor layer; on
+  Linux it also runs the GTK tests (`xvfb-run -a swift test` without a display).
 - `scripts/build.sh [--clean] [--run] [--install]` verifies and packages the
   native macOS app. `--install` copies it to `/Applications`.
+- `scripts/build-linux.sh [--clean] [--run] [--install]` verifies and packages
+  the native Linux app as a `.deb` (`scripts/make-deb.sh` assembles it).
 - `scripts/release.sh X.Y.Z [--push]` bumps, commits, tags, and optionally
-  pushes a native macOS release.
+  pushes a release; the tag builds both the macOS and the Linux artifacts.
+- A UI feature lands on both platforms: `Sources/SionKit` (AppKit) and
+  `Sources/SionGtk` (GTK) mirror each other file for file. Update
+  `docs/feature-parity.md` with every UI change.
 
 ## AI review scope
 

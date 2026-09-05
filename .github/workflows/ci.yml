@@ -14,17 +14,39 @@ permissions:
   contents: read
 
 jobs:
-  core-linux:
+  native-linux:
     runs-on: ubuntu-24.04
     container: swift:6.3.3-noble
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install GTK and packaging tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libpoppler-glib-dev librsvg2-common \
+            xvfb dpkg-dev lintian desktop-file-utils appstream fonts-dejavu-core
       - run: swift format lint --recursive --strict Sources Tests Package.swift scripts/generate-icons.swift
       - run: bash -n scripts/*.sh
-      - run: swift test
+      # The core, the shared editor controller, and the GTK widgets all run
+      # here; the GTK tests need the virtual display.
+      - run: xvfb-run -a swift test
+      - name: Package the .deb
+        run: scripts/make-deb.sh
+      - run: desktop-file-validate packaging/linux/ch.lkmc.Sion.desktop
+      - run: appstreamcli validate --no-net packaging/linux/ch.lkmc.Sion.metainfo.xml
+      - name: Install and launch the package
+        run: |
+          dpkg -i build/linux/sion_*.deb
+          test -x /usr/bin/sion
+          xvfb-run -a timeout --preserve-status 8 sion || test $? -eq 143
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sion-deb
+          path: build/linux/sion_*.deb
+          if-no-files-found: error
 
   native-macos:
     runs-on: macos-15

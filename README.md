@@ -1,6 +1,6 @@
 # Sion
 
-Native macOS diagramming and digital illustration, paired with
+Native diagramming and digital illustration for macOS and Linux, paired with
 [Lucerne](https://github.com/L-K-M/Lucerne).
 
 Sion opens directly onto a canvas. Shapes get useful typography, shadows, and
@@ -15,6 +15,13 @@ standalone SVG, Mermaid, and retained history. The contract is documented in
 
 ## Build
 
+Both applications share `SionCore` and the editor layer of `SionKit`; the
+AppKit and GTK front ends mirror each other file for file, and
+[`docs/feature-parity.md`](docs/feature-parity.md) lists every feature with
+the file that implements it on each platform.
+
+### macOS
+
 Requirements: macOS 13+, Xcode command-line tools, Swift 6.
 
 ```bash
@@ -26,9 +33,21 @@ open build/Sion.app
 `scripts/build.sh --run` launches the build. `--install` copies it to
 `/Applications/Sion.app`.
 
-The Foundation-only `SionCore` target also builds on Linux. A future Linux UI
-will be a separate native application held compatible by the format spec and
-shared fixtures.
+### Linux
+
+Requirements: Ubuntu 24.04 or newer, Swift 6.3.3, GTK 4.10+, libadwaita 1.5+.
+
+```bash
+sudo apt install libgtk-4-dev libadwaita-1-dev libpoppler-glib-dev \
+  librsvg2-common dpkg-dev lintian
+swift test
+scripts/build-linux.sh
+sudo dpkg -i build/linux/sion_*.deb
+```
+
+`scripts/build-linux.sh --run` launches the staged build and `--install`
+installs the package. Without a display, run the tests as
+`xvfb-run -a swift test`.
 
 ## License
 

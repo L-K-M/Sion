@@ -1,14 +1,20 @@
 # Architecture
 
-Sion is a native macOS document application. No browser runtime sits in the
-editing path.
+Sion is a native document application on macOS and on Linux. No browser
+runtime sits in the editing path.
 
 ```text
-Sion executable
-    │
-    ▼
-SionKit / AppKit
-  document · window · canvas · palettes · accessibility
+Sion executable (macOS)          sion executable (Linux)
+    │                                │
+    ▼                                ▼
+SionKit / AppKit                 SionGtk / GTK 4
+  document · window · canvas       document · window · canvas
+  palettes · accessibility         palettes · accessibility
+    │                                │
+    └──────────────┬─────────────────┘
+                   ▼
+SionKit shared editor layer
+  editor controller · feedback · undo · library storage
     │
     ▼
 SionCore use cases
@@ -29,9 +35,17 @@ document controller invokes the archive service; it does not parse ZIP records.
 
 - `SionCore`: Foundation-only values and services. It builds and tests on macOS
   and Linux. No AppKit, Core Graphics, or UI coordinates enter this target.
-- `SionKit`: programmatic AppKit document UI, custom canvas, native text editing,
-  paste, undo, and tear-off palettes.
-- `Sion`: thin application entry point and main menu.
+- `SionKit`: the editor layer. Its AppKit files sit behind
+  `#if canImport(AppKit)`; the editor controller, feedback, Mermaid insertion,
+  library storage, and the Linux undo manager compile everywhere with
+  `package` access, so both applications drive one editing model.
+- `Sion`: thin macOS application entry point and main menu.
+- `SionGtk` and the `sion` executable: the native Linux application on GTK 4
+  and libadwaita, drawing with Cairo and Pango. Its directories mirror
+  SionKit's AppKit files one for one (Application, Document, Canvas, Panels,
+  Inspector, Library, Export, Printing, Assets). The `CGtk`, `CPoppler`, and
+  `CSionGtkShim` modules wrap the C toolkit.
+- `sion-icon-tool`: renders the Linux icon theme at packaging time.
 
 Canonical coordinates are top-left/y-down throughout. The canvas is flipped;
 conversion occurs only at AppKit boundaries.
@@ -81,7 +95,16 @@ cannot read is never overwritten.
 
 ## Linux
 
-The Linux application will be a separate native UI, expected to use Qt 6. It
-shares no web runtime and need not share Swift implementation code. Compatibility
-comes from the normative format specification and checked-in fixtures that both
-implementations must decode, rewrite, and compare semantically.
+The Linux application is native GTK 4 rather than the Qt 6 build once
+expected. It reuses SionKit's editor layer verbatim, so commands, selection,
+undo, tool persistence, and library semantics are shared code rather than a
+second implementation held together by the format alone; the toolkit-facing
+files are a one-for-one mirror of the AppKit ones so a feature change has an
+obvious counterpart. File compatibility still rests on the normative format
+specification and the checked-in fixtures both builds decode.
+
+Platform conventions differ where the desktop does: Control stands in for
+Command, dialogs and file choosers are GTK's, each window carries the menu
+bar, and the process quits when its last window closes because nothing would
+remain to act on. `docs/feature-parity.md` records every feature and each such
+difference.

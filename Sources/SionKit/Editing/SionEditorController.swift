@@ -173,10 +173,10 @@ package final class SionEditorController: NSObject {
     }
   }
 
-  private(set) var selection = Set<ElementID>()
-  private(set) var tool = Tool.select
-  private(set) var toolPersistence = ToolPersistence.sticky
-  private(set) var anchorEditingState = AnchorEditingState.inactive
+  package private(set) var selection = Set<ElementID>()
+  package private(set) var tool = Tool.select
+  package private(set) var toolPersistence = ToolPersistence.sticky
+  package private(set) var anchorEditingState = AnchorEditingState.inactive
   private var editor: SceneEditor
   private var assets: [AssetID: SionAsset]
   private var history: DocumentHistory

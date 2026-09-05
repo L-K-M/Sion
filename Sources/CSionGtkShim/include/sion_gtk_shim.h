@@ -26,7 +26,11 @@ void sion_accessible_set_description(GtkAccessible *accessible, const char *desc
 
 /// `gtk_application_set_accels_for_action` wants a NULL-terminated array.
 void sion_application_set_accels(
-  GtkApplication *application, const char *action, const char *accel1, const char *accel2);
+  GtkApplication *application,
+  const char *action,
+  const char *accel1,
+  const char *accel2,
+  const char *accel3);
 
 /// `g_object_set` is variadic; these set one typed property each.
 void sion_object_set_string(gpointer object, const char *property, const char *value);

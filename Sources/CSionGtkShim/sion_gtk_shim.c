@@ -25,8 +25,12 @@ void sion_accessible_set_description(GtkAccessible *accessible, const char *desc
 }
 
 void sion_application_set_accels(
-  GtkApplication *application, const char *action, const char *accel1, const char *accel2) {
-  const char *accels[3] = {accel1, accel2, NULL};
+  GtkApplication *application,
+  const char *action,
+  const char *accel1,
+  const char *accel2,
+  const char *accel3) {
+  const char *accels[4] = {accel1, accel2, accel3, NULL};
   gtk_application_set_accels_for_action(application, action, accels);
 }
 

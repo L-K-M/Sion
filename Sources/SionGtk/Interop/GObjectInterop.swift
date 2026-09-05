@@ -17,6 +17,24 @@ extension UnsafeMutablePointer {
   }
 }
 
+extension UnsafeMutablePointer {
+  /// Final GTK types have no public instance struct, so their pointers import
+  /// as `OpaquePointer`; this is the cast to one of those.
+  var opaque: OpaquePointer {
+    OpaquePointer(self)
+  }
+}
+
+extension OpaquePointer {
+  func cast<Target>() -> UnsafeMutablePointer<Target> {
+    UnsafeMutablePointer<Target>(self)
+  }
+
+  var gobject: gpointer {
+    UnsafeMutableRawPointer(self)
+  }
+}
+
 extension UnsafeMutableRawPointer {
   func cast<Target>() -> UnsafeMutablePointer<Target> {
     assumingMemoryBound(to: Target.self)

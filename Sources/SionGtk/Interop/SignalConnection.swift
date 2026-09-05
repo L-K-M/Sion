@@ -130,6 +130,23 @@ enum Signals {
       SignalBox<Handler>.retained(handler), signalBoxRelease, after ? 1 : 0)
   }
 
+  /// `(instance, int, int, user_data)`: `GtkDrawingArea::resize`.
+  @discardableResult
+  static func connectResize(
+    _ instance: gpointer,
+    handler: @escaping @MainActor (Int32, Int32) -> Void
+  ) -> gulong {
+    typealias Handler = @MainActor (Int32, Int32) -> Void
+    let trampoline: @convention(c) (gpointer?, gint, gint, gpointer?) -> Void = {
+      _, width, height, data in
+      let box = SignalBox<Handler>.from(data)
+      MainActor.assumeIsolated { box.handler(width, height) }
+    }
+    return sion_signal_connect(
+      instance, "resize", unsafeBitCast(trampoline, to: GCallback.self),
+      SignalBox<Handler>.retained(handler), signalBoxRelease, 0)
+  }
+
   /// `(instance, double, double, user_data) -> gboolean`: scroll controllers.
   @discardableResult
   static func connectScroll(
@@ -259,5 +276,23 @@ enum MainLoop {
     while g_main_context_pending(nil) != 0 {
       g_main_context_iteration(nil, 0)
     }
+  }
+}
+
+// MARK: - GIO async results
+
+@MainActor
+enum GAsync {
+  typealias Handler = @MainActor (UnsafeMutablePointer<GObject>?, OpaquePointer?) -> Void
+
+  /// Packages a one-shot Swift closure as a `GAsyncReadyCallback` plus its
+  /// user data. The box is released once the callback has run.
+  static func callback(_ handler: @escaping Handler) -> (GAsyncReadyCallback, gpointer) {
+    let trampoline: GAsyncReadyCallback = { source, result, data in
+      guard let data else { return }
+      let box = Unmanaged<SignalBox<Handler>>.fromOpaque(data).takeRetainedValue()
+      MainActor.assumeIsolated { box.handler(source, result) }
+    }
+    return (trampoline, SignalBox<Handler>.retained(handler))
   }
 }

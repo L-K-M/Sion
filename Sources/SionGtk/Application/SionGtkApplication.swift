@@ -229,67 +229,11 @@ final class SionGtkApplicationCoordinator {
   // MARK: Menus
 
   private func buildMenu() {
-    let root = g_menu_new()!
-    for entry in SionGtkMenuTree.menuBar {
-      append(entry, to: root)
-    }
-    menu = root
-  }
-
-  /// Separators become sections, which is how `GMenu` draws them.
-  private func append(_ entries: [SionGtkMenuEntry], to menu: OpaquePointer) {
-    var section = g_menu_new()!
-    var sectionStartsWithUndo = false
-    func flush() {
-      if g_menu_model_get_n_items(UnsafeMutablePointer<GMenuModel>(section)) > 0 {
-        g_menu_append_section(menu, nil, UnsafeMutablePointer<GMenuModel>(section))
-        if sectionStartsWithUndo {
-          undoSection = section
-        }
-      } else {
-        g_object_unref(section.gobject)
-      }
-      section = g_menu_new()!
-      sectionStartsWithUndo = false
-    }
-    for entry in entries {
-      switch entry {
-      case .separator:
-        flush()
-      case .command(let command):
-        if g_menu_model_get_n_items(UnsafeMutablePointer<GMenuModel>(section)) == 0,
-          command == .undo
-        {
-          sectionStartsWithUndo = true
-        }
-        append(entry, to: section)
-      case .submenu, .dynamicSection:
-        append(entry, to: section)
-      }
-    }
-    flush()
-    g_object_unref(section.gobject)
-  }
-
-  private func append(_ entry: SionGtkMenuEntry, to menu: OpaquePointer) {
-    switch entry {
-    case .separator:
-      break
-    case .command(let command):
-      g_menu_append(menu, command.title, command.actionName)
-    case .submenu(let title, let entries):
-      let submenu = g_menu_new()!
-      append(entries, to: submenu)
-      g_menu_append_submenu(menu, title, UnsafeMutablePointer<GMenuModel>(submenu))
-      g_object_unref(submenu.gobject)
-    case .dynamicSection(let dynamic):
-      let section = g_menu_new()!
-      g_menu_append_section(menu, nil, UnsafeMutablePointer<GMenuModel>(section))
-      switch dynamic {
-      case .recentDocuments: recentSection = section
-      case .windows: windowsSection = section
-      }
-    }
+    let built = SionGtkMenuBuilder.build(SionGtkMenuTree.menuBar)
+    menu = built.menu
+    recentSection = built.dynamicSections[.recentDocuments]
+    windowsSection = built.dynamicSections[.windows]
+    undoSection = built.undoSection
   }
 
   private func rebuildRecentSection() {

@@ -75,6 +75,7 @@ final class SionGtkApplicationCoordinator {
 
   func startup() {
     DispatchMainQueueBridge.install()
+    SionGtkResources.ensureApplicationIcon(named: SionGtkApplication.applicationID)
     buildMenu()
     installActions()
     installAccelerators()

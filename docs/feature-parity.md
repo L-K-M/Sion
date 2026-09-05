@@ -50,20 +50,22 @@ contract that swift-corelibs-foundation lacks.
 
 | Feature | macOS (`Canvas/SionCanvasView.swift`) | Linux (`Canvas/`) |
 | --- | --- | --- |
-| Scene rendering, grid, selection chrome, previews | `SionCanvasView` drawing | `SionGtkCanvasView` drawing with Cairo and Pango |
-| Tools, gestures, snapping, anchors, connectors | `SionCanvasView` event handling | `SionGtkCanvasView` gesture and key controllers |
-| Inline text editing | Field editor `NSTextView` | `GtkTextView` overlay |
-| Clipboard and paste precedence, drag and drop | `NSPasteboard`, dragging destination | `GdkClipboard`, `GtkDropTarget` |
-| Context menu | `Canvas/SionCanvasContextMenu.swift` | `SionGtkMenuTree.canvasContextMenu` in a `GtkPopoverMenu` |
+| Scene rendering, grid, selection chrome, previews, shadows | `SionCanvasView` drawing | `SionGtkCanvasView+Drawing.swift` with Cairo and Pango (shadows through a blurred mask) |
+| Tools, gestures, snapping, anchors, connectors, keyboard, cursors | `SionCanvasView` event handling | `SionGtkCanvasView+Interaction.swift` gesture and key controllers |
+| Inline text editing | Field editor `NSTextView` | `SionGtkCanvasView+TextEditing.swift`, a `GtkTextView` overlay |
+| Clipboard and paste precedence, drag and drop | `NSPasteboard`, dragging destination | `SionGtkCanvasView+Clipboard.swift` over `GdkClipboard` and `GtkDropTarget` |
+| Context menu | `Canvas/SionCanvasContextMenu.swift` | `Canvas/SionGtkCanvasContextMenu.swift` from `SionGtkMenuTree.canvasContextMenu` |
+| Zoom, viewport, canvas bounds growth | Window controller and `SionCanvasView` | `Canvas/SionGtkCanvasView.swift` (also Control-scroll and pinch) |
 | Image import pipeline (bounded PNG rendition, original kept) | `Assets/SafeImageRenditionBuilder.swift` (ImageIO, PDF via Core Graphics) | `Assets/SionGtkImageRendition.swift` (GdkPixbuf, SVG via librsvg, PDF via poppler) |
 
 ## Palettes
 
 | Feature | macOS | Linux |
 | --- | --- | --- |
-| Palette framework: popover, tear-off floating panel, retargeting | `Panels/Palette.swift`, `PaletteCenter.swift`, `PalettePanel.swift`, `PaletteTypes.swift` | `Panels/SionGtkPaletteCenter.swift` and neighbours |
-| Inspector and History | `Inspector/SionPalettes.swift` | `Inspector/` |
-| Library (document and global) | `Library/LibraryPaletteController.swift`, shared `SionGlobalLibrary` | `Library/`, shared `SionGlobalLibrary` (stored under `$XDG_DATA_HOME/Sion/Library`) |
+| Palette framework: popover, tear-off floating panel, retargeting | `Panels/Palette.swift`, `PaletteCenter.swift`, `PalettePanel.swift`, `PaletteTypes.swift` | `Panels/SionGtkPaletteCenter.swift` (`SionGtkPaletteCenter`, `SionGtkPalette`); the popover header's button opens the palette as a window |
+| Inspector: name, lock, fill, stroke, shadow, route, connector anchors | `Inspector/SionPalettes.swift` (`InspectorPaletteController`) | `Inspector/SionGtkInspectorPalette.swift` |
+| History: revisions and restore | `Inspector/SionPalettes.swift` (`HistoryPaletteController`) | `Inspector/SionGtkHistoryPalette.swift` |
+| Library: built-in shapes, document and global items, rename, remove | `Library/LibraryPaletteController.swift`, shared `SionGlobalLibrary` | `Library/SionGtkLibraryPalette.swift`, shared `SionGlobalLibrary` (stored under `$XDG_DATA_HOME/Sion/Library`) |
 | Feedback banner | `Panels/SionEditorFeedbackPresenter.swift` | `Panels/SionGtkEditorFeedbackPresenter.swift` |
 
 ## Platform differences
@@ -84,3 +86,15 @@ Each entry is deliberate; anything else that differs is a bug.
   the packaged copy says Ctrl where the macOS book says Command.
 - Toolbar layout is fixed; macOS lets the toolbar be customised. The History
   button is therefore always present on Linux.
+- Palettes cannot be torn off by dragging a popover; the popover header has a
+  button that opens the same palette as a window. Clicking outside an open
+  popover closes it without activating what was clicked, as GTK popovers do.
+- The canvas also zooms with Control-scroll and touchpad pinch, the desktop's
+  conventions; the zoom limits and steps are the macOS ones.
+- System colours in canvas chrome (selection accent, handles, grid, guides)
+  follow the GNOME palette rather than the macOS accent colour; every alpha
+  and size is the same.
+- Fonts: the system font is the desktop's interface font, so text wraps
+  where that font wraps. Named fonts resolve through fontconfig.
+- Autosave in place writes five seconds after the last edit and on close;
+  macOS autosaves on AppKit's own schedule.

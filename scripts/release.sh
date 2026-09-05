@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bump, verify, commit, and tag a native macOS release.
+# Bump, verify, commit, and tag a release; the tag builds macOS and Linux.
 # Usage: scripts/release.sh X.Y.Z [--push]
 set -euo pipefail
 
@@ -70,7 +70,7 @@ next_build=$((current_build + 1))
 
 git add "$INFO_PLIST"
 git commit -s -m "Release Sion $version" \
-  -m "Prepare the native macOS release metadata."
+  -m "Prepare the release metadata both applications read."
 git tag -a "$tag" -m "Sion $version"
 
 if [[ "$push_option" == "--push" ]]; then

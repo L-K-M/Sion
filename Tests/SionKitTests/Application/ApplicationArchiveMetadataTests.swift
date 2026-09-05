@@ -31,6 +31,24 @@ final class ApplicationArchiveMetadataTests: XCTestCase {
     }
   }
 
+  func testReadsTheSameVersionFromAnInfoDictionary() {
+    XCTAssertEqual(
+      ApplicationArchiveMetadata(
+        infoDictionary: ["CFBundleShortVersionString": BundleFixture.version]
+      ).archiveGenerator,
+      SionArchiveGenerator(name: BundleFixture.applicationName, version: BundleFixture.version)
+    )
+    for dictionary in [[:], ["CFBundleShortVersionString": ""]] as [[String: Any]] {
+      XCTAssertEqual(
+        ApplicationArchiveMetadata(infoDictionary: dictionary).archiveGenerator,
+        SionArchiveGenerator(
+          name: BundleFixture.applicationName,
+          version: BundleFixture.unknownVersion
+        )
+      )
+    }
+  }
+
   private func withTemporaryBundle(
     shortVersion: String?,
     body: (Bundle) throws -> Void

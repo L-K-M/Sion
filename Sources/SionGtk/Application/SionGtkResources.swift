@@ -1,3 +1,4 @@
+import CGtk
 import Foundation
 import SionCore
 import SionKit
@@ -52,13 +53,60 @@ package enum SionGtkResources {
       "Sion.help/Contents/Resources/en.lproj/index.html")
   }
 
-  /// The version stamped into archives; `Bundle` reads a flat `Info.plist`.
+  /// The version stamped into archives, read from the shared `Info.plist`.
   package static var archiveGenerator: SionArchiveGenerator {
-    let bundle = Bundle(path: rootURL.path) ?? .main
-    return ApplicationArchiveMetadata(bundle: bundle).archiveGenerator
+    ApplicationArchiveMetadata(infoDictionary: infoDictionary).archiveGenerator
+  }
+
+  package static var infoDictionary: [String: Any] {
+    guard let data = try? Data(contentsOf: infoPlistURL),
+      let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+      let dictionary = plist as? [String: Any]
+    else {
+      return [:]
+    }
+    return dictionary
   }
 
   package static var versionString: String {
     archiveGenerator.version
+  }
+
+  /// A development build runs without the installed icon theme entries; render
+  /// the application icon into the cache and let the theme find it there.
+  @MainActor
+  package static func ensureApplicationIcon(named name: String) {
+    guard let display = gdk_display_get_default(),
+      let theme = gtk_icon_theme_get_for_display(display)
+    else {
+      return
+    }
+    if gtk_icon_theme_has_icon(theme, name) != 0 {
+      return
+    }
+
+    let cache =
+      ProcessInfo.processInfo.environment["XDG_CACHE_HOME"].map {
+        URL(fileURLWithPath: $0, isDirectory: true)
+      } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache")
+    let root = cache.appendingPathComponent("sion/icons", isDirectory: true)
+    for pixels in [16, 32, 48, 64, 128, 256] {
+      let directory = root.appendingPathComponent(
+        "hicolor/\(pixels)x\(pixels)/apps", isDirectory: true)
+      let file = directory.appendingPathComponent("\(name).png")
+      if FileManager.default.fileExists(atPath: file.path) { continue }
+      try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      guard
+        let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, Int32(pixels), Int32(pixels)),
+        let context = cairo_create(surface)
+      else {
+        continue
+      }
+      SionIconArtwork.drawAppIcon(context, size: Double(pixels))
+      cairo_destroy(context)
+      _ = cairo_surface_write_to_png(surface, file.path)
+      cairo_surface_destroy(surface)
+    }
+    gtk_icon_theme_add_search_path(theme, root.path)
   }
 }

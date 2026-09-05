@@ -87,7 +87,7 @@ final class SionGtkHistoryPalette: SionGtkPaletteContent {
 }
 
 enum HistoryDateFormatter {
-  nonisolated(unsafe) static let shared: DateFormatter = {
+  static let shared: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateStyle = .medium
     formatter.timeStyle = .short

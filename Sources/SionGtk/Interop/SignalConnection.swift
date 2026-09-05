@@ -247,6 +247,24 @@ enum MainLoop {
       })
   }
 
+  /// Runs `body` as soon as the current event's dispatch has finished, before
+  /// the next queued event: what Foundation's run loop calls the end of the
+  /// current event.
+  static func performAfterCurrentEvent(_ body: @escaping @MainActor () -> Void) {
+    typealias Handler = @MainActor () -> Void
+    let trampoline: @convention(c) (gpointer?) -> gboolean = { data in
+      let box = SignalBox<Handler>.from(data)
+      MainActor.assumeIsolated { box.handler() }
+      return sion_source_remove()
+    }
+    g_idle_add_full(
+      G_PRIORITY_HIGH, trampoline, SignalBox<Handler>.retained(body),
+      { data in
+        guard let data else { return }
+        Unmanaged<AnyObject>.fromOpaque(data).release()
+      })
+  }
+
   /// Runs `body` after `seconds` on the main loop.
   @discardableResult
   static func perform(after seconds: Double, _ body: @escaping @MainActor () -> Void) -> guint {

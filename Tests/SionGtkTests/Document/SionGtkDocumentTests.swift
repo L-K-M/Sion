@@ -50,6 +50,27 @@ final class SionGtkDocumentTests: XCTestCase {
     XCTAssertFalse(document.isDocumentEdited)
   }
 
+  func testEachEventIsItsOwnUndoStep() throws {
+    try GtkTestSupport.requireDisplay()
+    let document = SionGtkDocument(archiveGenerator: generator)
+    let controller = document.editingController
+
+    _ = try controller.insertShape(at: SionPoint(x: 10, y: 10))
+    GtkTestSupport.drainMainLoop()
+    _ = try controller.insertShape(at: SionPoint(x: 300, y: 10))
+    GtkTestSupport.drainMainLoop()
+    XCTAssertEqual(controller.document.scene.elements.count, 2)
+
+    document.undoManager.undo()
+    XCTAssertEqual(controller.document.scene.elements.count, 1)
+    XCTAssertTrue(document.isDocumentEdited)
+    document.undoManager.undo()
+    XCTAssertTrue(controller.document.scene.elements.isEmpty)
+    XCTAssertFalse(document.isDocumentEdited)
+    document.undoManager.redo()
+    XCTAssertEqual(controller.document.scene.elements.count, 1)
+  }
+
   func testClosingAnEditedFileDocumentAutosavesInPlace() throws {
     let url = temporaryURL("Auto.sion")
     try writeArchive(elements: [], to: url)

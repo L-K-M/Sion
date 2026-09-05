@@ -22,6 +22,10 @@ extension SionGtkCanvasView {
       let state = gtk_event_controller_get_current_event_state(click)
       self.handleRelease(at: self.modelPoint(fromWidgetX: x, y: y), modifiers: Modifiers(state))
     }
+    // A gesture GTK takes away mid-drag never releases; only a release commits.
+    Signals.connect(click.gobject, "cancel") { [weak self] _ in
+      self?.cancelActiveDrag()
+    }
     gtk_widget_add_controller(drawingArea, click)
 
     let secondary = gtk_gesture_click_new()!

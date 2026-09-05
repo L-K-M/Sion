@@ -77,6 +77,11 @@ package final class SionGtkDocument {
 
   package init(archiveGenerator: SionArchiveGenerator = SionGtkResources.archiveGenerator) {
     self.archiveGenerator = archiveGenerator
+    // Registrations made during one event coalesce into one undo step, as
+    // Foundation's undo manager groups by run-loop event.
+    undoManager.eventGroupScheduler = { body in
+      MainLoop.performAfterCurrentEvent(body)
+    }
   }
 
   package var editingController: SionEditorController {

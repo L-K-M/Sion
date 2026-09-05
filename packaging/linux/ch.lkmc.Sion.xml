@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The Sion drawing type. It mirrors the UTI ch.lkmc.sion.document that the
+     macOS application declares in Resources/Info.plist. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.lkmc.sion+zip">
+    <comment>Sion Drawing</comment>
+    <sub-class-of type="application/zip"/>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.sion"/>
+  </mime-type>
+</mime-info>

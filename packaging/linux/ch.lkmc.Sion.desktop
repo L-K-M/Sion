@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Sion
+GenericName=Diagram Editor
+Comment=Native diagramming and digital illustration
+Exec=sion %F
+TryExec=sion
+Icon=ch.lkmc.Sion
+Terminal=false
+StartupNotify=true
+Categories=Graphics;2DGraphics;VectorGraphics;GTK;GNOME;
+Keywords=diagram;drawing;flowchart;mermaid;svg;illustration;
+MimeType=application/vnd.lkmc.sion+zip;

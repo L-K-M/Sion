@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>ch.lkmc.Sion</id>
+  <name>Sion</name>
+  <summary>Native diagramming and digital illustration</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Unlicense</project_license>
+  <developer id="ch.lkmc">
+    <name>L-K-M</name>
+  </developer>
+  <description>
+    <p>
+      Sion opens directly onto a canvas. Shapes get useful typography, shadows,
+      and connection magnets by default. Connection points are directly
+      editable, and connectors preview their routed path before placement.
+    </p>
+    <p>
+      Sion drawings are ZIP archives containing the editable scene, original
+      assets, standalone SVG, Mermaid, and retained history, so the same file
+      opens in the macOS and Linux applications.
+    </p>
+  </description>
+  <launchable type="desktop-id">ch.lkmc.Sion.desktop</launchable>
+  <provides>
+    <binary>sion</binary>
+    <mediatype>application/vnd.lkmc.sion+zip</mediatype>
+  </provides>
+  <url type="homepage">https://github.com/L-K-M/Sion</url>
+  <url type="bugtracker">https://github.com/L-K-M/Sion/issues</url>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Graphics</category>
+    <category>VectorGraphics</category>
+  </categories>
+</component>

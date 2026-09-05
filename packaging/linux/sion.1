@@ -1,0 +1,29 @@
+.TH SION 1 "2026" "Sion" "User Commands"
+.SH NAME
+sion \- native diagramming and digital illustration
+.SH SYNOPSIS
+.B sion
+.RI [ FILE "...]"
+.SH DESCRIPTION
+.B Sion
+opens directly onto a canvas. Shapes get useful typography, shadows, and
+connection magnets by default; connectors preview their routed path before
+placement. Drawings are saved as
+.I .sion
+archives that the macOS and Linux applications share.
+.PP
+Each
+.I FILE
+given on the command line opens in its own window. Without arguments a new,
+untitled drawing opens.
+.SH FILES
+.TP
+.I ~/.local/share/Sion/Library
+The library shared by all documents.
+.TP
+.I /usr/share/sion/help/index.html
+The user guide, opened by Help > Sion Help.
+.SH SEE ALSO
+.UR https://github.com/L-K-M/Sion
+The Sion repository
+.UE

@@ -3,6 +3,9 @@
 Native macOS diagramming and digital illustration, paired with
 [Lucerne](https://github.com/L-K-M/Lucerne).
 
+> [!IMPORTANT]
+> LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
+
 Sion opens directly onto a canvas. Shapes get useful typography, shadows, and
 connection magnets by default. Connection points are directly editable, and
 connectors preview their routed path before placement. Image paste keeps the

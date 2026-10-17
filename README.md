@@ -29,6 +29,9 @@ open build/Sion.app
 `scripts/build.sh --run` launches the build. `--install` copies it to
 `/Applications/Sion.app`.
 
+A downloaded build is ad-hoc signed and not notarized. After moving the app to
+Applications, run `xattr -dr com.apple.quarantine "/Applications/Sion.app"`.
+
 The Foundation-only `SionCore` target also builds on Linux. A future Linux UI
 will be a separate native application held compatible by the format spec and
 shared fixtures.

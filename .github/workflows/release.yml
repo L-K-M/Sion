@@ -49,7 +49,7 @@ jobs:
       - name: Archive
         run: |
           mkdir -p release
-          archive="release/Sion-${{ steps.source.outputs.version }}-macOS.zip"
+          archive="release/Sion-${{ steps.source.outputs.version }}-macos-arm64.zip"
           ditto -c -k --sequesterRsrc --keepParent build/Sion.app "$archive"
           shasum -a 256 "$archive" > release/SHA256SUMS.txt
       - name: Publish draft

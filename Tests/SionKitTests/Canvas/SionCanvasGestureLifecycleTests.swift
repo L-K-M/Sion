@@ -131,7 +131,8 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
         == referencePixels(
           for: expectedDocument,
           selection: expectedSelection,
-          tool: fixture.controller.tool
+          tool: fixture.controller.tool,
+          appearance: fixture.canvas.effectiveAppearance
         )
     )
 
@@ -267,7 +268,8 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
       let windowHost = SionDocumentWindowController(editorController: controller)
       // The canvas scroll view shares the content view with the status bar.
       let scrollView = try XCTUnwrap(
-        windowHost.window?.contentView?.subviews.compactMap { $0 as? NSScrollView }.first
+        windowHost.window?.contentView?.subviews.compactMap { $0 as? NSScrollView }
+          .first { $0.documentView is SionCanvasView }
       )
       canvas = try XCTUnwrap(scrollView.documentView as? SionCanvasView)
       windowController = windowHost
@@ -323,7 +325,8 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
   private func referencePixels(
     for document: SionDocument,
     selection: Set<ElementID>,
-    tool: SionEditorController.Tool
+    tool: SionEditorController.Tool,
+    appearance: NSAppearance
   ) throws -> Data {
     let controller = try SionEditorController(
       package: SionPackage(document: document),
@@ -335,12 +338,12 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
       controller.select(selectedID)
     }
 
-    return try backingPixels(
-      of: SionCanvasView(
-        editorController: controller,
-        creationFailureFeedback: {}
-      )
+    let canvas = SionCanvasView(
+      editorController: controller,
+      creationFailureFeedback: {}
     )
+    canvas.appearance = appearance
+    return try backingPixels(of: canvas)
   }
 
   private func backingPixels(of canvas: SionCanvasView) throws -> Data {

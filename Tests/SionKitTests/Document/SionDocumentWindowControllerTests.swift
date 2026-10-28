@@ -538,7 +538,8 @@ final class SionDocumentWindowControllerTests: XCTestCase {
   /// bar since the classic layout arrived.
   private func canvasScrollView(in window: NSWindow?) throws -> NSScrollView {
     try XCTUnwrap(
-      window?.contentView?.subviews.compactMap { $0 as? NSScrollView }.first
+      window?.contentView?.subviews.compactMap { $0 as? NSScrollView }
+        .first { $0.documentView is SionCanvasView }
     )
   }
 

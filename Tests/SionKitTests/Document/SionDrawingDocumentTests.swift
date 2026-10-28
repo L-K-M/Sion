@@ -303,7 +303,8 @@ final class SionDrawingDocumentTests: XCTestCase {
     let window = try XCTUnwrap(windowController.window)
     // The canvas scroll view shares the content view with the status bar.
     let scrollView = try XCTUnwrap(
-      window.contentView?.subviews.compactMap { $0 as? NSScrollView }.first
+      window.contentView?.subviews.compactMap { $0 as? NSScrollView }
+        .first { $0.documentView is SionCanvasView }
     )
     let canvas = try XCTUnwrap(scrollView.documentView as? SionCanvasView)
     defer {

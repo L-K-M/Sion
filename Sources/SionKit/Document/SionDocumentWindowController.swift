@@ -250,26 +250,7 @@
 
       configureStatusBar()
 
-      // The document body is the canvas over the shared status bar; the
-      // scroll view no longer fills the window on its own.
-      let content = NSView()
-      scrollView.translatesAutoresizingMaskIntoConstraints = false
-      statusBar.translatesAutoresizingMaskIntoConstraints = false
-      content.addSubview(scrollView)
-      content.addSubview(statusBar)
-      NSLayoutConstraint.activate([
-        scrollView.topAnchor.constraint(equalTo: content.topAnchor),
-        scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-        scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-        statusBar.topAnchor.constraint(equalTo: scrollView.bottomAnchor),
-        statusBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-        statusBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-        statusBar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-        statusBar.heightAnchor.constraint(
-          equalToConstant: ClassicMetrics.statusBarHeight
-        ),
-      ])
-      window?.contentView = content
+      window?.contentView = SionDocumentContentView(scrollView: scrollView, statusBar: statusBar)
       feedbackPresenter.attach(to: scrollView)
     }
 
@@ -293,7 +274,7 @@
     }
 
     private func refreshStatusBarMessage() {
-      statusBar.message = hoveredElementName ?? selectionStatusMessage
+      updateStatusBarMessage(hovering: hoveredElementName)
     }
 
     private var selectionStatusMessage: String {
@@ -606,6 +587,45 @@
       }
 
       palette.present(from: anchor)
+    }
+  }
+
+  /// Lay out the canvas synchronously, including a restored zero-size viewport.
+  /// Auto Layout's control minimums must not change the window's content geometry.
+  @MainActor
+  private final class SionDocumentContentView: NSView {
+    private let scrollView: NSScrollView
+    private let statusBar: StatusBarView
+
+    init(scrollView: NSScrollView, statusBar: StatusBarView) {
+      self.scrollView = scrollView
+      self.statusBar = statusBar
+      super.init(frame: .zero)
+      addSubview(scrollView)
+      addSubview(statusBar)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+      super.resizeSubviews(withOldSize: oldSize)
+      layoutContents()
+    }
+
+    override func layout() {
+      super.layout()
+      layoutContents()
+    }
+
+    private func layoutContents() {
+      let footerHeight = min(bounds.height, ClassicMetrics.statusBarHeight)
+      statusBar.frame = NSRect(
+        x: bounds.minX, y: bounds.minY,
+        width: bounds.width, height: footerHeight)
+      scrollView.frame = NSRect(
+        x: bounds.minX, y: bounds.minY + footerHeight,
+        width: bounds.width, height: max(0, bounds.height - footerHeight))
     }
   }
 

@@ -6,7 +6,6 @@ import XCTest
 
 @MainActor
 final class SionLibraryPaletteTests: XCTestCase {
-  private let libraryViewportHeight: CGFloat = 250
 
   func testLibraryInsertsEveryBuiltInShapeAtTheViewportCenter() throws {
     _ = NSApplication.shared
@@ -62,7 +61,7 @@ final class SionLibraryPaletteTests: XCTestCase {
     panel.contentView?.layoutSubtreeIfNeeded()
 
     XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
-    XCTAssertGreaterThan(stack.fittingSize.height, libraryViewportHeight)
+    XCTAssertGreaterThanOrEqual(stack.frame.height, stack.fittingSize.height)
 
     for expected in expectedShapes {
       let button = try XCTUnwrap(buttons.first { $0.title == expected.title })
@@ -137,7 +136,7 @@ final class SionLibraryPaletteTests: XCTestCase {
     // Chrome independent: whatever the popover settles on, the body fills
     // the size the palette was registered with.
     XCTAssertEqual(scrollView.frame.size, SionPalettes.libraryDefinition.contentSize)
-    XCTAssertGreaterThan(stack.fittingSize.height, libraryViewportHeight)
+    XCTAssertGreaterThanOrEqual(stack.frame.height, stack.fittingSize.height)
     XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
   }
 

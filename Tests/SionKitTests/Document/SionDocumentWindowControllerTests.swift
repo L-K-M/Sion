@@ -81,7 +81,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     _ = NSApplication.shared
     let windowController = try makeZoomWindowController()
     defer { windowController.close() }
-    let scrollView = try XCTUnwrap(windowController.window?.contentView as? NSScrollView)
+    let scrollView = try canvasScrollView(in: windowController.window)
     let installedItem = try zoomToolbarItem(
       from: windowController,
       placement: .installed
@@ -147,7 +147,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     let windowController = SionDocumentWindowController(editorController: editorController)
     defer { windowController.close() }
 
-    let scrollView = try XCTUnwrap(windowController.window?.contentView as? NSScrollView)
+    let scrollView = try canvasScrollView(in: windowController.window)
 
     windowController.zoomToFit(nil)
     let firstFit = scrollView.magnification
@@ -168,7 +168,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
       windowController.close()
       NSWindow.removeFrame(usingName: autosaveName)
     }
-    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    let scrollView = try canvasScrollView(in: window)
     window.setContentSize(InitialFitTestGeometry.windowContentSize)
     let magnificationBeforeShow = scrollView.magnification
 
@@ -190,7 +190,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
       windowController.close()
       NSWindow.removeFrame(usingName: autosaveName)
     }
-    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    let scrollView = try canvasScrollView(in: window)
     let magnificationBeforeShow = scrollView.magnification
 
     window.setContentSize(.zero)
@@ -219,7 +219,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
       windowController.close()
       NSWindow.removeFrame(usingName: autosaveName)
     }
-    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    let scrollView = try canvasScrollView(in: window)
 
     windowController.showWindow(nil)
     windowController.actualSize(nil)
@@ -246,7 +246,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
       windowController.close()
       NSWindow.removeFrame(usingName: autosaveName)
     }
-    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    let scrollView = try canvasScrollView(in: window)
 
     window.setContentSize(.zero)
     windowController.showWindow(nil)
@@ -279,7 +279,7 @@ final class SionDocumentWindowControllerTests: XCTestCase {
       windowController.close()
       NSWindow.removeFrame(usingName: autosaveName)
     }
-    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    let scrollView = try canvasScrollView(in: window)
 
     windowController.showWindow(nil)
     let magnificationAfterEmptyShow = scrollView.magnification
@@ -490,6 +490,8 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     defer { windowController.close() }
 
     let window = try XCTUnwrap(windowController.window)
+    windowController.showWindow(nil)
+    window.layoutIfNeeded()
     let contentView = try XCTUnwrap(window.contentView)
 
     // The canvas is a light document surface whatever the system appearance
@@ -498,8 +500,50 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     // white on white, so the content stays out from under it entirely.
     XCTAssertFalse(window.styleMask.contains(.fullSizeContentView))
     XCTAssertFalse(window.titlebarAppearsTransparent)
-    XCTAssertEqual(window.contentLayoutRect, contentView.bounds)
-    XCTAssertTrue(contentView is NSScrollView)
+    // AppKit reports the layout rect in window coordinates, not view bounds.
+    XCTAssertEqual(contentView.convert(window.contentLayoutRect, from: nil), contentView.bounds)
+    XCTAssertNotNil(try canvasScrollView(in: window))
+  }
+
+  /// The window, the shared status bar, and the zoom wiring are the Rigi
+  /// seams this app promised to keep; losing one quietly reverts chrome or
+  /// strands the status cluster's zoom actions.
+  func testTheClassicWindowCarriesAStatusBarWiredToTheSameZoomCommands() throws {
+    _ = NSApplication.shared
+    let windowController = try makeZoomWindowController()
+    defer { windowController.close() }
+
+    let window = try XCTUnwrap(windowController.window)
+    XCTAssertTrue(window is ClassicWindow)
+    XCTAssertEqual(window.appearance?.name, .aqua)
+
+    let statusBar = try XCTUnwrap(
+      window.contentView?.subviews.compactMap { $0 as? StatusBarView }.first
+    )
+    let scrollView = try canvasScrollView(in: window)
+
+    statusBar.onZoomIn?()
+    XCTAssertEqual(
+      scrollView.magnification,
+      StatusBarWiring.zoomedInMagnification,
+      accuracy: StatusBarWiring.magnificationAccuracy
+    )
+
+    statusBar.onZoomReset?()
+    XCTAssertEqual(
+      scrollView.magnification,
+      ZoomTestCommand.actualSizeMagnification,
+      accuracy: StatusBarWiring.magnificationAccuracy
+    )
+  }
+
+  /// The canvas scroll view shares the window's content view with the status
+  /// bar since the classic layout arrived.
+  private func canvasScrollView(in window: NSWindow?) throws -> NSScrollView {
+    try XCTUnwrap(
+      window?.contentView?.subviews.compactMap { $0 as? NSScrollView }
+        .first { $0.documentView is SionCanvasView }
+    )
   }
 
   private func makeZoomWindowController() throws -> SionDocumentWindowController {
@@ -554,6 +598,12 @@ private enum ZoomTestCommand {
   static let zoomInSegment = 2
   static let action = NSSelectorFromString("performZoomCommand:")
   static let actualSizeMagnification: CGFloat = 1
+}
+
+private enum StatusBarWiring {
+  /// One zoom-in step (WindowMetrics.zoomStep) from actual size.
+  static let zoomedInMagnification: CGFloat = 1.2
+  static let magnificationAccuracy: CGFloat = 0.000_001
 }
 
 private enum ZoomToolbarSpacing {

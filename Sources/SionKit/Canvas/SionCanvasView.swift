@@ -84,6 +84,10 @@
     /// not what the drawing contains.
     private(set) var snapsToObjects = true
 
+    /// Reports the element under the pointer to the window's status line; nil
+    /// hands the line back to whatever owns the default context message.
+    var hoverFeedback: (@MainActor (String?) -> Void)?
+
     /// How far a connection point sits outside the outline it belongs to.
     /// Module-internal so a test can aim at one without copying the number.
     static var magnetDisplayOffset: Double { CanvasMetrics.magnetOffset }
@@ -217,7 +221,9 @@
 
     override func mouseMoved(with event: NSEvent) {
       cancelActiveDrag()
-      updateCursor(at: modelPoint(from: event))
+      let point = modelPoint(from: event)
+      updateCursor(at: point)
+      hoverFeedback?(editorController.element(at: point)?.displayName)
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -230,6 +236,7 @@
       guard drag == nil else { return }
 
       NSCursor.arrow.set()
+      hoverFeedback?(nil)
     }
 
     /// Tool and selection changes arrive without mouse movement; re-derive the

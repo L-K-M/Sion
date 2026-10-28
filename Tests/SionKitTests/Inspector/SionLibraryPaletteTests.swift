@@ -6,7 +6,6 @@ import XCTest
 
 @MainActor
 final class SionLibraryPaletteTests: XCTestCase {
-  private let libraryViewportHeight: CGFloat = 250
 
   func testLibraryInsertsEveryBuiltInShapeAtTheViewportCenter() throws {
     _ = NSApplication.shared
@@ -62,7 +61,7 @@ final class SionLibraryPaletteTests: XCTestCase {
     panel.contentView?.layoutSubtreeIfNeeded()
 
     XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
-    XCTAssertGreaterThan(stack.fittingSize.height, libraryViewportHeight)
+    XCTAssertGreaterThanOrEqual(stack.frame.height, stack.fittingSize.height)
 
     for expected in expectedShapes {
       let button = try XCTUnwrap(buttons.first { $0.title == expected.title })
@@ -107,13 +106,21 @@ final class SionLibraryPaletteTests: XCTestCase {
 
     library.present(from: anchor)
 
-    let popover = try XCTUnwrap(library.presentedPopover)
+    XCTAssertEqual(library.presentation, .popover)
 
-    // Asserting against the registered definition keeps the test honest when
-    // the palette is re-declared at another size.
-    XCTAssertEqual(popover.contentSize, library.definitionContentSize)
+    // A shown popover hangs off its positioning window as a child window,
+    // which is the public handle to the attached presentation.
+    let popoverWindow = try XCTUnwrap(
+      window.childWindows?.first,
+      "The palette did not attach a popover window"
+    )
+    popoverWindow.contentView?.layoutSubtreeIfNeeded()
 
-    let scrollView = try XCTUnwrap(popover.contentViewController?.view as? NSScrollView)
+    // The body is the scroll view inside the classic panel backing.
+    let scrollView = try XCTUnwrap(
+      popoverWindow.contentView?.libraryTestDescendants
+        .compactMap { $0 as? NSScrollView }.first
+    )
     scrollView.layoutSubtreeIfNeeded()
 
     let stack = try XCTUnwrap(scrollView.documentView as? NSStackView)
@@ -126,9 +133,10 @@ final class SionLibraryPaletteTests: XCTestCase {
         "Capsule", "Cylinder", "Text",
       ]
     )
-    // Chrome independent: whatever the popover settles on, the body fills it.
-    XCTAssertEqual(scrollView.frame.size, popover.contentSize)
-    XCTAssertGreaterThan(stack.fittingSize.height, libraryViewportHeight)
+    // Chrome independent: whatever the popover settles on, the body fills
+    // the size the palette was registered with.
+    XCTAssertEqual(scrollView.frame.size, SionPalettes.libraryDefinition.contentSize)
+    XCTAssertGreaterThanOrEqual(stack.frame.height, stack.fittingSize.height)
     XCTAssertTrue(buttons.allSatisfy { !$0.frame.isEmpty })
   }
 
@@ -147,13 +155,36 @@ final class SionLibraryPaletteTests: XCTestCase {
 
     history.present(from: anchor)
 
-    let popover = try XCTUnwrap(history.presentedPopover)
-    let scrollView = try XCTUnwrap(popover.contentViewController?.view as? NSScrollView)
+    XCTAssertEqual(history.presentation, .popover)
 
-    XCTAssertEqual(popover.contentSize, history.definitionContentSize)
+    let popoverWindow = try XCTUnwrap(
+      window.childWindows?.first,
+      "The palette did not attach a popover window"
+    )
+    let scrollView = try XCTUnwrap(
+      popoverWindow.contentView?.libraryTestDescendants
+        .compactMap { $0 as? NSScrollView }.first
+    )
+    popoverWindow.contentView?.layoutSubtreeIfNeeded()
+
+    XCTAssertEqual(scrollView.frame.size, SionPalettes.historyDefinition.contentSize)
     XCTAssertTrue(scrollView.hasVerticalScroller)
     XCTAssertFalse(scrollView.drawsBackground)
     XCTAssertEqual(scrollView.borderType, .noBorder)
+  }
+
+  /// The Sion-era panel prefix has to survive the move to Rigi's palette, or
+  /// the positions people already have saved are abandoned.
+  func testPalettesKeepTheLegacyFrameAutosaveNames() {
+    let expected: [(definition: PaletteDefinition, name: String)] = [
+      (SionPalettes.inspectorDefinition, "Sion.palette.sion.inspector"),
+      (SionPalettes.libraryDefinition, "Sion.palette.sion.library"),
+      (SionPalettes.historyDefinition, "Sion.palette.sion.history"),
+    ]
+
+    for (definition, name) in expected {
+      XCTAssertEqual(definition.frameAutosaveName, name, definition.title)
+    }
   }
 
   /// A programmatically created window is released when it closes, which would
@@ -181,12 +212,11 @@ final class SionLibraryPaletteTests: XCTestCase {
   ) {
     palette.close()
     let deadline = Date(timeIntervalSinceNow: 1)
-    while palette.isPresented || palette.presentedPopover != nil, Date() < deadline {
+    while palette.isPresented, Date() < deadline {
       RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
     }
 
     XCTAssertFalse(palette.isPresented, "The palette did not close.", file: file, line: line)
-    XCTAssertNil(palette.presentedPopover, "The popover did not close.", file: file, line: line)
   }
 }
 

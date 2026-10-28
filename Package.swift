@@ -22,11 +22,12 @@ var targets: [Target] = [
 ]
 
 #if os(macOS)
-  // The shared Lucerne chrome lives in Rigi. macOS-only so the Linux core
-  // never resolves a UI package; the branch pin is temporary until the
-  // shared-ui work lands on main and a merged revision can be pinned instead.
+  // Keep the reviewed UI revision outside the portable core's dependency graph.
   dependencies += [
-    .package(url: "https://github.com/L-K-M/Rigi.git", branch: "feat/shared-ui")
+    .package(
+      url: "https://github.com/L-K-M/Rigi.git",
+      revision: "8b569d0bad1e2137e087428c52e22f0bed241c6d"
+    )
   ]
 
   products += [

@@ -1,5 +1,6 @@
 #if canImport(AppKit)
   import AppKit
+  import RigiUI
   import SionCore
 
   enum SionPaletteKind {
@@ -13,6 +14,13 @@
       case .library: PaletteKind("sion.library")
       case .history: PaletteKind("sion.history")
       }
+    }
+
+    /// The key the panel stores its frame under. It keeps the prefix the
+    /// Sion-era panel used, so palette positions saved before the shared
+    /// chrome moved to Rigi restore exactly where they were left.
+    var frameAutosaveName: String {
+      "Sion.palette." + paletteKind.identifier
     }
   }
 
@@ -55,37 +63,48 @@
 
     private init() {}
 
+    // The definitions are named constants so Sion-side tests can assert on
+    // what was registered; `Palette` keeps its definition private in Rigi.
+    static let inspectorDefinition = PaletteDefinition(
+      kind: SionPaletteKind.inspector.paletteKind,
+      title: "Inspector",
+      contentSize: NSSize(width: 300, height: 320),
+      sizing: .resizable(minimumContentSize: NSSize(width: 260, height: 240)),
+      frameAutosaveName: SionPaletteKind.inspector.frameAutosaveName
+    )
+
+    static let libraryDefinition = PaletteDefinition(
+      kind: SionPaletteKind.library.paletteKind,
+      title: "Library",
+      contentSize: NSSize(width: 280, height: 250),
+      sizing: .resizable(minimumContentSize: NSSize(width: 240, height: 180)),
+      frameAutosaveName: SionPaletteKind.library.frameAutosaveName
+    )
+
+    static let historyDefinition = PaletteDefinition(
+      kind: SionPaletteKind.history.paletteKind,
+      title: "History",
+      contentSize: NSSize(width: 320, height: 360),
+      sizing: .resizable(minimumContentSize: NSSize(width: 260, height: 220)),
+      frameAutosaveName: SionPaletteKind.history.frameAutosaveName
+    )
+
     func registerIfNeeded() {
       guard !isRegistered else { return }
       isRegistered = true
 
       PaletteCenter.shared.palette(
-        for: PaletteDefinition(
-          kind: SionPaletteKind.inspector.paletteKind,
-          title: "Inspector",
-          contentSize: NSSize(width: 300, height: 320),
-          sizing: .resizable(minimumContentSize: NSSize(width: 260, height: 240))
-        ),
+        for: Self.inspectorDefinition,
         target: Self.frontEditorController,
         makeContent: InspectorPaletteController.init
       )
       PaletteCenter.shared.palette(
-        for: PaletteDefinition(
-          kind: SionPaletteKind.library.paletteKind,
-          title: "Library",
-          contentSize: NSSize(width: 280, height: 250),
-          sizing: .resizable(minimumContentSize: NSSize(width: 240, height: 180))
-        ),
+        for: Self.libraryDefinition,
         target: Self.frontWindowController,
         makeContent: { LibraryPaletteController(globalLibrary: .shared) }
       )
       PaletteCenter.shared.palette(
-        for: PaletteDefinition(
-          kind: SionPaletteKind.history.paletteKind,
-          title: "History",
-          contentSize: NSSize(width: 320, height: 360),
-          sizing: .resizable(minimumContentSize: NSSize(width: 260, height: 220))
-        ),
+        for: Self.historyDefinition,
         target: Self.frontWindowController,
         makeContent: HistoryPaletteController.init
       )
@@ -138,24 +157,24 @@
       target: nil,
       action: nil
     )
-    private let fillColorWell = NSColorWell()
-    private let strokeColorWell = NSColorWell()
+    private let fillColorWell = ClassicColorWell()
+    private let strokeColorWell = ClassicColorWell()
     private let strokeWidthSlider = NSSlider()
     private let shadowButton = NSButton(
       checkboxWithTitle: "Drop Shadow",
       target: nil,
       action: nil
     )
-    private let shadowColorWell = NSColorWell()
+    private let shadowColorWell = ClassicColorWell()
     private let shadowBlurSlider = NSSlider()
-    private let routePopup = NSPopUpButton()
-    private let magnetPopup = NSPopUpButton()
+    private let routePopup = ClassicPopUpButton()
+    private let magnetPopup = ClassicPopUpButton()
     private let stack = NSStackView()
     private let anchorEditingControls = NSStackView()
     private let anchorEditingInstruction = NSTextField(
       wrappingLabelWithString: AnchorEditingCopy.instruction
     )
-    private let anchorEditingDoneButton = NSButton()
+    private let anchorEditingDoneButton = ClassicToolbarButton()
 
     override func loadView() {
       stack.orientation = .vertical
@@ -163,7 +182,10 @@
       stack.spacing = InspectorMetrics.spacing
       stack.edgeInsets = InspectorMetrics.insets
 
-      selectionLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+      selectionLabel.font = .systemFont(
+        ofSize: InspectorMetrics.labelFontSize,
+        weight: .semibold
+      )
       selectionLabel.lineBreakMode = .byTruncatingTail
       selectionLabel.maximumNumberOfLines = 2
 
@@ -191,7 +213,7 @@
       stack.addArrangedSubview(NSView())
       // Anchor editing reveals extra rows, so the body has to be able to
       // scroll rather than clip inside the palette's declared size.
-      view = scrollingPaletteBody(stack)
+      view = classicPaletteBody(stack)
     }
 
     var paletteInitialFirstResponder: NSView? { routePopup }
@@ -258,6 +280,7 @@
     }
 
     private func configureShadowControls() {
+      shadowButton.font = .systemFont(ofSize: InspectorMetrics.labelFontSize)
       shadowButton.target = self
       shadowButton.action = #selector(changeShadowEnabled(_:))
       shadowButton.toolTip = "Cast a drop shadow behind this object."
@@ -277,6 +300,7 @@
     }
 
     private func configureLockButton() {
+      lockButton.font = .systemFont(ofSize: InspectorMetrics.labelFontSize)
       lockButton.allowsMixedState = true
       lockButton.target = self
       lockButton.action = #selector(changeLock(_:))
@@ -284,6 +308,7 @@
     }
 
     private func configureNameField() {
+      nameField.font = .systemFont(ofSize: InspectorMetrics.labelFontSize)
       nameField.delegate = self
       nameField.target = self
       nameField.action = #selector(changeName(_:))
@@ -303,11 +328,11 @@
 
     private func configureAnchorEditingControls() {
       anchorEditingInstruction.textColor = .secondaryLabelColor
+      anchorEditingInstruction.font = .systemFont(ofSize: InspectorMetrics.labelFontSize)
       anchorEditingInstruction.maximumNumberOfLines = 0
       anchorEditingInstruction.preferredMaxLayoutWidth = InspectorMetrics.anchorInstructionWidth
 
       anchorEditingDoneButton.title = AnchorEditingCopy.doneTitle
-      anchorEditingDoneButton.bezelStyle = .rounded
       anchorEditingDoneButton.target = self
       anchorEditingDoneButton.action = #selector(endAnchorEditing)
       anchorEditingDoneButton.setAccessibilityLabel("Finish editing connector anchors")
@@ -601,6 +626,7 @@
 
     private func row(label: String, control: NSView) -> NSView {
       let labelView = NSTextField(labelWithString: label)
+      labelView.font = .systemFont(ofSize: InspectorMetrics.labelFontSize)
       labelView.textColor = .secondaryLabelColor
       labelView.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -634,7 +660,7 @@
       stack.spacing = InspectorMetrics.spacing
       stack.edgeInsets = InspectorMetrics.insets
 
-      view = scrollingPaletteBody(stack)
+      view = classicPaletteBody(stack)
     }
 
     func retarget(to target: SionDocumentWindowController?) {
@@ -661,7 +687,9 @@
       }
 
       guard !revisions.isEmpty else {
-        stack.addArrangedSubview(NSTextField(labelWithString: "No saved revisions"))
+        let emptyLabel = NSTextField(labelWithString: "No saved revisions")
+        emptyLabel.font = .systemFont(ofSize: InspectorMetrics.labelFontSize)
+        stack.addArrangedSubview(emptyLabel)
         return
       }
 
@@ -675,6 +703,7 @@
         )
         button.identifier = NSUserInterfaceItemIdentifier(revision.identifier)
         button.bezelStyle = .recessed
+        button.font = .systemFont(ofSize: InspectorMetrics.labelFontSize)
         button.alignment = .left
         button.lineBreakMode = .byTruncatingTail
         button.toolTip = "Restore this revision. Undo restores the current drawing."
@@ -719,6 +748,23 @@
     ])
 
     return scrollView
+  }
+
+  /// Wraps the scrolling body in the shared classic panel backing, so every
+  /// palette sits on the same gradient as the chrome that hosts it.
+  @MainActor
+  func classicPaletteBody(_ stack: NSStackView) -> ClassicBarView {
+    let backing = ClassicBarView(style: .panel)
+    let body = scrollingPaletteBody(stack)
+    body.translatesAutoresizingMaskIntoConstraints = false
+    backing.addSubview(body)
+    NSLayoutConstraint.activate([
+      body.topAnchor.constraint(equalTo: backing.topAnchor),
+      body.leadingAnchor.constraint(equalTo: backing.leadingAnchor),
+      body.trailingAnchor.constraint(equalTo: backing.trailingAnchor),
+      body.bottomAnchor.constraint(equalTo: backing.bottomAnchor),
+    ])
+    return backing
   }
 
   private enum MagnetOption: Int, CaseIterable {
@@ -792,8 +838,15 @@
   }
 
   enum InspectorMetrics {
-    static let spacing = 10.0
-    static let insets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+    static let spacing = ClassicMetrics.formSpacing
+    static let insets = NSEdgeInsets(
+      top: ClassicMetrics.horizontalInset,
+      left: ClassicMetrics.horizontalInset,
+      bottom: ClassicMetrics.horizontalInset,
+      right: ClassicMetrics.horizontalInset
+    )
+    /// The 11 pt the classic controls draw their own titles in.
+    static let labelFontSize: CGFloat = 11
     static let anchorInstructionWidth: CGFloat = 244
     static let minimumStrokeWidth = 0.0
     static let maximumStrokeWidth = 12.0

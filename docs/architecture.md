@@ -30,7 +30,11 @@ document controller invokes the archive service; it does not parse ZIP records.
 - `SionCore`: Foundation-only values and services. It builds and tests on macOS
   and Linux. No AppKit, Core Graphics, or UI coordinates enter this target.
 - `SionKit`: programmatic AppKit document UI, custom canvas, native text editing,
-  paste, undo, and tear-off palettes.
+  paste, undo, and palette contents. It builds on `RigiUI`
+  (`github.com/L-K-M/Rigi`), the shared Lucerne-style AppKit toolkit that owns
+  the classic window chrome, controls, status bar, and palette machinery.
+  `SionKit` re-exports `RigiUI`, so palette API consumers keep `import SionKit`
+  as their single import.
 - `Sion`: thin application entry point and main menu.
 
 Canonical coordinates are top-left/y-down throughout. The canvas is flipped;
@@ -55,15 +59,27 @@ semantics.
 
 ## Palettes
 
-Inspector, library, and history use a typed content factory for two containers:
-a transient `NSPopover` and a borderless floating `NSPanel`. The instances
-share their current document target. Each palette is an app-global singleton
-that retargets to the front document and selection. The panel states the
-palette's declared size itself: it is borderless, so it has no title bar to
-size it, and the palette bodies scroll rather than report a height of their own.
-A resizable panel grows its own edges too: a borderless window has no frame view
-to drag, so an overlay claims a band down the sides and along the bottom and
-lets every other point through. The top is left to the header, which moves it.
+The palette machinery — `PaletteKind`, `PaletteDefinition`, `PaletteCenter`,
+`Palette`, the popover, and the floating classic-chrome panel — lives in
+`RigiUI`. Sion registers each of its palettes as a typed content factory for
+two containers: a transient `NSPopover` and a borderless floating panel. The
+instances share their current document target. Each palette is an app-global
+singleton that retargets to the front document and selection; Sion keeps the
+`Sion.palette.<kind>` frame autosave names so panel positions saved before the
+move restore exactly where they were left.
+
+The panel states the palette's declared size itself: it is borderless, so it
+has no title bar to size it, and the palette bodies scroll rather than report
+a height of their own. A resizable panel grows its own edges too: a borderless
+window has no frame view to drag, so an overlay claims a band down the sides
+and along the bottom and lets every other point through. The top is left to
+the header, which moves it.
+
+Sion owns what goes inside: inspector, library, and history contents, the
+document-target resolution, and every editing command the contents send. The
+bodies sit in Rigi's `ClassicBarView` panel backing and use the classic popup
+and color-well controls while keeping native checkboxes and text fields for
+mixed-state and keyboard semantics.
 
 ## Libraries
 

@@ -1,5 +1,6 @@
 #if canImport(AppKit)
   import AppKit
+  import RigiUI
   import SionCore
 
   @MainActor
@@ -10,6 +11,7 @@
     private let canvasView: SionCanvasView
     private let feedbackPresenter: SionEditorFeedbackPresenter
     private let scrollView = NSScrollView()
+    private let statusBar = StatusBarView()
     private var toolControl: NSSegmentedControl?
     private var announcedToolAccessibilityValue: String?
     private var lastToolActivation: (tool: SionEditorController.Tool, at: Date)?
@@ -17,6 +19,7 @@
     private var zoomPercentageObservation: NSKeyValueObservation?
     private var observerID: UUID?
     private var isInitialZoomPending = true
+    private var hoveredElementName: String?
 
     var paletteEditorController: SionEditorController { editorController }
     var canvasVisibleCenter: SionPoint { canvasView.visibleCenter }
@@ -61,12 +64,15 @@
       // chrome's dark-appearance title and toolbar glyphs on white paper: the
       // header reads black until the drawing scrolls up under it and white,
       // against white, from then on.
-      let window = NSWindow(
+      let window = ClassicWindow(
         contentRect: NSRect(origin: .zero, size: WindowMetrics.initialSize),
         styleMask: [.titled, .closable, .miniaturizable, .resizable],
         backing: .buffered,
         defer: false
       )
+      // The classic chrome is drawn for the light appearance, so the window
+      // is pinned to Aqua rather than inheriting a dark system appearance.
+      window.appearance = NSAppearance(named: .aqua)
       window.title = editorController.document.title
       window.tabbingMode = .preferred
       window.isRestorable = true
@@ -241,8 +247,63 @@
       scrollView.maxMagnification = WindowMetrics.maximumMagnification
       scrollView.backgroundColor = .windowBackgroundColor
       scrollView.drawsBackground = true
-      window?.contentView = scrollView
+
+      configureStatusBar()
+
+      // The document body is the canvas over the shared status bar; the
+      // scroll view no longer fills the window on its own.
+      let content = NSView()
+      scrollView.translatesAutoresizingMaskIntoConstraints = false
+      statusBar.translatesAutoresizingMaskIntoConstraints = false
+      content.addSubview(scrollView)
+      content.addSubview(statusBar)
+      NSLayoutConstraint.activate([
+        scrollView.topAnchor.constraint(equalTo: content.topAnchor),
+        scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+        scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+        statusBar.topAnchor.constraint(equalTo: scrollView.bottomAnchor),
+        statusBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+        statusBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+        statusBar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+        statusBar.heightAnchor.constraint(
+          equalToConstant: ClassicMetrics.statusBarHeight
+        ),
+      ])
+      window?.contentView = content
       feedbackPresenter.attach(to: scrollView)
+    }
+
+    private func configureStatusBar() {
+      // The same zoom commands the toolbar, menu, and shortcuts already run.
+      statusBar.onZoomIn = { [weak self] in self?.zoomIn(nil) }
+      statusBar.onZoomOut = { [weak self] in self?.zoomOut(nil) }
+      statusBar.onZoomReset = { [weak self] in self?.actualSize(nil) }
+      statusBar.setZoom(percent: zoomPercentage)
+      canvasView.hoverFeedback = { [weak self] elementName in
+        self?.updateStatusBarMessage(hovering: elementName)
+      }
+      updateStatusBarMessage(hovering: nil)
+    }
+
+    /// The status line reports what the pointer rests on, and falls back to
+    /// the selection when the pointer is off the canvas or over empty space.
+    private func updateStatusBarMessage(hovering elementName: String?) {
+      hoveredElementName = elementName
+      statusBar.message = elementName ?? selectionStatusMessage
+    }
+
+    private func refreshStatusBarMessage() {
+      statusBar.message = hoveredElementName ?? selectionStatusMessage
+    }
+
+    private var selectionStatusMessage: String {
+      let elements = editorController.selectedElements
+      guard !elements.isEmpty else { return "" }
+      guard elements.count == 1, let element = elements.first else {
+        return "\(elements.count) Objects"
+      }
+
+      return element.name ?? element.displayName
     }
 
     private func configureToolbar() {
@@ -252,9 +313,10 @@
       toolbar.displayMode = .iconOnly
       toolbar.allowsUserCustomization = true
       toolbar.autosavesConfiguration = true
-      toolbar.centeredItemIdentifier = .tools
       window?.toolbar = toolbar
-      window?.toolbarStyle = .unified
+      // The classic layout keeps the title bar and the toolbar as separate
+      // compact bands rather than one unified strip.
+      window?.toolbarStyle = .expanded
     }
 
     private func registerPalettes() {
@@ -265,13 +327,12 @@
       let images = SionEditorController.Tool.allCases.map {
         NSImage(systemSymbolName: $0.symbolName, accessibilityDescription: $0.title) ?? NSImage()
       }
-      let control = NSSegmentedControl(
+      let control = ClassicToolControl(
         images: images,
         trackingMode: .selectOne,
         target: self,
         action: #selector(selectTool(_:))
       )
-      control.segmentStyle = .texturedRounded
       control.setAccessibilityLabel("Editing tool")
       control.selectedSegment = editorController.tool.rawValue
       for tool in SionEditorController.Tool.allCases {
@@ -298,13 +359,12 @@
 
     private func zoomItem(placement: ToolbarItemPlacement) -> NSToolbarItem {
       let commands = ZoomCommand.allCases
-      let control = NSSegmentedControl(
+      let control = ClassicToolControl(
         labels: commands.map(\.label),
         trackingMode: .momentary,
         target: self,
         action: #selector(performZoomCommand(_:))
       )
-      control.segmentStyle = .texturedRounded
       control.setAccessibilityLabel("Canvas zoom")
       for command in commands {
         control.setToolTip(command.title, forSegment: command.rawValue)
@@ -348,13 +408,12 @@
       action: Selector
     ) -> NSToolbarItem {
       let item = NSToolbarItem(itemIdentifier: identifier)
-      let button = NSButton(
+      let button = ClassicToolbarButton(
         image: NSImage(systemSymbolName: symbolName, accessibilityDescription: label) ?? NSImage(),
         target: self,
         action: action
       )
-      button.bezelStyle = .texturedRounded
-      button.isBordered = false
+      button.imagePosition = .imageOnly
       button.toolTip = label
       button.setAccessibilityLabel(label)
 
@@ -442,6 +501,8 @@
     }
 
     private func synchronizeUI() {
+      refreshStatusBarMessage()
+
       guard let toolControl else { return }
 
       toolControl.selectedSegment = editorController.tool.rawValue
@@ -477,9 +538,12 @@
       return "\(tool.title). \(editorController.toolPersistence.summary)"
     }
 
+    private var zoomPercentage: Int {
+      Int((scrollView.magnification * ZoomStatus.percentageScale).rounded())
+    }
+
     private var zoomPercentageText: String {
-      let percentage = Int((scrollView.magnification * ZoomStatus.percentageScale).rounded())
-      return "\(percentage)%"
+      "\(zoomPercentage)%"
     }
 
     private func observeZoomPercentage(with label: NSTextField) {
@@ -491,6 +555,8 @@
     }
 
     private func synchronizeZoomPercentage() {
+      statusBar.setZoom(percent: zoomPercentage)
+
       guard let zoomPercentageLabel else { return }
       let text = zoomPercentageText
       guard zoomPercentageLabel.stringValue != text else { return }

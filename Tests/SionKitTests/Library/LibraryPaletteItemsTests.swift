@@ -102,7 +102,10 @@ final class LibraryPaletteItemsTests: XCTestCase {
     let elementID: ElementID
 
     var stack: NSStackView {
-      guard let stack = (controller.view as? NSScrollView)?.documentView as? NSStackView else {
+      guard
+        let stack = controller.view.subviewsRecursive
+          .compactMap({ $0 as? NSScrollView }).first?.documentView as? NSStackView
+      else {
         preconditionFailure("The library palette is a scroll view over a stack view")
       }
 

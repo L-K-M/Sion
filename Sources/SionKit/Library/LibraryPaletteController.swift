@@ -1,5 +1,6 @@
 #if canImport(AppKit)
   import AppKit
+  import RigiUI
   import SionCore
 
   /// The Library palette: the built-in shapes first, then whatever the document
@@ -124,7 +125,7 @@
 
       // Everything after this point is rebuilt whenever a library changes.
       builtInViewCount = stack.arrangedSubviews.count
-      view = scrollingPaletteBody(stack)
+      view = classicPaletteBody(stack)
     }
 
     func retarget(to target: SionDocumentWindowController?) {
@@ -414,6 +415,7 @@
       button.imagePosition = .imageLeading
       button.alignment = .left
       button.bezelStyle = .recessed
+      button.font = .systemFont(ofSize: InspectorMetrics.labelFontSize)
       return button
     }
 

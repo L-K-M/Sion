@@ -265,7 +265,10 @@ final class SionCanvasGestureLifecycleTests: XCTestCase {
     switch host {
     case .documentWindow:
       let windowHost = SionDocumentWindowController(editorController: controller)
-      let scrollView = try XCTUnwrap(windowHost.window?.contentView as? NSScrollView)
+      // The canvas scroll view shares the content view with the status bar.
+      let scrollView = try XCTUnwrap(
+        windowHost.window?.contentView?.subviews.compactMap { $0 as? NSScrollView }.first
+      )
       canvas = try XCTUnwrap(scrollView.documentView as? SionCanvasView)
       windowController = windowHost
     case .detached:

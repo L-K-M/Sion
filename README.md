@@ -12,6 +12,11 @@ connectors preview their routed path before placement. Image paste keeps the
 original plus a safe display rendition. Inspector, library, and history menus
 detach into native palettes.
 
+The native chrome — classic window shape, toolbar and inspector controls,
+status bar, and the palette machinery — comes from
+[RigiUI](https://github.com/L-K-M/Rigi), the Lucerne-style AppKit toolkit Sion
+shares with its sibling apps.
+
 `.sion` files are ZIP archives containing the editable scene, original assets,
 standalone SVG, Mermaid, and retained history. The contract is documented in
 [`docs/sion-format-v1.md`](docs/sion-format-v1.md).

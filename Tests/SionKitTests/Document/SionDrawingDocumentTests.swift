@@ -301,7 +301,10 @@ final class SionDrawingDocumentTests: XCTestCase {
     defer { windowController.close() }
 
     let window = try XCTUnwrap(windowController.window)
-    let scrollView = try XCTUnwrap(window.contentView as? NSScrollView)
+    // The canvas scroll view shares the content view with the status bar.
+    let scrollView = try XCTUnwrap(
+      window.contentView?.subviews.compactMap { $0 as? NSScrollView }.first
+    )
     let canvas = try XCTUnwrap(scrollView.documentView as? SionCanvasView)
     defer {
       // Do not let a stale responder turn this assertion into a test hang.

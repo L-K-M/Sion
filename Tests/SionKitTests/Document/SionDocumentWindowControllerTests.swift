@@ -490,6 +490,8 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     defer { windowController.close() }
 
     let window = try XCTUnwrap(windowController.window)
+    windowController.showWindow(nil)
+    window.layoutIfNeeded()
     let contentView = try XCTUnwrap(window.contentView)
 
     // The canvas is a light document surface whatever the system appearance
@@ -498,7 +500,8 @@ final class SionDocumentWindowControllerTests: XCTestCase {
     // white on white, so the content stays out from under it entirely.
     XCTAssertFalse(window.styleMask.contains(.fullSizeContentView))
     XCTAssertFalse(window.titlebarAppearsTransparent)
-    XCTAssertEqual(window.contentLayoutRect, contentView.bounds)
+    // AppKit reports the layout rect in window coordinates, not view bounds.
+    XCTAssertEqual(contentView.convert(window.contentLayoutRect, from: nil), contentView.bounds)
     XCTAssertNotNil(try canvasScrollView(in: window))
   }
 

@@ -259,8 +259,12 @@ extension ConnectorRouterTests {
       for column in 0..<8 {
         if (row + column) % 3 == 0 { continue }
         obstacles.append(
-          SionRect(x: 150 + Double(column) * 90, y: 40 + Double(row) * 70,
-                   width: 60, height: 40)
+          SionRect(
+            x: 150 + Double(column) * 90,
+            y: 40 + Double(row) * 70,
+            width: 60,
+            height: 40
+          )
         )
       }
     }

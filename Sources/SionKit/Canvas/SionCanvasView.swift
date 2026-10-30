@@ -496,12 +496,15 @@
         let offset = requested + snap.offset
         // Only advance the baseline when the model actually moved: a rejected
         // intermediate frame must not make later samples jump (chonk finding 8).
-        if (try? editorController.moveSelection(by: offset - appliedOffset)) != nil {
+        do {
+          try editorController.moveSelection(by: offset - appliedOffset)
           self.drag = .move(
             startPoint: startPoint,
             startBounds: startBounds,
             appliedOffset: offset
           )
+        } catch {
+          NSLog("Sion: move sample rejected: \(error.localizedDescription)")
         }
         if snapGuides != snap.guides {
           snapGuides = snap.guides

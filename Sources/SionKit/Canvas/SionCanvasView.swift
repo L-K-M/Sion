@@ -1595,11 +1595,9 @@
     }
 
     private func pasteImage(from pasteboard: NSPasteboard, at point: SionPoint) -> Bool {
-      if let file = pastedImageFile(from: pasteboard),
-        let data = try? Data(contentsOf: file.url)
-      {
+      if let file = pastedImageFile(from: pasteboard) {
         return insertPastedImage(
-          data: data,
+          fileURL: file.url,
           type: file.type,
           filename: file.url.lastPathComponent,
           at: point
@@ -1657,13 +1655,58 @@
         return false
       }
 
+      schedulePastedImage(load: { data }, type: type, filename: filename, at: point)
+      return true
+    }
+
+    /// File-drop variant: the bytes are read off the main thread — a dropped
+    /// image can be up to 256 MiB and must not freeze the UI (chonk finding 28).
+    private func insertPastedImage(
+      fileURL: URL,
+      type: ImagePasteType,
+      filename: String?,
+      at point: SionPoint
+    ) -> Bool {
+      guard isSupportedAssetSize(fileURL) else { return false }
+
+      schedulePastedImage(
+        load: { try? Data(contentsOf: fileURL) },
+        type: type,
+        filename: filename,
+        at: point
+      )
+      return true
+    }
+
+    private func schedulePastedImage(
+      load: @escaping @Sendable () -> Data?,
+      type: ImagePasteType,
+      filename: String?,
+      at point: SionPoint
+    ) {
       let taskID = UUID()
       let service = imageRenditionService
       let task = Task { @MainActor [weak self] in
-        let display = await service.make(from: data)
+        // The task stays in imagePasteTasks until the rendition is done, so
+        // invalidate() can still cancel it mid-build (the original behavior —
+        // removing it early let a late rendition edit the document).
+        defer { self?.imagePasteTasks.removeValue(forKey: taskID) }
+
+        let data = await Task.detached(priority: .userInitiated, operation: load).value
         guard let self else { return }
 
-        self.imagePasteTasks.removeValue(forKey: taskID)
+        guard !Task.isCancelled,
+          let data,
+          !data.isEmpty,
+          data.count <= SionArchiveConstants.maximumEntryByteCount
+        else {
+          if data != nil { NSSound.beep() }
+          return
+        }
+
+        let display = await service.make(from: data)
+        // Re-check after the await: invalidate() may have cancelled the task
+        // while the rendition was being built.
         guard !Task.isCancelled else { return }
         guard let display else {
           NSSound.beep()
@@ -1686,8 +1729,6 @@
         }
       }
       imagePasteTasks[taskID] = task
-
-      return true
     }
 
     private func isSupportedAssetSize(_ url: URL) -> Bool {

@@ -260,6 +260,9 @@ final class SceneRenderContextTests: XCTestCase {
   }
 
   func testUpdateInvalidatesRoutesWhoseEndpointChanged() {
+    // Review feedback on #91: the cached route must NOT cross the changed
+    // corridor, otherwise the test passes via corridor invalidation alone and
+    // proves nothing about endpoint invalidation. Keep the route far away.
     let source = SceneElement.shape(
       frame: SionRect(x: 0, y: 0, width: 40, height: 40), kind: .rectangle)
     let target = SceneElement.shape(
@@ -273,7 +276,7 @@ final class SceneRenderContextTests: XCTestCase {
       scene: SionScene(elements: [source, target, connector]),
       connectorRouteResolver: { _, _ in
         resolutionCount += 1
-        return self.horizontalRoute(y: 20, fromX: 40, toX: 300)
+        return self.horizontalRoute(y: 500, fromX: 500, toX: 600)
       }
     )
     _ = context.connectorRoute(for: connector)
@@ -286,6 +289,10 @@ final class SceneRenderContextTests: XCTestCase {
       changedElementIDs: [source.id]
     )
     _ = context.connectorRoute(for: connector)
-    XCTAssertEqual(resolutionCount, 2, "moving an endpoint must invalidate its connector's route")
+    XCTAssertEqual(
+      resolutionCount,
+      2,
+      "moving an endpoint must invalidate its connector's route"
+    )
   }
 }

@@ -30,13 +30,14 @@ final class LockContractTests: XCTestCase {
     let (scene, sourceID, _, connectorID) = sceneWithLockedConnector()
     var editor = try SceneEditor(document: SionDocument(scene: scene))
 
-    XCTAssertThrowsError(
-      try editor.perform(SceneTransaction(name: "Delete source", command: .remove(elementIDs: [sourceID])))
-    ) { error in
-      XCTAssertEqual(error as? SceneEditingError, .elementLocked(connectorID),
-                     "the locked connector must block the cascade delete, not be deleted with it")
+    let transaction = SceneTransaction(
+      name: "Delete source",
+      command: .remove(elementIDs: [sourceID])
+    )
+    XCTAssertThrowsError(try editor.perform(transaction)) { error in
+      XCTAssertEqual(error as? SceneEditingError, .elementLocked(connectorID))
     }
-    XCTAssertEqual(editor.document.scene.elements.count, 3, "no partial delete may happen")
+    XCTAssertEqual(editor.document.scene.elements.count, 3)
   }
 
   func testDeleteOfUnrelatedElementStillDeletesLockedConnectorFreeScene() throws {
@@ -50,14 +51,30 @@ final class LockContractTests: XCTestCase {
       id: targetID, frame: SionRect(x: 300, y: 0, width: 100, height: 80))
     let connector = SceneElement.connector(
       id: connectorID,
-      source: .element(sourceID, attachment: .automatic, fallbackPoint: SionPoint(x: 100, y: 40)),
-      target: .element(targetID, attachment: .automatic, fallbackPoint: SionPoint(x: 300, y: 40)))
-    var editor = try SceneEditor(document: SionDocument(scene: SionScene(elements: [source, target, connector])))
+      source: .element(
+        sourceID,
+        attachment: .automatic,
+        fallbackPoint: SionPoint(x: 100, y: 40)
+      ),
+      target: .element(
+        targetID,
+        attachment: .automatic,
+        fallbackPoint: SionPoint(x: 300, y: 40)
+      )
+    )
+    let scene = SionScene(elements: [source, target, connector])
+    var editor = try SceneEditor(document: SionDocument(scene: scene))
 
-    _ = try editor.perform(SceneTransaction(name: "Delete source", command: .remove(elementIDs: [sourceID])))
+    let transaction = SceneTransaction(
+      name: "Delete source",
+      command: .remove(elementIDs: [sourceID])
+    )
+    _ = try editor.perform(transaction)
     XCTAssertNil(editor.document.scene.element(withID: sourceID))
-    XCTAssertNil(editor.document.scene.element(withID: connectorID),
-                 "an editable connector still cascades with its endpoint")
+    XCTAssertNil(
+      editor.document.scene.element(withID: connectorID),
+      "an editable connector still cascades with its endpoint"
+    )
     XCTAssertNotNil(editor.document.scene.element(withID: targetID))
   }
 
@@ -66,12 +83,22 @@ final class LockContractTests: XCTestCase {
     var editor = try SceneEditor(document: SionDocument(scene: scene))
     let before = editor.document.scene.element(withID: connectorID)
 
-    _ = try editor.perform(
-      SceneTransaction(name: "Move", command: .translate(elementIDs: [sourceID], by: SionVector(dx: 50, dy: 20))))
+    let move = SceneTransaction(
+      name: "Move",
+      command: .translate(
+        elementIDs: [sourceID],
+        by: SionVector(dx: 50, dy: 20)
+      )
+    )
+    _ = try editor.perform(move)
 
     let after = editor.document.scene.element(withID: connectorID)
-    XCTAssertEqual(after, before, "a locked connector's endpoints/waypoints/route must not be rewritten by a move")
-    XCTAssertEqual(editor.document.scene.element(withID: sourceID)?.geometry.frame.origin,
-                   SionPoint(x: 50, y: 20), "the editable endpoint itself still moves")
+    XCTAssertEqual(
+      after,
+      before,
+      "a locked connector's endpoints/waypoints/route must not be rewritten"
+    )
+    let movedOrigin = editor.document.scene.element(withID: sourceID)?.geometry.frame.origin
+    XCTAssertEqual(movedOrigin, SionPoint(x: 50, y: 20))
   }
 }

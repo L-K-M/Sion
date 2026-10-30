@@ -494,12 +494,15 @@
         let requested = point - startPoint
         let snap = objectSnap(for: startBounds.translated(by: requested))
         let offset = requested + snap.offset
-        try? editorController.moveSelection(by: offset - appliedOffset)
-        self.drag = .move(
-          startPoint: startPoint,
-          startBounds: startBounds,
-          appliedOffset: offset
-        )
+        // Only advance the baseline when the model actually moved: a rejected
+        // intermediate frame must not make later samples jump (chonk finding 8).
+        if (try? editorController.moveSelection(by: offset - appliedOffset)) != nil {
+          self.drag = .move(
+            startPoint: startPoint,
+            startBounds: startBounds,
+            appliedOffset: offset
+          )
+        }
         if snapGuides != snap.guides {
           snapGuides = snap.guides
           needsDisplay = true

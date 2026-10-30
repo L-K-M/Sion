@@ -170,9 +170,13 @@
         guard let self else { return }
 
         // External edits end model gestures and invalidate view-only previews.
-        // A notification is external only when the document changed since the
-        // drag began and the drag owns no pending editor gesture — otherwise an
-        // async paste or autosave landing mid-drag silently cancelled it.
+        // The drag's own live updates are filtered by hasPendingEditorGesture;
+        // the change-count comparison additionally ignores notifications that
+        // don't change the document at all since the drag began (autosave
+        // flushes, refresh pings) — those used to cancel create/connector/
+        // marquee drags even though nothing about the scene changed. A genuine
+        // external edit (e.g. an async paste applying its image) still
+        // cancels: the view-only preview is stale by then, by design.
         if self.drag != nil,
           !self.editorController.hasPendingEditorGesture,
           self.editorController.changeCount != self.dragStartedAtChangeCount

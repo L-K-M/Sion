@@ -69,14 +69,15 @@ public struct SceneLibrary: Equatable, Sendable {
       throw SceneLibraryError.malformedStorage
     }
 
-    let decoded = try encodedItems.map(Self.decodedItem)
     // Limits are enforced on load too (chonk finding 6): only `add` used to
     // check them, so a crafted document/library file could bypass the payload
-    // and count caps and bloat memory and undo snapshots.
-    guard decoded.count <= SceneLibraryLimits.maximumItemCount else {
-      throw SceneLibraryError.libraryIsFull(itemCount: decoded.count)
+    // and count caps and bloat memory and undo snapshots. The count is checked
+    // before any payload is decoded (review feedback: decoding first would
+    // still do the work for an over-cap store).
+    guard encodedItems.count <= SceneLibraryLimits.maximumItemCount else {
+      throw SceneLibraryError.libraryIsFull(itemCount: encodedItems.count)
     }
-    self.init(items: decoded)
+    self.init(items: try encodedItems.map(Self.decodedItem))
   }
 
   public var portableValue: PortableValue {

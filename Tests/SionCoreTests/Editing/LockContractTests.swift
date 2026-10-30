@@ -35,9 +35,17 @@ final class LockContractTests: XCTestCase {
       command: .remove(elementIDs: [sourceID])
     )
     XCTAssertThrowsError(try editor.perform(transaction)) { error in
-      XCTAssertEqual(error as? SceneEditingError, .elementLocked(connectorID))
+      XCTAssertEqual(
+        error as? SceneEditingError,
+        .elementLocked(connectorID),
+        "the locked connector must block the cascade delete"
+      )
     }
-    XCTAssertEqual(editor.document.scene.elements.count, 3)
+    XCTAssertEqual(
+      editor.document.scene.elements.count,
+      3,
+      "no partial delete may happen"
+    )
   }
 
   func testDeleteOfUnrelatedElementStillDeletesLockedConnectorFreeScene() throws {
@@ -99,6 +107,10 @@ final class LockContractTests: XCTestCase {
       "a locked connector's endpoints/waypoints/route must not be rewritten"
     )
     let movedOrigin = editor.document.scene.element(withID: sourceID)?.geometry.frame.origin
-    XCTAssertEqual(movedOrigin, SionPoint(x: 50, y: 20))
+    XCTAssertEqual(
+      movedOrigin,
+      SionPoint(x: 50, y: 20),
+      "the editable endpoint itself still moves"
+    )
   }
 }

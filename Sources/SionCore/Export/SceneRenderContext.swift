@@ -94,13 +94,67 @@ package struct SceneRenderContext {
       }
     }
 
+    let previousScene = scene
     scene = updatedScene
-    connectorRoutes.removeAll(keepingCapacity: true)
+    invalidateConnectorRoutes(previousScene: previousScene, changedElementIDs: changedElementIDs)
 
     for id in changedElementIDs {
       guard let index = indicesByID[id] else { continue }
 
       updateEntry(at: index)
+    }
+  }
+
+  /// Drops only the cached routes the change can actually affect (chonk finding
+  /// 24): a connector whose own element or either endpoint changed, or whose
+  /// cached path crosses the corridor the changed elements moved through. Routes
+  /// elsewhere in the scene stay cached instead of the whole map being wiped on
+  /// every gesture sample.
+  private mutating func invalidateConnectorRoutes(
+    previousScene: SionScene,
+    changedElementIDs: Set<ElementID>
+  ) {
+    guard !connectorRoutes.isEmpty, !changedElementIDs.isEmpty else { return }
+
+    var corridor: SionRect?
+    for id in changedElementIDs {
+      guard let index = indicesByID[id] else { continue }
+      guard index < previousScene.elements.count else { continue }
+      guard previousScene.elements[index].id == id else { continue }
+      guard index < scene.elements.count else { continue }
+
+      let previous = SceneRenderGeometry.paintedBounds(of: previousScene.elements[index])
+      let current = SceneRenderGeometry.paintedBounds(of: scene.elements[index])
+      let change = previous.union(current)
+      corridor = corridor.map { $0.union(change) } ?? change
+    }
+    guard let corridor else {
+      connectorRoutes.removeAll(keepingCapacity: true)
+      return
+    }
+
+    connectorRoutes = connectorRoutes.filter { id, cached in
+      guard let index = indicesByID[id] else { return false }
+      guard index < scene.elements.count else { return false }
+      guard let connector = scene.elements[index].content.connector else { return false }
+      if changedElementIDs.contains(id) { return false }
+
+      let endpoints = [connector.source.elementID, connector.target.elementID]
+      let endpointChanged = endpoints.contains { endpointID in
+        endpointID.map(changedElementIDs.contains) ?? false
+      }
+      if endpointChanged { return false }
+
+      guard let route = cached.route else { return true }
+      return !route.polylineSegments.contains { segment in
+        let bounds = SionRect(
+          x: min(segment.start.x, segment.end.x),
+          y: min(segment.start.y, segment.end.y),
+          width: abs(segment.end.x - segment.start.x),
+          height: abs(segment.end.y - segment.start.y)
+        )
+        return bounds.intersects(corridor)
+      }
     }
   }
 

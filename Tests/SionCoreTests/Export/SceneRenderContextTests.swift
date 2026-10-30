@@ -158,4 +158,141 @@ final class SceneRenderContextTests: XCTestCase {
     XCTAssertEqual(context.connectorRoute(for: connector), expectedRoute)
     XCTAssertEqual(resolutionCount, 2)
   }
+
+  // MARK: - Incremental route-cache invalidation (chonk finding 24)
+
+  private func horizontalRoute(y: Double, fromX: Double, toX: Double) -> ConnectorRoute {
+    ConnectorRoute(
+      start: SionPoint(x: fromX, y: y),
+      segments: [.line(to: SionPoint(x: toX, y: y))]
+    )
+  }
+
+  func testUpdateKeepsRoutesOutsideTheChangedCorridorCached() {
+    let nearConnector = SceneElement.connector(
+      source: .free(SionPoint(x: 0, y: 0)),
+      target: .free(SionPoint(x: 100, y: 0))
+    )
+    let farConnector = SceneElement.connector(
+      source: .free(SionPoint(x: 10_000, y: 10_000)),
+      target: .free(SionPoint(x: 10_100, y: 10_000))
+    )
+    var mover = SceneElement.shape(
+      frame: SionRect(x: 5_000, y: 5_000, width: 40, height: 40),
+      kind: .rectangle
+    )
+    var resolutionCount = 0
+    var context = SceneRenderContext(
+      scene: SionScene(elements: [nearConnector, farConnector, mover]),
+      connectorRouteResolver: { _, _ in
+        resolutionCount += 1
+        return self.horizontalRoute(y: 0, fromX: 0, toX: 100)
+      }
+    )
+
+    _ = context.connectorRoute(for: nearConnector)
+    _ = context.connectorRoute(for: farConnector)
+    XCTAssertEqual(resolutionCount, 2)
+
+    mover.geometry.frame.origin = SionPoint(x: 5_050, y: 5_000)
+    context.update(
+      scene: SionScene(elements: [nearConnector, farConnector, mover]),
+      changedElementIDs: [mover.id]
+    )
+
+    _ = context.connectorRoute(for: nearConnector)
+    _ = context.connectorRoute(for: farConnector)
+    XCTAssertEqual(
+      resolutionCount,
+      2,
+      "routes outside the changed corridor must stay cached"
+    )
+  }
+
+  func testUpdateInvalidatesOnlyRoutesCrossingTheChangedCorridor() {
+    let crossingConnector = SceneElement.connector(
+      source: .free(SionPoint(x: 0, y: 20)),
+      target: .free(SionPoint(x: 200, y: 20))
+    )
+    let farConnector = SceneElement.connector(
+      source: .free(SionPoint(x: 10_000, y: 10_000)),
+      target: .free(SionPoint(x: 10_200, y: 10_000))
+    )
+    var obstacle = SceneElement.shape(
+      frame: SionRect(x: 90, y: 0, width: 20, height: 40),
+      kind: .rectangle
+    )
+    var resolutionCount = 0
+    var context = SceneRenderContext(
+      scene: SionScene(elements: [crossingConnector, farConnector, obstacle]),
+      connectorRouteResolver: { element, _ in
+        resolutionCount += 1
+        func freePoint(_ endpoint: ConnectionEndpoint) -> SionPoint {
+          if case .free(let point) = endpoint { return point }
+          return SionPoint(x: 0, y: 0)
+        }
+        let source = element.content.connector.map { freePoint($0.source) } ?? SionPoint(x: 0, y: 0)
+        let target = element.content.connector.map { freePoint($0.target) } ?? SionPoint(x: 0, y: 0)
+        return ConnectorRoute(
+          start: source,
+          segments: [.line(to: target)]
+        )
+      }
+    )
+
+    _ = context.connectorRoute(for: crossingConnector)
+    _ = context.connectorRoute(for: farConnector)
+    XCTAssertEqual(resolutionCount, 2)
+
+    obstacle.geometry.frame.origin = SionPoint(x: 95, y: 0)
+    context.update(
+      scene: SionScene(elements: [crossingConnector, farConnector, obstacle]),
+      changedElementIDs: [obstacle.id]
+    )
+
+    _ = context.connectorRoute(for: crossingConnector)
+    _ = context.connectorRoute(for: farConnector)
+    XCTAssertEqual(
+      resolutionCount,
+      3,
+      "the route crossing the corridor re-resolves; the far one stays cached"
+    )
+  }
+
+  func testUpdateInvalidatesRoutesWhoseEndpointChanged() {
+    // Review feedback on #91: the cached route must NOT cross the changed
+    // corridor, otherwise the test passes via corridor invalidation alone and
+    // proves nothing about endpoint invalidation. Keep the route far away.
+    let source = SceneElement.shape(
+      frame: SionRect(x: 0, y: 0, width: 40, height: 40), kind: .rectangle)
+    let target = SceneElement.shape(
+      frame: SionRect(x: 300, y: 0, width: 40, height: 40), kind: .rectangle)
+    let connector = SceneElement.connector(
+      source: .element(source.id, attachment: .automatic, fallbackPoint: SionPoint(x: 40, y: 20)),
+      target: .element(target.id, attachment: .automatic, fallbackPoint: SionPoint(x: 300, y: 20))
+    )
+    var resolutionCount = 0
+    var context = SceneRenderContext(
+      scene: SionScene(elements: [source, target, connector]),
+      connectorRouteResolver: { _, _ in
+        resolutionCount += 1
+        return self.horizontalRoute(y: 500, fromX: 500, toX: 600)
+      }
+    )
+    _ = context.connectorRoute(for: connector)
+    XCTAssertEqual(resolutionCount, 1)
+
+    var movedSource = source
+    movedSource.geometry.frame.origin = SionPoint(x: 60, y: 0)
+    context.update(
+      scene: SionScene(elements: [movedSource, target, connector]),
+      changedElementIDs: [source.id]
+    )
+    _ = context.connectorRoute(for: connector)
+    XCTAssertEqual(
+      resolutionCount,
+      2,
+      "moving an endpoint must invalidate its connector's route"
+    )
+  }
 }

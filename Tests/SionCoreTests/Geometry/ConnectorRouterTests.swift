@@ -247,3 +247,55 @@ final class ConnectorRouterTests: XCTestCase {
     }
   }
 }
+
+/// chonk.md finding 25: the orthogonal search ran until its frontier emptied,
+/// exploring the whole grid after the target was already settled. It must stop
+/// once every arrival direction at the target is final — without changing any
+/// route it returns.
+extension ConnectorRouterTests {
+  func testEarlyExitStillDetoursAroundDenseObstacles() {
+    var obstacles: [SionRect] = []
+    for row in 0..<8 {
+      for column in 0..<8 {
+        if (row + column) % 3 == 0 { continue }
+        obstacles.append(
+          SionRect(x: 150 + Double(column) * 90, y: 40 + Double(row) * 70,
+                   width: 60, height: 40)
+        )
+      }
+    }
+
+    let route = ConnectorRouter.route(
+      from: source,
+      to: target,
+      style: .orthogonal,
+      obstacles: obstacles
+    )
+
+    XCTAssertFalse(route.polylineSegments.isEmpty)
+    for obstacle in obstacles {
+      XCTAssertFalse(
+        route.polylineSegments.contains { $0.intersectsInterior(of: obstacle) },
+        "route must still avoid every obstacle"
+      )
+    }
+  }
+
+  func testEarlyExitMatchesFullSearchOnSmallScenes() {
+    // On scenes small enough to search exhaustively by hand, the early exit must
+    // return exactly the route the detour tests already pin down.
+    let obstacle = SionRect(x: 220, y: 60, width: 80, height: 230)
+    let route = ConnectorRouter.route(
+      from: source,
+      to: target,
+      style: .orthogonal,
+      obstacles: [obstacle]
+    )
+    assertAxisAligned(route.polylinePoints)
+    XCTAssertFalse(
+      route.polylineSegments.contains { $0.intersectsInterior(of: obstacle) }
+    )
+    XCTAssertEqual(route.start, source.point)
+    XCTAssertEqual(route.end, target.point)
+  }
+}

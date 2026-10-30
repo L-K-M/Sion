@@ -624,6 +624,11 @@ private enum TravelDirection: Int, Hashable {
   case south
   case west
 
+  /// The directions a routed path can arrive at a node with. Once every one of
+  /// these has been finalized at the target node, its best goal score is final
+  /// (Dijkstra pops in non-decreasing cost order), so the search may stop.
+  static let cardinalDirections: Set<TravelDirection> = [.north, .east, .south, .west]
+
   var axis: TravelAxis {
     switch self {
     case .none:
@@ -739,10 +744,22 @@ private enum OrthogonalPathfinder {
     var predecessors: [SearchState: SearchState] = [:]
     var frontier = MinHeap<FrontierEntry>()
     frontier.insert(FrontierEntry(state: startState, score: startScore))
+    // chonk finding 25: the search used to run until the frontier emptied, i.e.
+    // it explored the whole visibility grid even after the target was settled.
+    // Popped states are final, so once every cardinal direction has been
+    // finalized at the target node, bestGoal's answer can no longer change.
+    var finalizedGoalDirections = Set<TravelDirection>()
 
     while let current = frontier.removeMinimum() {
       guard scores[current.state] == current.score else {
         continue
+      }
+
+      if current.state.node == targetNode {
+        finalizedGoalDirections.insert(current.state.direction)
+        if finalizedGoalDirections.isSuperset(of: TravelDirection.cardinalDirections) {
+          break
+        }
       }
 
       for neighbor in grid.neighbors(of: current.state.node, obstacles: obstacles) {

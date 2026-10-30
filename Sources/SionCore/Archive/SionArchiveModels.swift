@@ -27,7 +27,13 @@ struct SceneFile: Codable, Equatable {
     Set(assets.map(\.path))
   }
 
-  func assetsAreAvailable(in available: [AssetID: SionAsset]) -> Bool {
+  /// `digests` carries precomputed SHA-256 hex digests keyed by archive path, so a
+  /// caller validating many revisions against the same assets hashes each asset
+  /// once instead of once per revision (chonk finding 26).
+  func assetsAreAvailable(
+    in available: [AssetID: SionAsset],
+    digests: [String: String]
+  ) -> Bool {
     assets.allSatisfy { descriptor in
       guard let asset = available[descriptor.id] else {
         return false
@@ -35,11 +41,24 @@ struct SceneFile: Codable, Equatable {
 
       return descriptor.path == asset.archivePath
         && descriptor.byteLength == asset.data.count
-        && descriptor.sha256 == SHA256.hexDigest(asset.data)
+        && digests[descriptor.path] == descriptor.sha256
     }
   }
 
   func model(assetData: [String: Data]) throws -> (SionDocument, [AssetID: SionAsset]) {
+    var digests: [String: String] = [:]
+    for descriptor in assets {
+      if let data = assetData[descriptor.path] {
+        digests[descriptor.path] = SHA256.hexDigest(data)
+      }
+    }
+    return try model(assetData: assetData, assetDigests: digests)
+  }
+
+  func model(
+    assetData: [String: Data],
+    assetDigests: [String: String]
+  ) throws -> (SionDocument, [AssetID: SionAsset]) {
     guard format == SionArchiveConstants.sceneFormatIdentifier else {
       throw SionArchiveError.invalidSceneFormat(format)
     }
@@ -64,7 +83,7 @@ struct SceneFile: Codable, Equatable {
         throw SionArchiveError.missingEntry(descriptor.path)
       }
       guard data.count == descriptor.byteLength,
-        SHA256.hexDigest(data) == descriptor.sha256
+        assetDigests[descriptor.path] == descriptor.sha256
       else {
         throw SionArchiveError.entryHashMismatch(descriptor.path)
       }

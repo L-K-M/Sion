@@ -179,9 +179,12 @@ public enum SionArchive {
     )
     let archive = try StoredZIPArchive.encode(entries)
 
-    // Commit only history that the complete artifact can restore.
-    let verifiedPackage = try decode(archive)
-    return EncodedSionArchive(data: archive, committedHistory: verifiedPackage.history)
+    // Commit only history that the complete artifact can restore. Each retained
+    // revision was already validated above by usableHistory, so verifying the
+    // written bytes structurally (CRCs included) is enough here — re-decoding the
+    // whole package would re-hash every asset once per revision again (chonk 26).
+    _ = try StoredZIPArchive.decode(archive)
+    return EncodedSionArchive(data: archive, committedHistory: history)
   }
 
   /// Strictly restores one retained scene using assets already loaded from its package.
@@ -289,8 +292,12 @@ public enum SionArchive {
     assets: [AssetID: SionAsset]
   ) -> DocumentHistory {
     var assetData = [String: Data]()
+    // Hash each asset once per save; validating every revision against these
+    // digests used to re-hash all asset bytes once per revision (chonk 26).
+    var assetDigests = [String: String]()
     for asset in assets.values {
       assetData[asset.archivePath] = asset.data
+      assetDigests[asset.archivePath] = SHA256.hexDigest(asset.data)
     }
 
     var revisions: [HistoryRevision] = []
@@ -302,12 +309,12 @@ public enum SionArchive {
         continue
       }
 
-      guard scene.assetsAreAvailable(in: assets) else {
+      guard scene.assetsAreAvailable(in: assets, digests: assetDigests) else {
         continue
       }
 
       do {
-        _ = try scene.model(assetData: assetData)
+        _ = try scene.model(assetData: assetData, assetDigests: assetDigests)
       } catch {
         continue
       }

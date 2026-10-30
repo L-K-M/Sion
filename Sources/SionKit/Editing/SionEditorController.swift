@@ -188,6 +188,9 @@
     private let undoManagerProvider: () -> UndoManager?
     private let didChange: (DocumentChange) -> Void
     private var observers: [UUID: () -> Void] = [:]
+    /// Incremented on every notified change; lets a gesture tell its own
+    /// updates from external ones (chonk finding 9).
+    private(set) var changeCount = 0
 
     init(
       package: SionPackage,
@@ -1767,6 +1770,7 @@
     }
 
     private func notifyObservers() {
+      changeCount += 1
       for observer in observers.values {
         observer()
       }

@@ -71,7 +71,17 @@
     private var observerID: UUID?
     private var magnificationObservation: NSKeyValueObservation?
     private var imagePasteTasks: [UUID: Task<Void, Never>] = [:]
-    private var drag: Drag?
+    private var drag: Drag? {
+      didSet {
+        // Tag the drag with the document's change count at its start, so an
+        // observer notification can tell an external edit (async paste,
+        // autosave) from the drag's own updates (chonk finding 9).
+        if drag != nil, oldValue == nil {
+          dragStartedAtChangeCount = editorController.changeCount
+        }
+      }
+    }
+    private var dragStartedAtChangeCount = 0
     private var textEditor: NSScrollView?
     private var editedElementID: ElementID?
     private var inlineTextUndoManager: UndoManager?
@@ -160,7 +170,13 @@
         guard let self else { return }
 
         // External edits end model gestures and invalidate view-only previews.
-        if self.drag != nil, !self.editorController.hasPendingEditorGesture {
+        // A notification is external only when the document changed since the
+        // drag began and the drag owns no pending editor gesture — otherwise an
+        // async paste or autosave landing mid-drag silently cancelled it.
+        if self.drag != nil,
+          !self.editorController.hasPendingEditorGesture,
+          self.editorController.changeCount != self.dragStartedAtChangeCount
+        {
           _ = self.takeActiveDrag()
         }
 

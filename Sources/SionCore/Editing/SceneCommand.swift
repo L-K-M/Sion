@@ -195,13 +195,10 @@ extension SceneCommand {
     var removedIDs = requestedIDs
     removedIDs.formUnion(scene.descendantIDs(of: requestedIDs))
 
-    for element in scene.elements where removedIDs.contains(element.id) {
-      guard element.lockState == .editable else {
-        throw SceneEditingError.elementLocked(element.id)
-      }
-    }
-
-    // Connections are owned by their endpoints and leave with either endpoint.
+    // Connections are owned by their endpoints and leave with either endpoint —
+    // and a *locked* connector is still owned by them, so the cascade must be
+    // computed before the lock check or a locked connector would be deleted
+    // with its endpoint (chonk finding 2).
     for element in scene.elements {
       guard let connector = element.content.connector else {
         continue
@@ -210,6 +207,12 @@ extension SceneCommand {
       let endpointIDs = [connector.source.elementID, connector.target.elementID]
       if endpointIDs.contains(where: { $0.map(removedIDs.contains) ?? false }) {
         removedIDs.insert(element.id)
+      }
+    }
+
+    for element in scene.elements where removedIDs.contains(element.id) {
+      guard element.lockState == .editable else {
+        throw SceneEditingError.elementLocked(element.id)
       }
     }
 
@@ -550,7 +553,10 @@ extension SceneCommand {
     in scene: inout SionScene
   ) {
     for index in scene.elements.indices {
+      // A locked connector is pinned by the user: moving its endpoint must not
+      // rewrite its fallback points, waypoints, or resolved route (chonk 2).
       guard !excludedConnectorIDs.contains(scene.elements[index].id),
+        scene.elements[index].lockState == .editable,
         var connector = scene.elements[index].content.connector
       else {
         continue

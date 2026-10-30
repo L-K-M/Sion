@@ -69,7 +69,14 @@ public struct SceneLibrary: Equatable, Sendable {
       throw SceneLibraryError.malformedStorage
     }
 
-    self.init(items: try encodedItems.map(Self.decodedItem))
+    let decoded = try encodedItems.map(Self.decodedItem)
+    // Limits are enforced on load too (chonk finding 6): only `add` used to
+    // check them, so a crafted document/library file could bypass the payload
+    // and count caps and bloat memory and undo snapshots.
+    guard decoded.count <= SceneLibraryLimits.maximumItemCount else {
+      throw SceneLibraryError.libraryIsFull(itemCount: decoded.count)
+    }
+    self.init(items: decoded)
   }
 
   public var portableValue: PortableValue {
@@ -177,6 +184,9 @@ public struct SceneLibrary: Equatable, Sendable {
     }
     guard !id.isEmpty else {
       throw SceneLibraryError.malformedStorage
+    }
+    guard payload.count <= SceneLibraryLimits.maximumPayloadByteCount else {
+      throw SceneLibraryError.payloadTooLarge(byteCount: payload.count)
     }
 
     return SceneLibraryItem(

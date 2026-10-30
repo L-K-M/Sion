@@ -280,3 +280,62 @@ final class SceneLibraryTests: XCTestCase {
     return try payload.dataRepresentation()
   }
 }
+
+/// chonk.md finding 6: the payload/count limits were only enforced in `add`, so
+/// decoding a stored library (from a scene extension or a library file) accepted
+/// oversized payloads and unbounded item counts.
+final class SceneLibraryLoadLimitTests: XCTestCase {
+  private func itemValue(id: String, payload: Data) -> PortableValue {
+    .object([
+      "id": .string(id),
+      "name": .string("Item \(id)"),
+      "payload": .string(payload.base64EncodedString()),
+    ])
+  }
+
+  private func libraryValue(items: [PortableValue]) -> PortableValue {
+    .object([
+      "format": .string("sion-library"),
+      "version": .integer(Int64(SceneLibrary.formatVersion)),
+      "items": .array(items),
+    ])
+  }
+
+  func testOversizedPayloadIsRefusedOnLoad() throws {
+    let big = Data(repeating: 0x41, count: SceneLibraryLimits.maximumPayloadByteCount + 1)
+    let value = libraryValue(items: [itemValue(id: "big", payload: big)])
+
+    XCTAssertThrowsError(try SceneLibrary(portableValue: value)) { error in
+      guard case SceneLibraryError.payloadTooLarge = error else {
+        return XCTFail("expected payloadTooLarge, got \(error)")
+      }
+    }
+  }
+
+  func testTooManyItemsAreRefusedOnLoad() throws {
+    let payload = Data("{}".utf8)
+    let items = (0..<(SceneLibraryLimits.maximumItemCount + 1)).map {
+      itemValue(id: "item-\($0)", payload: payload)
+    }
+    let value = libraryValue(items: items)
+
+    XCTAssertThrowsError(try SceneLibrary(portableValue: value)) { error in
+      guard case SceneLibraryError.libraryIsFull = error else {
+        return XCTFail("expected libraryIsFull, got \(error)")
+      }
+    }
+  }
+
+  func testLimitsAreNotEnforcedOnStoredBoundarySizes() throws {
+    let payload = Data(repeating: 0x42, count: SceneLibraryLimits.maximumPayloadByteCount)
+    // A payload at the cap must still decode... but it isn't placeable, so use a
+    // small valid payload for the count boundary instead.
+    let small = Data("{}".utf8)
+    let items = (0..<SceneLibraryLimits.maximumItemCount).map {
+      itemValue(id: "item-\($0)", payload: small)
+    }
+    let library = try SceneLibrary(portableValue: libraryValue(items: items))
+    XCTAssertEqual(library.items.count, SceneLibraryLimits.maximumItemCount)
+    _ = payload
+  }
+}

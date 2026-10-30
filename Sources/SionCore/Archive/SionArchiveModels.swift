@@ -82,8 +82,12 @@ struct SceneFile: Codable, Equatable {
       guard let data = assetData[descriptor.path] else {
         throw SionArchiveError.missingEntry(descriptor.path)
       }
+      // Fall back to hashing when the caller didn't precompute a digest for
+      // this path (review feedback on #93): a missing entry must not read as
+      // a hash mismatch.
+      let digest = assetDigests[descriptor.path] ?? SHA256.hexDigest(data)
       guard data.count == descriptor.byteLength,
-        assetDigests[descriptor.path] == descriptor.sha256
+        digest == descriptor.sha256
       else {
         throw SionArchiveError.entryHashMismatch(descriptor.path)
       }

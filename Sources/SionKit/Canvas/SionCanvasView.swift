@@ -1701,6 +1701,9 @@
         }
 
         let display = await service.make(from: data)
+        // Re-check after the await: invalidate() may have cancelled the task
+        // while the rendition was being built.
+        guard !Task.isCancelled else { return }
         guard let display else {
           NSSound.beep()
           return

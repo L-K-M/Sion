@@ -1687,10 +1687,14 @@
       let taskID = UUID()
       let service = imageRenditionService
       let task = Task { @MainActor [weak self] in
+        // The task stays in imagePasteTasks until the rendition is done, so
+        // invalidate() can still cancel it mid-build (the original behavior —
+        // removing it early let a late rendition edit the document).
+        defer { self?.imagePasteTasks.removeValue(forKey: taskID) }
+
         let data = await Task.detached(priority: .userInitiated, operation: load).value
         guard let self else { return }
 
-        self.imagePasteTasks.removeValue(forKey: taskID)
         guard !Task.isCancelled,
           let data,
           !data.isEmpty,

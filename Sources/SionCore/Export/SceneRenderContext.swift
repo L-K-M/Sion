@@ -118,14 +118,15 @@ package struct SceneRenderContext {
 
     var corridor: SionRect?
     for id in changedElementIDs {
-      guard let index = indicesByID[id],
-            index < previousScene.elements.count,
-            previousScene.elements[index].id == id,
-            index < scene.elements.count else { continue }
+      guard let index = indicesByID[id] else { continue }
+      guard index < previousScene.elements.count else { continue }
+      guard previousScene.elements[index].id == id else { continue }
+      guard index < scene.elements.count else { continue }
 
-      let change = SceneRenderGeometry.paintedBounds(of: previousScene.elements[index])
-        .union(SceneRenderGeometry.paintedBounds(of: scene.elements[index]))
-      corridor = corridor.map { $0.union(change) } ?? change
+      let previous = SceneRenderGeometry.paintedBounds(of: previousScene.elements[index])
+      let current = SceneRenderGeometry.paintedBounds(of: scene.elements[index])
+      corridor = corridor.map { $0.union(previous).union(current) }
+        ?? previous.union(current)
     }
     guard let corridor else {
       connectorRoutes.removeAll(keepingCapacity: true)
@@ -133,13 +134,16 @@ package struct SceneRenderContext {
     }
 
     connectorRoutes = connectorRoutes.filter { id, cached in
-      guard let index = indicesByID[id],
-            index < scene.elements.count,
-            let connector = scene.elements[index].content.connector else { return false }
+      guard let index = indicesByID[id] else { return false }
+      guard index < scene.elements.count else { return false }
+      guard let connector = scene.elements[index].content.connector else { return false }
       if changedElementIDs.contains(id) { return false }
 
       let endpoints = [connector.source.elementID, connector.target.elementID]
-      if endpoints.contains(where: { $0.map(changedElementIDs.contains) ?? false }) { return false }
+      let endpointChanged = endpoints.contains { endpointID in
+        endpointID.map(changedElementIDs.contains) ?? false
+      }
+      if endpointChanged { return false }
 
       guard let route = cached.route else { return true }
       return !route.polylineSegments.contains { segment in

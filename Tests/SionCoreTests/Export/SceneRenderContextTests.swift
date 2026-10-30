@@ -202,8 +202,11 @@ final class SceneRenderContextTests: XCTestCase {
 
     _ = context.connectorRoute(for: nearConnector)
     _ = context.connectorRoute(for: farConnector)
-    XCTAssertEqual(resolutionCount, 2,
-                   "routes outside the changed corridor must stay cached")
+    XCTAssertEqual(
+      resolutionCount,
+      2,
+      "routes outside the changed corridor must stay cached"
+    )
   }
 
   func testUpdateInvalidatesOnlyRoutesCrossingTheChangedCorridor() {
@@ -249,8 +252,11 @@ final class SceneRenderContextTests: XCTestCase {
 
     _ = context.connectorRoute(for: crossingConnector)
     _ = context.connectorRoute(for: farConnector)
-    XCTAssertEqual(resolutionCount, 3,
-                   "the route crossing the obstacle's corridor must re-resolve; the far one stays cached")
+    XCTAssertEqual(
+      resolutionCount,
+      3,
+      "the route crossing the corridor re-resolves; the far one stays cached"
+    )
   }
 
   func testUpdateInvalidatesRoutesWhoseEndpointChanged() {

@@ -2261,9 +2261,11 @@
       let path = connectorPath(route)
       NSColor.controlAccentColor.setStroke()
       guard let selected = path.copy() as? NSBezierPath else { return }
-      selected.lineWidth = CanvasMetrics.selectionLineWidth
-      selected.setLineDash(
-        CanvasMetrics.selectionDash, count: CanvasMetrics.selectionDash.count, phase: 0)
+      // Scale by inverseMagnification like shape selection (chonk finding 38):
+      // at Zoom-to-Fit the raw width is sub-pixel and the highlight disappears.
+      selected.lineWidth = CanvasMetrics.selectionLineWidth * inverseMagnification
+      let dash = CanvasMetrics.selectionDash.map { $0 * CGFloat(inverseMagnification) }
+      selected.setLineDash(dash, count: dash.count, phase: 0)
       selected.stroke()
     }
 
@@ -2663,8 +2665,9 @@
 
       let path = connectorPath(route)
       NSColor.controlAccentColor.setStroke()
-      path.lineWidth = 2
-      path.setLineDash(CanvasMetrics.previewDash, count: CanvasMetrics.previewDash.count, phase: 0)
+      path.lineWidth = CanvasMetrics.connectorPreviewLineWidth * inverseMagnification
+      let dash = CanvasMetrics.previewDash.map { $0 * CGFloat(inverseMagnification) }
+      path.setLineDash(dash, count: dash.count, phase: 0)
       path.stroke()
     }
 
@@ -3194,6 +3197,7 @@
     static let selectionLineWidth = 1.5
     static let selectionDash: [CGFloat] = [5, 3]
     static let previewDash: [CGFloat] = [7, 4]
+    static let connectorPreviewLineWidth = 2.0
     static let creationFillOpacity = 0.12
     static let creationDragThreshold = 4.0
     static let magnetRadius = 4.0

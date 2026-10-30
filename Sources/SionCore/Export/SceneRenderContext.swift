@@ -125,8 +125,8 @@ package struct SceneRenderContext {
 
       let previous = SceneRenderGeometry.paintedBounds(of: previousScene.elements[index])
       let current = SceneRenderGeometry.paintedBounds(of: scene.elements[index])
-      corridor = corridor.map { $0.union(previous).union(current) }
-        ?? previous.union(current)
+      let change = previous.union(current)
+      corridor = corridor.map { $0.union(change) } ?? change
     }
     guard let corridor else {
       connectorRoutes.removeAll(keepingCapacity: true)

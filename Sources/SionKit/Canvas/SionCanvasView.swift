@@ -3197,7 +3197,7 @@
     static let selectionLineWidth = 1.5
     static let selectionDash: [CGFloat] = [5, 3]
     static let previewDash: [CGFloat] = [7, 4]
-    static let connectorPreviewLineWidth = 2.0
+    static let connectorPreviewLineWidth: CGFloat = 2.0
     static let creationFillOpacity = 0.12
     static let creationDragThreshold = 4.0
     static let magnetRadius = 4.0

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Floating palettes can share a panel as tabs, dock below one another, snap
+  to screen edges and each other, collapse with a double-click on the title
+  bar, and keep their arrangement across launches. Library and History start
+  as tabs docked below the Inspector. View ▸ Hide Palettes and Reset Palette
+  Layout are new.
 - Adopted [RigiUI](https://github.com/L-K-M/Rigi) for the native chrome: the
   document window is now an Aqua-pinned `ClassicWindow` with separate
   title/toolbar bands and a shared status bar carrying zoom controls and

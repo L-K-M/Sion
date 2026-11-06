@@ -59,6 +59,28 @@ public final class SionApplicationDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  /// Palette commands work with no document open, so they live here, at
+  /// the end of the nil-target action chain.
+  @objc public func togglePaletteVisibility(_ sender: Any?) {
+    let center = PaletteCenter.shared
+    if center.isHidingPalettes {
+      center.restoreAll()
+    } else {
+      center.hideAll()
+    }
+  }
+
+  @objc public func resetPaletteLayout(_ sender: Any?) {
+    PaletteCenter.shared.resetLayout()
+  }
+
+  @objc public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    if menuItem.action == AppAction.togglePaletteVisibility {
+      menuItem.title = PaletteCenter.shared.isHidingPalettes ? "Show Palettes" : "Hide Palettes"
+    }
+    return true
+  }
+
   public func applicationShouldHandleReopen(
     _ sender: NSApplication,
     hasVisibleWindows flag: Bool
@@ -300,6 +322,8 @@ private enum SionMainMenu {
       item("Library", action: AppAction.showLibrary, key: "l", modifiers: [.command, .option]))
     submenu.addItem(
       item("History", action: AppAction.showHistory, key: "y", modifiers: [.command, .option]))
+    submenu.addItem(item("Hide Palettes", action: AppAction.togglePaletteVisibility))
+    submenu.addItem(item("Reset Palette Layout", action: AppAction.resetPaletteLayout))
     submenu.addItem(.separator())
     submenu.addItem(
       item(

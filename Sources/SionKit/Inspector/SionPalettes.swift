@@ -89,10 +89,22 @@
       frameAutosaveName: SionPaletteKind.history.frameAutosaveName
     )
 
+    /// The first-run arrangement: the Inspector at the top right, with
+    /// Library and History sharing one panel docked below it. A layout the
+    /// person has made since wins.
+    static let defaultLayout = [
+      PaletteGroupDefault([SionPaletteKind.inspector.paletteKind], placement: .topTrailing),
+      PaletteGroupDefault(
+        [SionPaletteKind.library.paletteKind, SionPaletteKind.history.paletteKind],
+        placement: .docked(below: SionPaletteKind.inspector.paletteKind)
+      ),
+    ]
+
     func registerIfNeeded() {
       guard !isRegistered else { return }
       isRegistered = true
 
+      PaletteCenter.shared.setDefaultLayout(Self.defaultLayout)
       PaletteCenter.shared.palette(
         for: Self.inspectorDefinition,
         target: Self.frontEditorController,

@@ -64,9 +64,15 @@ The palette machinery — `PaletteKind`, `PaletteDefinition`, `PaletteCenter`,
 `RigiUI`. Sion registers each of its palettes as a typed content factory for
 two containers: a transient `NSPopover` and a borderless floating panel. The
 instances share their current document target. Each palette is an app-global
-singleton that retargets to the front document and selection; Sion keeps the
-`Sion.palette.<kind>` frame autosave names so panel positions saved before the
-move restore exactly where they were left.
+singleton that retargets to the front document and selection.
+
+Floating palettes can share a panel as tabs, dock below one another as
+columns, collapse to their title bar, and hide together (View ▸ Hide Palettes).
+Rigi keeps that arrangement in the `Rigi.paletteLayout` default. Sion declares
+the first-run arrangement in `SionPalettes.defaultLayout`: the Inspector at the
+top right, with Library and History sharing a panel docked below it. Sion keeps
+the `Sion.palette.<kind>` frame autosave names: a position saved before the
+layout existed places its palette the first time, then the layout takes over.
 
 The panel states the palette's declared size itself: it is borderless, so it
 has no title bar to size it, and the palette bodies scroll rather than report

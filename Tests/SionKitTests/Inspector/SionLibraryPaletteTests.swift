@@ -187,6 +187,22 @@ final class SionLibraryPaletteTests: XCTestCase {
     }
   }
 
+  /// Library and History share a panel under the Inspector until the person
+  /// rearranges them; the Inspector opens at the top right on its own.
+  func testLibraryAndHistoryShareAPanelDockedBelowTheInspector() {
+    let inspector = SionPaletteKind.inspector.paletteKind
+    let library = SionPaletteKind.library.paletteKind
+    let history = SionPaletteKind.history.paletteKind
+
+    XCTAssertEqual(
+      SionPalettes.defaultLayout,
+      [
+        PaletteGroupDefault([inspector], placement: .topTrailing),
+        PaletteGroupDefault([library, history], placement: .docked(below: inspector)),
+      ]
+    )
+  }
+
   /// A programmatically created window is released when it closes, which would
   /// over-release the strong reference the caller holds.
   private func makeAnchorWindow() throws -> (window: NSWindow, anchor: NSView) {
